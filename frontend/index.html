@@ -7535,6 +7535,31 @@
           <span id="posCobroCliente">Consumidor final</span>
           <strong class="mono" id="posCobroTotal">$0,00</strong>
         </div>
+        <!-- Alta rápida de un cliente con CUIT (hist. §188): para la factura A
+             sin ir a Clientes. Se busca por CUIT y, si no está, se crea; la
+             letra sigue saliendo de las dos condiciones frente al IVA. Es un
+             div y no un form: no se puede anidar en el del cobro. -->
+        <button type="button" class="btn-link pos-cliente-cuit-abrir" id="btnPosClienteCuit" hidden>
+          <svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#user-plus"></use></svg>
+          Facturar a un cliente con CUIT
+        </button>
+        <div class="pos-cliente-cuit" id="posClienteCuit" role="group" aria-labelledby="posClienteCuitTitulo" hidden>
+          <p class="pos-cliente-cuit-titulo" id="posClienteCuitTitulo">¿A quién se le factura?</p>
+          <label>CUIT
+            <input type="text" id="posClienteCuitNumero" maxlength="13" inputmode="numeric" autocomplete="off" placeholder="20-12345678-9" />
+          </label>
+          <label>Nombre o razón social
+            <input type="text" id="posClienteCuitNombre" maxlength="160" autocomplete="off" placeholder="Como figura en su constancia de ARCA" />
+          </label>
+          <label>Condición frente al IVA
+            <select id="posClienteCuitCondicion"></select>
+          </label>
+          <p class="form-note" id="posClienteCuitNota" aria-live="polite" hidden></p>
+          <div class="pos-cliente-cuit-acciones">
+            <button type="button" class="btn btn-secundario" id="btnPosClienteCuitCancelar">Cancelar</button>
+            <button type="button" class="btn btn-primary" id="btnPosClienteCuitGuardar">Usar este cliente</button>
+          </div>
+        </div>
         <div class="pos-cobros" id="posCobros"></div>
         <div class="pos-medios" id="posMedios" role="group" aria-label="Sumar un medio de pago"></div>
         <dl class="pos-cobro-cuentas">

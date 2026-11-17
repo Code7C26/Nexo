@@ -14374,3 +14374,54 @@ mandando desde Nexo.
   `/facturas/:id/mail` (desconectar se puede siempre); en Gratis el botón avisa
   el plan en vez de abrir el envío, y un Gmail ya conectado queda en pausa sin
   borrarse. `planes.js` lo lista en Emprendedor. 424 tests.
+
+## §188 — 17 de noviembre de 2026: alta rápida de un cliente con CUIT en el punto de venta
+
+Pedido del usuario: poder hacer una factura A en el mostrador sin ir a
+Clientes, cargarlo y volver. Hasta ahora el cobro tomaba el cliente del campo
+"Cliente" y no dejaba cambiarlo; con Consumidor final la letra salía B y, con
+un inscripto sin CUIT, `errorDeFactura()` bloqueaba el cobro. §30 lo tenía
+anotado como pendiente.
+
+- **Pantalla (`dominios/pos.js`, `index.html`, `styles.css`):** en el cobro,
+  debajo del total, el enlace "Facturar a un cliente con CUIT". Se muestra solo
+  si se puede facturar (`sePuedeFacturar()`) y el cliente del cobro es
+  consumidor final o le falta el CUIT (11 números) o la condición fiscal. Abre
+  un bloque con CUIT, nombre o razón social y condición frente al IVA (las de
+  `CONDICIONES_FISCALES`, con `opcionesSelect`; arranca en responsable
+  inscripto). Es un `div`, no un `form` (no se anida en el del cobro), y Enter
+  ahí guarda el cliente en vez de confirmar la venta.
+- **Validación:** `errorCuit()` de `core/fiscal.js` (la del alta y
+  Configuración; la ficha de cliente no valida el CUIT), con el error debajo
+  del campo (`core/campos.js`). Al escribir los 11 números, si ya es un
+  cliente, avisa "Ya está en tus clientes" y trae su nombre y su condición.
+- **Al guardar:** se vuelve a leer `GET /api/clientes` (otro puesto pudo
+  cargarlo) y se busca por los números del CUIT, con o sin guiones.
+  - Está y tiene la condición elegida: se usa.
+  - Está sin condición o con otra: se le guarda, con una confirmación breve
+    (`confirmar`). El PATCH de clientes pisa con vacío lo que no viene, así
+    que va la ficha entera (`fichaDelCliente`).
+  - No está, pero el cliente del cobro tiene el mismo nombre y no tiene CUIT:
+    se le completan el CUIT y la condición (cargarlo de nuevo lo duplicaría),
+    también con confirmación.
+  - Si no, se crea con `POST /api/clientes` (permitido a los dos roles).
+  Queda como `cobro.cliente` y en el campo del mostrador, se prende "Factura",
+  y `renderComprobante()` + `actualizarCobro()` pasan el botón a "Factura A"
+  y levantan el bloqueo del CUIT. La venta lleva su `cliente_id`, con su cuenta
+  corriente como siempre.
+- **Sin selector de letra** (pedido explícito): sigue saliendo de la condición
+  del negocio y la del cliente.
+- **Sin cambios de esquema ni rutas nuevas.** La lista de clientes del
+  mostrador pasó a `fijarClientes()`.
+- **Manual** (`manual.js`, `manual-en.js`): un párrafo en "Vender en el
+  mostrador" y la pregunta "cómo hago una factura a en el mostrador". 13 textos
+  nuevos en `idioma/en.js`.
+- **Probado:** `pos-cliente-cuit.test.js` (3, por la API como un empleado y
+  contra ARCA simulado: crear por CUIT y salir A, reusar escribiéndolo sin
+  guiones sin duplicar, completar la condición sin perder mail, teléfono ni
+  notas y pasar de B a A). 427 tests, lint e i18n en verde. En el navegador,
+  en el celular: un CUIT nuevo crea el cliente y la venta sale "Factura A
+  0003-00000001 autorizada"; un cliente que ya estaba sin condición pide
+  confirmar, la guarda y no se duplica.
+- **Queda:** el campo "Cliente" del mostrador sigue siendo un `datalist`
+  nativo; pasarlo al combo de Nexo (`core/combo.js`) es aparte.

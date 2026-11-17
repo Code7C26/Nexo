@@ -3759,6 +3759,38 @@ html[data-ejemplo] #btnCompraFactura { display: none; }
 .pos-comprobante .segmento { min-height: 38px; font-size: var(--txt-sm); }
 .pos-comprobante .form-note { margin: 0; }
 
+/* Alta rápida de un cliente con CUIT (hist. §188): debajo del total. */
+.pos-cliente-cuit-abrir { align-self: center; }
+.pos-cliente-cuit-abrir[hidden] { display: none; }
+
+.pos-cliente-cuit {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  padding: var(--sp-4);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+}
+
+.pos-cliente-cuit[hidden] { display: none; }
+
+.pos-cliente-cuit-titulo {
+  margin: 0;
+  font-size: var(--txt-sm);
+  font-weight: 600;
+}
+
+.pos-cliente-cuit .form-note { margin: 0; }
+
+.pos-cliente-cuit-acciones {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--sp-2);
+}
+
+.pos-cliente-cuit-acciones .btn { flex: 1 1 140px; min-height: 44px; }
+
 /* Modal de cierre: el resumen del turno y el arqueo en vivo. */
 .ficha-datos.pos-cierre-datos { grid-template-columns: 1fr 1fr; }
 

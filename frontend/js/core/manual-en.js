@@ -130,7 +130,7 @@ export const SECCIONES_EN = {
   "punto-de-venta": {
     titulo: "Selling at the counter (Point of sale)",
     pantalla: "Point of sale",
-    preguntas: ["how do i sell at the counter", "how do i open the register", "how do i close the register", "how do i charge with the scanner", "how do i count the cash", "how do i give change", "how do i charge with two payment methods"],
+    preguntas: ["how do i sell at the counter", "how do i open the register", "how do i close the register", "how do i charge with the scanner", "how do i count the cash", "how do i give change", "how do i charge with two payment methods", "how do i issue an invoice a at the counter"],
     palabras: ["counter", "point", "pos", "register", "cash", "shift", "open", "close", "count", "change", "scanner", "scan", "barcode", "charge", "quick"],
     bloques: [
       "It's the screen for selling fast, standing in front of the customer.",
@@ -142,6 +142,7 @@ export const SECCIONES_EN = {
         "At the end of the day, tap **Close register** and count the cash: Nexo tells you if it matches what there should be."
       ] },
       "Without choosing a customer, the sale goes to End consumer. To leave something on account for someone, choose the customer: End consumer can't buy on credit.",
+      "To invoice a company or a monotributo taxpayer, tap **Invoice a customer with a CUIT** while charging and enter their CUIT, their name and their VAT status. If they're already in your customers, Nexo finds them by the CUIT; if not, it creates them. The letter comes out on its own.",
       "The receipt is for 80 mm printers. Print it again from the sale's page, with **Ticket**.",
       { nota: "If you don't see Point of sale in the menu, turn it on in Settings › Features." }
     ]
