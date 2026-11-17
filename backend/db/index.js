@@ -2296,7 +2296,9 @@ for (const [tabla, columna] of [
   ['cuentas_tesoreria', 'sucursal_id INTEGER REFERENCES sucursales(id)'],
   // El turno en que entró cada cobro (hist. §194): los de antes, sin turno
   // (el de su venta, si fue del mostrador).
-  ['cobros', 'turno_caja_id INTEGER REFERENCES turnos_caja(id)']
+  ['cobros', 'turno_caja_id INTEGER REFERENCES turnos_caja(id)'],
+  // Los accesos rápidos del mostrador de cada caja (hist. §195).
+  ['cuentas_tesoreria', 'accesos_rapidos TEXT']
 ]) {
   if (!db.prepare(`PRAGMA table_info(${tabla})`).all().some((col) => col.name === columna.split(' ')[0])) {
     db.exec(`ALTER TABLE ${tabla} ADD COLUMN ${columna}`);

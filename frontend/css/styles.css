@@ -10614,3 +10614,37 @@ a.asistente-guia-whatsapp:hover { border-color: var(--line-strong); }
     margin-left: 0;
   }
 }
+
+/* Los accesos rápidos del mostrador (hist. §195): una fila de botones con los
+   productos de siempre, arriba del catálogo. */
+.pos-accesos { display: flex; flex-wrap: wrap; gap: var(--sp-2); margin-bottom: var(--sp-3); }
+.pos-acceso {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  min-height: 44px;
+  padding: var(--sp-2) var(--sp-3);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.pos-acceso:hover { border-color: var(--accent); }
+.pos-acceso:disabled { opacity: 0.5; cursor: not-allowed; }
+.pos-acceso small { color: var(--ink-muted); }
+.pos-acceso-armar { justify-content: center; color: var(--ink-muted); border-style: dashed; }
+.pos-armando {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  margin-bottom: var(--sp-3);
+  padding: var(--sp-2) var(--sp-3);
+  border: 1px solid var(--accent);
+  border-radius: var(--r-md);
+  background: var(--accent-bg);
+}
+.pos-armando p { flex: 1; margin: 0; font-size: var(--txt-sm); }
+.pos-item.es-acceso { outline: 2px solid var(--accent); outline-offset: -2px; }

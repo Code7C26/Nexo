@@ -157,3 +157,17 @@ test('un cobro a cuenta de una deuda de otro turno queda en el turno donde se co
   const resumen = (await admin.get(`/api/turnos-caja/${nuevo.id}`)).json;
   assert.equal(resumen.cobros_por_cuenta.find((c) => c.cuenta_tesoreria_id === caja.id).importe, 1000);
 });
+
+test('los accesos rápidos los arma el cajero y quedan en la caja (hist. §195)', async () => {
+  const r = await empleado.put(`/api/cajas/${caja.id}/accesos`, { claves: [`${servicio}:`, `${servicio}:`] });
+  assert.equal(r.status, 200, r.texto);
+  assert.deepEqual(r.json.claves, [`${servicio}:`], 'sin repetir');
+  const guardada = (await empleado.get('/api/tesoreria')).json.cuentas.find((c) => c.id === caja.id);
+  assert.deepEqual(JSON.parse(guardada.accesos_rapidos), [`${servicio}:`]);
+  for (const claves of [['no'], ['99999:'], 'x']) {
+    assert.equal((await empleado.put(`/api/cajas/${caja.id}/accesos`, { claves })).status, 400, JSON.stringify(claves));
+  }
+  const banco = (await admin.get('/api/cuentas-tesoreria')).json.find((c) => c.tipo === 'banco');
+  assert.equal((await empleado.put(`/api/cajas/${banco.id}/accesos`, { claves: [] })).status, 404, 'solo las cajas de efectivo');
+  assert.equal((await empleado.put(`/api/cajas/${caja.id}/accesos`, { claves: [] })).json.claves.length, 0);
+});

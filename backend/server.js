@@ -19120,6 +19120,33 @@ app.post('/api/pos/cobro-a-cuenta', (req, res) => {
   res.status(201).json({ cliente: cliente.nombre, pagado: paga, saldo: redondear2(debe - paga), cobros: cobrosHechos });
 });
 
+// Los accesos rápidos de una caja (hist. §195, de Praxia): la botonera con los
+// productos de siempre, que arma el cajero desde el mostrador. Cada uno es la
+// clave "producto:variante" del catálogo del mostrador; se guardan en orden y
+// sin repetir. Uno que después se borra o se pausa, la pantalla lo saltea.
+const MAX_ACCESOS_RAPIDOS = 24;
+app.put('/api/cajas/:id/accesos', (req, res) => {
+  const organizacionId = req.usuario.organizacion_id;
+  const caja = db
+    .prepare("SELECT id FROM cuentas_tesoreria WHERE id = ? AND organizacion_id = ? AND tipo = 'efectivo'")
+    .get(Number(req.params.id), organizacionId);
+  if (!caja) return res.status(404).json({ error: 'Caja no encontrada.' });
+  const claves = req.body?.claves;
+  if (!Array.isArray(claves) || claves.some((c) => typeof c !== 'string' || !/^\d+:\d*$/.test(c))) {
+    return res.status(400).json({ error: 'Los accesos rápidos no son válidos.' });
+  }
+  const unicas = [...new Set(claves)];
+  if (unicas.length > MAX_ACCESOS_RAPIDOS) {
+    return res.status(400).json({ error: `Entran hasta ${MAX_ACCESOS_RAPIDOS} accesos rápidos.` });
+  }
+  const delNegocio = db.prepare('SELECT 1 FROM productos WHERE id = ? AND organizacion_id = ?');
+  if (unicas.some((c) => !delNegocio.get(Number(c.split(':')[0]), organizacionId))) {
+    return res.status(400).json({ error: 'Uno de los productos no existe.' });
+  }
+  db.prepare('UPDATE cuentas_tesoreria SET accesos_rapidos = ? WHERE id = ?').run(unicas.length ? JSON.stringify(unicas) : null, caja.id);
+  res.json({ claves: unicas });
+});
+
 // Un gasto de caja (hist. §194, de Praxia): las bolsas, el flete, lo que sale
 // del cajón. Es un gasto común, pagado con la caja del turno, en la categoría
 // elegida o en "Gastos de caja", que se crea la primera vez (el empleado no

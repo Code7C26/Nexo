@@ -5192,5 +5192,18 @@ export default {
   "El mail o la contraseña del administrador no son correctos.": "The administrator's email or password is not correct.",
   "Venta #{0} anulada desde el punto de venta (turno #{1}). Motivo: {2}.{3}{4}": "Sale #{0} voided from the point of sale (shift #{1}). Reason: {2}.{3}{4}",
   "Autorizó: {0}.": "Authorized by: {0}.",
-  "Se devolvió {0}.": "Refunded {0}."
+  "Se devolvió {0}.": "Refunded {0}.",
+
+  // Accesos rápidos del mostrador (hist. §195)
+  "Accesos rápidos": "Quick picks",
+  "Tocá los productos para sumarlos o sacarlos de los accesos rápidos.": "Tap the products to add them to or remove them from the quick picks.",
+  "Listo": "Done",
+  "Cambiar los accesos": "Change the quick picks",
+  "Armar accesos rápidos": "Set up quick picks",
+  "No se pudieron guardar los accesos rápidos.": "The quick picks could not be saved.",
+  "Accesos rápidos guardados en esta caja.": "Quick picks saved on this register.",
+  "Sin accesos rápidos en esta caja.": "No quick picks on this register.",
+  "Caja no encontrada.": "Register not found.",
+  "Los accesos rápidos no son válidos.": "The quick picks are not valid.",
+  "Entran hasta {0} accesos rápidos.": "Up to {0} quick picks fit."
 };

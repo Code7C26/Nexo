@@ -939,6 +939,9 @@ CREATE TABLE IF NOT EXISTS cuentas_tesoreria (
   -- De qué sucursal es la caja (hist. §193). Solo las de efectivo; NULL = de
   -- ninguna, como antes de las sucursales.
   sucursal_id INTEGER REFERENCES sucursales(id),
+  -- Los accesos rápidos del mostrador de esta caja (hist. §195): JSON con las
+  -- claves "producto:variante" en orden. Los arma el cajero; NULL = ninguno.
+  accesos_rapidos TEXT,
   UNIQUE (organizacion_id, nombre)
 );
 

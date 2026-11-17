@@ -53,6 +53,9 @@ let cajas = []; // las de tipo efectivo: un turno es de una de ellas
 let medios = [];
 let cajaId = null;
 let turno = null; // resumen del turno abierto de la caja elegida
+// Los accesos rápidos de la caja (hist. §195): claves del catálogo, en orden.
+let accesos = [];
+let armando = false;
 let catalogo = [];
 let porClave = new Map();
 // Las ofertas del negocio (hist. §133): el precio de cada renglón es el de la
@@ -182,6 +185,12 @@ async function cargarTodo() {
     ? recordada
     : (abiertos.find((t) => ids.includes(t.cuenta_tesoreria_id))?.cuenta_tesoreria_id ?? ids[0] ?? null);
   turno = abiertos.find((t) => t.cuenta_tesoreria_id === cajaId) ?? null;
+  try {
+    accesos = JSON.parse(cuentas.find((c) => c.id === cajaId)?.accesos_rapidos ?? "[]");
+  } catch {
+    accesos = [];
+  }
+  armando = false;
   // El stock es el del depósito de la sucursal de la caja.
   fijarCatalogo(
     cajaId ? await api(`/api/pos/catalogo?caja=${cajaId}`, { error: "No se pudo cargar el catálogo." }) : []
@@ -347,6 +356,7 @@ function filtrar(consulta) {
 const cantidadEnCarrito = (clave) => carrito.find((r) => r.clave === clave)?.cantidad ?? 0;
 
 function renderCatalogo() {
+  renderAccesos();
   const consulta = posBuscar.value.trim();
   // Lo que se puede vender primero; el orden alfabético del backend se
   // mantiene dentro de cada grupo (sort es estable).
@@ -377,8 +387,10 @@ function renderCatalogo() {
             : enOtra
               ? `Sin stock · hay en ${enOtra.sucursal}${i.en_otras.length > 1 ? ` y ${i.en_otras.length - 1} más` : ""}`
               : "Sin stock";
+      // Armando los accesos rápidos se puede marcar cualquiera, con stock o sin.
+      const clases = armando && accesos.includes(i.clave) ? "pos-item es-acceso" : "pos-item";
       return `
-        <button type="button" class="pos-item" data-clave="${esc(i.clave)}" ${hayStock(i) ? "" : "disabled"}>
+        <button type="button" class="${clases}" data-clave="${esc(i.clave)}" ${hayStock(i) || armando ? "" : "disabled"}>
           <span class="pos-item-nombre">${esc(i.nombre)}</span>
           <span class="pos-item-meta">${esc([i.sku, i.categoria].filter(Boolean).join(" · "))}</span>
           <span class="pos-item-pie">
@@ -395,7 +407,61 @@ function renderCatalogo() {
 // de la búsqueda, y atar uno por botón en cada dibujo no suma nada.
 posItems.addEventListener("click", (e) => {
   const boton = e.target.closest(".pos-item");
-  if (boton && !boton.disabled) agregar(boton.dataset.clave);
+  if (!boton || boton.disabled) return;
+  if (armando) alternarAcceso(boton.dataset.clave);
+  else agregar(boton.dataset.clave);
+});
+
+/* ---------- Accesos rápidos (hist. §195) ---------- */
+
+// La botonera de los productos de siempre de esta caja, arriba del catálogo.
+// La arma el cajero: "Armar" pasa la grilla a modo de marcar, y "Listo" la
+// guarda en la caja. Un acceso a un producto que ya no está, no se muestra.
+const posAccesos = document.getElementById("posAccesos");
+
+function renderAccesos() {
+  const items = accesos.map((clave) => porClave.get(clave)).filter(Boolean);
+  const botones = items.map(
+    (i) => `
+      <button type="button" class="pos-acceso" data-acceso="${esc(i.clave)}" ${hayStock(i) ? "" : "disabled"}>
+        <span>${esc(i.nombre)}</span><small class="mono">${money(i.precio)}</small>
+      </button>`
+  );
+  const armar = armando
+    ? ""
+    : `<button type="button" class="pos-acceso pos-acceso-armar" data-armar>${items.length ? "Cambiar los accesos" : "Armar accesos rápidos"}</button>`;
+  posAccesos.innerHTML = botones.join("") + armar;
+  document.getElementById("posArmando").hidden = !armando;
+}
+
+function alternarAcceso(clave) {
+  accesos = accesos.includes(clave) ? accesos.filter((c) => c !== clave) : [...accesos, clave];
+  renderAccesos();
+  renderCatalogo();
+}
+
+posAccesos.addEventListener("click", (e) => {
+  const acceso = e.target.closest("[data-acceso]");
+  if (acceso && !acceso.disabled && !armando) agregar(acceso.dataset.acceso);
+  if (e.target.closest("[data-armar]")) {
+    armando = true;
+    posBuscar.value = "";
+    renderAccesos();
+    renderCatalogo();
+  }
+});
+
+document.getElementById("btnPosArmadoListo").addEventListener("click", async (e) => {
+  const { claves } = await enviando(e.currentTarget, () =>
+    api(`/api/cajas/${cajaId}/accesos`, { method: "PUT", body: { claves: accesos }, error: "No se pudieron guardar los accesos rápidos." })
+  );
+  accesos = claves;
+  const caja = cuentas.find((c) => c.id === cajaId);
+  if (caja) caja.accesos_rapidos = JSON.stringify(claves);
+  armando = false;
+  renderAccesos();
+  renderCatalogo();
+  avisar(claves.length ? "Accesos rápidos guardados en esta caja." : "Sin accesos rápidos en esta caja.", "ok");
 });
 
 posBuscar.addEventListener("input", renderCatalogo);

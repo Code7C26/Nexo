@@ -1404,6 +1404,12 @@
                 <input type="search" id="posBuscar" class="search" placeholder="Nombre, SKU o código de barras" autocomplete="off" enterkeyhint="enter" title="Buscar (F2)" />
                 <button type="button" class="btn btn-secundario pos-btn-camara" id="btnPosCamara" aria-label="Escanear con la cámara" hidden><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#scan-barcode"></use></svg></button>
               </div>
+              <!-- Los accesos rápidos de esta caja (hist. §195): los arma el cajero. -->
+              <div class="pos-accesos" id="posAccesos" aria-label="Accesos rápidos"></div>
+              <div class="pos-armando" id="posArmando" role="status" hidden>
+                <p>Tocá los productos para sumarlos o sacarlos de los accesos rápidos.</p>
+                <button type="button" class="btn btn-primary btn-chico" id="btnPosArmadoListo">Listo</button>
+              </div>
               <div class="pos-items" id="posItems"></div>
               <p class="pos-items-mas" id="posItemsMas" hidden></p>
             </section>

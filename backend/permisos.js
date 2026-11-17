@@ -207,6 +207,8 @@ export const RUTAS_PERMISOS = {
   'POST /api/pos/gastos': 'ambos',
   'GET /api/turnos-caja/:id/detalle': 'ambos',
   'POST /api/pos/ventas/:id/anular': 'ambos',
+  // Los accesos rápidos los arma el cajero desde el mostrador (hist. §195).
+  'PUT /api/cajas/:id/accesos': 'ambos',
   'GET /api/pos/catalogo': 'ambos',
   'POST /api/pos/ventas': 'ambos',
   'GET /api/planes-socio': 'ambos',
