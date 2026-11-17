@@ -1460,7 +1460,11 @@ async function registrarVenta({ cobros, vuelto, falta }) {
   // Y siguen apagados mientras sale la factura, que con ARCA puede tardar.
   btnPosACuenta.disabled = true;
   const { venta, factura } = await enviando(submit, async () => {
-    const registrada = await api("/api/pos/ventas", { method: "POST", body, error: "No se pudo registrar la venta." });
+    // La venta del QR que no se pagó (hist. §197) ya existe: se cobra esa.
+    const registrada = ventaSinQr
+      ? await api(`/api/pos/ventas/${ventaSinQr.id}/cobrar`, { method: "POST", body: { cobros }, error: "No se pudo cobrar la venta." })
+      : await api("/api/pos/ventas", { method: "POST", body, error: "No se pudo registrar la venta." });
+    ventaSinQr = null;
     if (!cobro.facturar) return { venta: registrada, factura: null };
     if (negocio.factura_electronica?.activa) {
       const nota = document.getElementById("posComprobanteNota");
@@ -1544,11 +1548,27 @@ function mostrarExito({ id, vuelto, falta, cliente, ahorro, descontado = 0, fact
   document.getElementById("btnPosNuevaVenta").focus();
 }
 
-function cerrarCobro() {
+async function cerrarCobro() {
   // Con un QR esperando, la venta ya existe: se cancela o se cobra.
   if (esperandoQr) {
     avisar("Está esperando el pago del QR. Si no pagó, tocá «No pagó: cobrar de otra forma».", "atencion");
     return;
+  }
+  // La venta del QR que no se pagó (hist. §197): si no se cobra de otra forma,
+  // no se hizo, y recién ahí se anula (vuelve el stock).
+  if (ventaSinQr) {
+    const ok = await confirmar({
+      titulo: "Descartar la venta",
+      cuerpo: `La venta #${ventaSinQr.id} no se cobró. Si la descartás, se anula y vuelve el stock; el carrito sigue acá.`,
+      aceptar: "Descartar",
+      destructivo: true
+    });
+    if (!ok) return;
+    const { id } = ventaSinQr;
+    const res = await fetch(`/api/pos/ventas/${id}/cancelar-qr`, { method: "POST" });
+    ventaSinQr = null;
+    if (!res.ok) avisar("No se pudo descartar la venta: avisale al administrador.", "error");
+    refrescar([cargarTodo()]);
   }
   modalPosCobro.hidden = true;
   enfocarBusqueda();
@@ -1566,13 +1586,16 @@ document.getElementById("btnPosCobrar").addEventListener("click", abrirCobro);
 // La venta nace sin cobros y se muestra el QR del link de pago por el total.
 // La pantalla espera: el cobro entra solo con el aviso de Mercado Pago, y cada
 // tanto se le pregunta, por si el aviso no puede llegar (en la compu, sin
-// dirección pública). Si no paga, se anula y se cobra de otra forma.
+// dirección pública). Si no paga, se cancela el QR y la misma venta se cobra
+// de otra forma (hist. §197).
 const btnPosQr = document.getElementById("btnPosQr");
 const posQr = document.getElementById("posQr");
 const SEGUNDOS_SONDEO_QR = 3;
 const SONDEOS_POR_PREGUNTA = 5;
 // { id, cliente, ahorro, vueltas, sondeo }
 let esperandoQr = null;
+// La venta del QR que no se pagó y se cobra con otro medio (hist. §197): { id }.
+let ventaSinQr = null;
 
 // El texto va después del punto que late.
 function estadoQr(texto) {
@@ -1581,6 +1604,10 @@ function estadoQr(texto) {
 
 btnPosQr.addEventListener("click", async () => {
   if (facturaConError()) return;
+  if (ventaSinQr) {
+    avisar(`El QR de la venta #${ventaSinQr.id} ya se canceló: cobrala con otro medio.`, "atencion");
+    return;
+  }
   const body = {
     turno_caja_id: turno.id,
     ...(cobro.cliente ? { cliente_id: cobro.cliente.id } : {}),
@@ -1679,7 +1706,9 @@ document.getElementById("btnPosQrRevisar").addEventListener("click", async (e) =
 document.getElementById("btnPosQrCancelar").addEventListener("click", async (e) => {
   if (!esperandoQr) return;
   const { id } = esperandoQr;
-  const res = await enviando(e.currentTarget, () => fetch(`/api/pos/ventas/${id}/cancelar-qr`, { method: "POST" }));
+  // La venta no se anula (hist. §197): se cancela el QR en Mercado Pago y la
+  // misma venta se cobra con otro medio.
+  const res = await enviando(e.currentTarget, () => fetch(`/api/pos/ventas/${id}/soltar-qr`, { method: "POST" }));
   if (res.status === 409) {
     // El pago entró justo: no se cancela, se cobró.
     await revisarQr({ preguntar: true });
@@ -1687,8 +1716,13 @@ document.getElementById("btnPosQrCancelar").addEventListener("click", async (e) 
   }
   terminarQr();
   document.getElementById("formPosCobro").hidden = false;
-  avisar(res.ok ? `Venta #${id} anulada: cobrala con otro medio.` : "No se pudo anular la venta del QR: avisale al administrador.", res.ok ? "ok" : "error");
-  refrescar([cargarTodo()]);
+  if (res.ok) {
+    ventaSinQr = { id };
+    avisar(`QR cancelado: cobrá la venta #${id} con otro medio.`, "ok");
+  } else {
+    avisar("No se pudo cancelar el QR: avisale al administrador.", "error");
+    refrescar([cargarTodo()]);
+  }
 });
 document.getElementById("btnPosBarraCobrar").addEventListener("click", abrirCobro);
 

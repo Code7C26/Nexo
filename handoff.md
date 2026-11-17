@@ -11,7 +11,7 @@
 
 - Al cerrar una etapa, se hacen tres cosas:
   - su relato completo se agrega al final de `docs/proyecto/handoff-historico.md` con el
-    siguiente número (hoy el último es §196);
+    siguiente número (hoy el último es §197);
   - acá se actualizan "Estado actual" y "Qué sigue";
   - si cambió alguna decisión vigente, se actualiza también esa lista.
 - Nunca apilar secciones "Última etapa" en este archivo: así fue como llegó a
@@ -20,6 +20,11 @@
   reescribe nada.
 
 ## Estado actual (17 de noviembre de 2026)
+
+**17 de noviembre, hist. §197: el QR que no se pagó ya no anula la venta.**
+"No pagó: cobrar de otra forma" cancela el QR en Mercado Pago y la misma venta
+se cobra con otro medio; solo si se descarta se anula. Falta probarlo con el
+Mercado Pago real en el mostrador.
 
 **17 de noviembre, hist. §196: horarios y fichaje (punto 5, publicado, PR #98).** Pantalla
 Horarios: cada uno ficha entrada y salida; el admin carga el horario por día

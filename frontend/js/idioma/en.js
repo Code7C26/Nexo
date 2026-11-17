@@ -5267,5 +5267,20 @@ export default {
   "En cada franja, la hora de salida va después de la de entrada.": "In each block, the end time goes after the start time.",
   "Dos franjas del mismo día se pisan.": "Two blocks on the same day overlap.",
   "Cambió el horario de {0}": "Changed {0}'s schedule",
-  "El informe es de hasta {0} días.": "The report covers up to {0} days."
+  "El informe es de hasta {0} días.": "The report covers up to {0} days.",
+
+  // El QR que no se pagó, cobrado de otra forma (hist. §197)
+  "No se pudo cobrar la venta.": "The sale could not be charged.",
+  "Descartar la venta": "Discard the sale",
+  "La venta #{0} no se cobró. Si la descartás, se anula y vuelve el stock; el carrito sigue acá.": "Sale #{0} wasn't charged. If you discard it, it's voided and the stock comes back; the cart stays here.",
+  "No se pudo descartar la venta: avisale al administrador.": "The sale could not be discarded: tell the administrator.",
+  "El QR de la venta #{0} ya se canceló: cobrala con otro medio.": "The QR for sale #{0} was already cancelled: charge it another way.",
+  "QR cancelado: cobrá la venta #{0} con otro medio.": "QR cancelled: charge sale #{0} another way.",
+  "No se pudo cancelar el QR: avisale al administrador.": "The QR could not be cancelled: tell the administrator.",
+  "Esa venta ya no espera un QR.": "That sale is no longer waiting for a QR.",
+  "El pago del QR ya entró: la venta está cobrada.": "The QR payment already came in: the sale is paid.",
+  "Esa venta ya no espera un cobro.": "That sale is no longer waiting for a payment.",
+  "El turno de esa venta ya se cerró.": "That sale's shift is already closed.",
+  "Esa venta está anulada.": "That sale is voided.",
+  "Cobro #{0} de ${1}{2} sobre la venta #{3}, que no se pagó con el QR": "Payment #{0} of ${1}{2} on sale #{3}, which wasn't paid with the QR"
 };
