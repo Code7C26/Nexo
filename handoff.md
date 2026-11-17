@@ -21,7 +21,7 @@
 
 ## Estado actual (17 de noviembre de 2026)
 
-**17 de noviembre, hist. §196: horarios y fichaje (punto 5).** Pantalla
+**17 de noviembre, hist. §196: horarios y fichaje (punto 5, publicado, PR #98).** Pantalla
 Horarios: cada uno ficha entrada y salida; el admin carga el horario por día
 (con horario cortado), ve horas, llegadas tarde (5 min de tolerancia), faltas
 y turnos de caja de hoy, la semana o el mes, y corrige un fichaje olvidado.
