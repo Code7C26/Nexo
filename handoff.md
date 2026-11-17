@@ -11,7 +11,7 @@
 
 - Al cerrar una etapa, se hacen tres cosas:
   - su relato completo se agrega al final de `docs/proyecto/handoff-historico.md` con el
-    siguiente número (hoy el último es §189);
+    siguiente número (hoy el último es §190);
   - acá se actualizan "Estado actual" y "Qué sigue";
   - si cambió alguna decisión vigente, se actualiza también esa lista.
 - Nunca apilar secciones "Última etapa" en este archivo: así fue como llegó a
@@ -20,6 +20,15 @@
   reescribe nada.
 
 ## Estado actual (17 de noviembre de 2026)
+
+**17 de noviembre, hist. §190: repaso de las reglas de ARCA (commiteado en
+`solla`, sin publicar).** Todas bien aplicadas (letra, CUIT de la A, notas
+asociadas, importes, condición y documento del receptor, servicios, CAE, QR,
+IVA contenido de la B). Faltaba la leyenda de la RG 5003 en la A a un
+monotributista: ya sale en la hoja y en el ticket. 428 tests. **Quedan:** el
+tope para identificar al consumidor final (confirmar el monto con un
+contador), el exento o monotributista sin CUIT con B (ver en homologación) y la
+"A con leyenda" o M de un inscripto nuevo (RG 1575).
 
 **17 de noviembre, hist. §188 y §189: la factura A en el cobro del punto de
 venta, con el alta rápida del cliente con CUIT (§188 publicado en PR #93;

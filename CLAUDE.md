@@ -1494,7 +1494,9 @@ Implementado hoy (Etapa E, hist. §115), contra el ambiente de homologación:
   duplica. Un rechazo no consume número y se puede descartar.
 - Lo impreso lleva el CAE, su vencimiento y el QR (RG 4892). En
   homologación, todos los negocios emiten con el CUIT del certificado de
-  prueba, con la leyenda "Comprobante de prueba – sin validez fiscal".
+  prueba, con la leyenda "Comprobante de prueba – sin validez fiscal". La A
+  a un monotributista lleva la leyenda de la RG 5003 (`leyendaFiscal` en
+  `core/fiscal.js`; hist. §190, con el repaso de todas las reglas).
 - Falta: producción (CUIT de Nexo, a decidir con un contador) y que un
   negocio suba su propio certificado.
 

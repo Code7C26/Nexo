@@ -14459,3 +14459,39 @@ cliente y se confirmen, e "Imprimir el ticket" abajo.
   marcada con el aviso, el formulario arranca con su nombre y le completa el
   CUIT con confirmación); cancelar; y el negocio monotributista con
   `Sin factura | Factura C` y el enlace. 427 tests, lint e i18n en verde.
+
+## §190 — 17 de noviembre de 2026: repaso de las reglas de ARCA y la leyenda de la RG 5003
+
+Pedido del usuario: verificar que las reglas de ARCA estén bien aplicadas,
+explicarle cómo y por qué en cada caso, y sumar la leyenda de la A a un
+monotributista, que faltaba.
+
+- **Repaso (sin cambios, todo bien):** la letra (`letraQueCorresponde` en
+  `iva.js`: el inscripto, A a inscripto y monotributista por la RG 5003 y B a
+  los demás; monotributo y exento, C); la A exige CUIT válido
+  (`errorParaArca`); la nota de crédito lleva la letra de la factura que
+  corrige y va asociada a ella (RG 4540) o al período; los importes de A y B
+  por alícuota y la C sin IVA (`importesDelComprobante`); la condición del
+  receptor (RG 5616) y su documento (80 CUIT, 96 DNI, 99 sin identificar);
+  concepto, período y vencimiento de los servicios; la fecha del día; el
+  número que da ARCA, sin duplicar en los reintentos; el CAE, el QR
+  (RG 4892) y "Comprobante de prueba" fuera de producción; la A discrimina el
+  IVA y la B de un inscripto informa el IVA contenido (Ley 27.743).
+- **Faltaba y se hizo:** la leyenda de la RG 5003 en la A a un monotributista
+  ("El crédito fiscal discriminado en el presente comprobante, sólo podrá ser
+  computado a efectos del Régimen de Sostenimiento e Inclusión Fiscal para
+  Pequeños Contribuyentes de la Ley Nº 27.618"). La regla vive en
+  `core/fiscal.js` (`leyendaFiscal`), con la condición de la foto de la
+  factura, y la imprimen la hoja A4 y el ticket. Vale para las notas A.
+- **Test:** `iva.test.js` cruza la letra que anticipa la pantalla
+  (`letraPrevista`) con la del servidor en las 16 combinaciones, y la leyenda.
+  428 tests. En el navegador: una A a un monotributista sale con la leyenda en
+  la hoja y en el ticket.
+- **Quedan, sin hacer:**
+  - la B a un consumidor final sin identificar por encima del tope de ARCA:
+    Nexo no lo frena antes y ARCA la rechaza; el monto vigente se confirma
+    con un contador antes de ponerlo en el código;
+  - un cliente exento o monotributista sin CUIT con factura B va con
+    documento 99 y su condición: puede que ARCA lo rechace, y se ve al probar
+    contra homologación;
+  - la "A con leyenda" o la M de un inscripto nuevo (RG 1575): no está.
