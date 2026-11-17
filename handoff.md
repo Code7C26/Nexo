@@ -1469,6 +1469,23 @@ con su admin (adopta la organización sembrada).
 
 Las que no están en `CLAUDE.md` y que alguien podría "arreglar" sin saberlo:
 
+**Cajas y empleados (decidido por el usuario el 17 de noviembre; a construir)**
+- **La compu de la caja tiene su cuenta, no el empleado** (como Praxia). Esa
+  cuenta solo opera el mostrador de su caja: vender, cobrar, abrir y cerrar la
+  caja y fichar; no entra a Configuración, precios ni reportes.
+- **La caja no se abre con usuario y contraseña:** el dueño, en el local, entra
+  con su cuenta y toca "Usar esta compu como Caja 1"; la compu queda vinculada
+  (sesión de dispositivo) y se desvincula desde la cuenta del dueño. Así nadie
+  vende ni cambia nada desde su casa.
+- **Los empleados no tienen cuenta de Nexo:** son personas que carga el dueño
+  (nombre, PIN corto, sucursal, horario) y cambian todo el tiempo. En la caja
+  se identifican con el PIN para fichar entrada y salida y para quedar como
+  quien atendió cada venta y abrió o cerró la caja.
+- **Las cuentas personales siguen** para el dueño, un encargado o el contador.
+- Cambia lo de hist. §193–§196: el fichaje y "quiénes trabajan" pasan de las
+  cuentas a los empleados, y anular en el mostrador pide el PIN de un
+  encargado en vez de la contraseña del admin.
+
 **Multi-empresa y seguridad**
 - **Se entra con el mail, y es único en todo Nexo** (hist. §102, reemplaza al
   "usuario único" de §45). El login no pide empresa. El nombre de usuario
@@ -2187,8 +2204,9 @@ yo).** Sin orden fijo; cada uno se planifica al arrancarlo:
   atado a nada. Propuesta: la **sucursal** junta su depósito, sus cajas y su
   punto de venta de ARCA; cada persona se asigna a una o más sucursales con un
   **perfil** (dueño, encargado, cajero) y el dueño elige qué secciones ve cada
-  uno. **Una cuenta por persona, no por caja** (Praxia lo hace por caja): la
-  caja se elige al abrir el turno y así queda quién vendió, abrió y cerró. Con
+  uno. ~~Una cuenta por persona, no por caja~~ **Corregido por el usuario el
+  17 de noviembre: una cuenta por caja, como Praxia** (ver "Decisiones
+  vigentes", Cajas y empleados). Con
   esto, el **cierre del día y del mes** sumando todas las cajas y sucursales.
   Los cambios del dueño ya llegan al instante a las cajas (es una sola web).
   **Decidido por el usuario (16 de noviembre):** cada caja vende solo del
