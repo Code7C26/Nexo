@@ -2264,6 +2264,15 @@ yo).** Sin orden fijo; cada uno se planifica al arrancarlo:
   balances y Meta Ads. Están en la lista del usuario para el futuro; al
   arrancar alguno, se saca de §39 con el equipo (como pasó con producción).
 
+**Para la oficial, la demo del mostrador con lector (17 de noviembre, para
+después):** conseguir un lector USB 2D (lee pantallas de celular) y preparar
+un negocio de demo a medida, con productos reales ya cargados y verificados
+(su código de barras del envase), un producto por kilo con PLU y la etiqueta
+de balanza de ejemplo `2000001012505` (PLU 1, 1,250 kg, formato 20 + PLU de 5
++ gramos de 5 + verificador). Probar el lector antes en la compu de la
+presentación (Bloc de notas: escribe el número y baja de renglón). Si no hay
+lector, la cámara del celular con Chrome en Android.
+
 **Para la oficial, lo que falta de §183:** completar la 33 (nombre, rubro y
 ciudad de cada negocio, en `docs/pitch/fuentes/index.html`, y confirmar con
 cada uno que se lo nombra) y confirmar el agradecimiento a la mamá de Joaquín
