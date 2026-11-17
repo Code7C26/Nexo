@@ -470,6 +470,32 @@ export async function imprimirTicketDeVenta(ventaId, { vuelto = 0 } = {}) {
   imprimirTicket(armarTicket({ venta, cobros, factura, vuelto }));
 }
 
+// El papel de un cobro a cuenta (hist. §194, de Praxia): el cliente pagó parte
+// de su deuda sin llevarse nada, y se lleva cuánto pagó y cuánto le queda.
+// No es una factura: la venta ya se facturó (o no) cuando se hizo.
+export function armarReciboPago({ cliente, pagado, saldo, medio, atendio }) {
+  const cuit = negocio.documento ? `CUIT: ${negocio.documento}` : "";
+  return `
+    <div translate="no" class="hoja hoja-ticket">
+      <div class="tk-centro">
+        <p class="tk-negocio">${esc(negocio.nombre || "—")}</p>
+        ${lineaTicket(cuit)}
+        ${lineaTicket(negocio.direccion)}
+      </div>
+      <div class="tk-raya"></div>
+      <div class="tk-centro"><p class="tk-titulo">COMPROBANTE DE PAGO</p><p>No válido como factura</p></div>
+      <div class="tk-raya"></div>
+      ${filaTicket(fechaHoraAR(new Date().toISOString().slice(0, 19).replace("T", " ")), "Pago a cuenta")}
+      ${lineaTicket(atendio ? `Atendió: ${atendio}` : "")}
+      ${lineaTicket(`Cliente: ${cliente}`)}
+      <div class="tk-raya"></div>
+      ${filaTicket(medio ? `Pagó con ${medio}` : "Pagó", money(pagado), "tk-total")}
+      ${filaTicket(saldo >= CENTAVO ? "Le queda por pagar" : "Su cuenta queda", saldo >= CENTAVO ? money(saldo) : "Al día")}
+      <div class="tk-raya"></div>
+      <div class="tk-centro"><p>¡Gracias!</p></div>
+    </div>`;
+}
+
 // El presupuesto (la factura tiene la suya, armarHojaFactura).
 export function armarHojaComprobante({ rotulo, comprobanteNro, fecha, campos = [], cliente, items, total, notas, pieExtra, iva }) {
   // En la A los renglones van sin IVA, para que sumen el neto gravado.

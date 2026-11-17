@@ -200,6 +200,13 @@ export const RUTAS_PERMISOS = {
   // El cierre del día y del mes de todas las cajas (hist. §193): es la plata
   // de todo el negocio, como Caja.
   'GET /api/cierre-caja': 'admin',
+  // Lo de Praxia en el mostrador (hist. §194): cobrar a cuenta y ver el turno
+  // son el trabajo diario de la caja. Anular una venta del turno también, pero
+  // un empleado necesita la contraseña de un administrador (la pide la ruta).
+  'POST /api/pos/cobro-a-cuenta': 'ambos',
+  'POST /api/pos/gastos': 'ambos',
+  'GET /api/turnos-caja/:id/detalle': 'ambos',
+  'POST /api/pos/ventas/:id/anular': 'ambos',
   'GET /api/pos/catalogo': 'ambos',
   'POST /api/pos/ventas': 'ambos',
   'GET /api/planes-socio': 'ambos',

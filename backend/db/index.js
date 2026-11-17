@@ -2293,7 +2293,10 @@ for (const [tabla, columna] of [
   // del precio: lo vendido antes queda con 0.
   ['venta_items', 'descuento REAL NOT NULL DEFAULT 0'],
   // La sucursal de cada caja (hist. §193): las de antes, de ninguna.
-  ['cuentas_tesoreria', 'sucursal_id INTEGER REFERENCES sucursales(id)']
+  ['cuentas_tesoreria', 'sucursal_id INTEGER REFERENCES sucursales(id)'],
+  // El turno en que entró cada cobro (hist. §194): los de antes, sin turno
+  // (el de su venta, si fue del mostrador).
+  ['cobros', 'turno_caja_id INTEGER REFERENCES turnos_caja(id)']
 ]) {
   if (!db.prepare(`PRAGMA table_info(${tabla})`).all().some((col) => col.name === columna.split(' ')[0])) {
     db.exec(`ALTER TABLE ${tabla} ADD COLUMN ${columna}`);

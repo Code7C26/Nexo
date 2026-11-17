@@ -991,7 +991,10 @@ CREATE TABLE IF NOT EXISTS cobros (
   cuenta_tesoreria_id INTEGER NOT NULL REFERENCES cuentas_tesoreria(id),
   nota TEXT,
   medio_cobro_id INTEGER REFERENCES medios_cobro(id),
-  cuotas INTEGER
+  cuotas INTEGER,
+  -- El turno del mostrador en que entró (hist. §194): el de la venta, o el de
+  -- un cobro a cuenta de una deuda vieja. NULL en lo cobrado fuera de la caja.
+  turno_caja_id INTEGER REFERENCES turnos_caja(id)
 );
 
 CREATE TABLE IF NOT EXISTS pagos (

@@ -8900,13 +8900,14 @@ function ventaParaCobrar(ventaId, organizacionId) {
 // cuenta. Asume que se la llama DENTRO de una transacción.
 // medio: { id, cuotas } cuando el cobro sale de un medio de cobro (hist. §171).
 // Sin él se deduce el medio de la cuenta, si hay uno solo que vaya a ella.
-function registrarCobro(ventaId, clienteId, importe, cuentaTesoreriaId, nota, organizacionId, medio = null) {
+// turnoCajaId: el turno del mostrador en que se cobró (hist. §194).
+function registrarCobro(ventaId, clienteId, importe, cuentaTesoreriaId, nota, organizacionId, medio = null, turnoCajaId = null) {
   const medioId = medio?.id ?? medioDeLaCuenta(cuentaTesoreriaId, organizacionId);
   const { lastInsertRowid: nuevoCobroId } = db
     .prepare(
-      `INSERT INTO cobros (venta_id, importe, cuenta_tesoreria_id, nota, medio_cobro_id, cuotas, fecha) VALUES (?, ?, ?, ?, ?, ?, ${HOY_SQL})`
+      `INSERT INTO cobros (venta_id, importe, cuenta_tesoreria_id, nota, medio_cobro_id, cuotas, turno_caja_id, fecha) VALUES (?, ?, ?, ?, ?, ?, ?, ${HOY_SQL})`
     )
-    .run(ventaId, importe, cuentaTesoreriaId, nota ?? null, medioId, medio?.cuotas ?? null);
+    .run(ventaId, importe, cuentaTesoreriaId, nota ?? null, medioId, medio?.cuotas ?? null, turnoCajaId);
 
   db.prepare(
     `INSERT INTO movimientos_tesoreria (cuenta_tesoreria_id, tipo, importe, cobro_id, origen, organizacion_id, fecha) VALUES (?, 'ingreso', ?, ?, 'cobro', ?, ${HOY_SQL})`
@@ -18470,7 +18471,7 @@ function resumenTurno(turno) {
          FROM cobros
          JOIN ventas ON ventas.id = cobros.venta_id
          JOIN cuentas_tesoreria ON cuentas_tesoreria.id = cobros.cuenta_tesoreria_id
-        WHERE ventas.turno_caja_id = ?
+        WHERE COALESCE(cobros.turno_caja_id, ventas.turno_caja_id) = ?
         GROUP BY cobros.cuenta_tesoreria_id
         ORDER BY cuentas_tesoreria.nombre`
     )
@@ -18693,7 +18694,7 @@ app.get('/api/cierre-caja', soloAdmin, (req, res) => {
               COUNT(*) AS cantidad, SUM(cobros.importe) AS importe
          FROM cobros
          JOIN ventas ON ventas.id = cobros.venta_id
-         JOIN turnos_caja ON turnos_caja.id = ventas.turno_caja_id
+         JOIN turnos_caja ON turnos_caja.id = COALESCE(cobros.turno_caja_id, ventas.turno_caja_id)
          JOIN cuentas_tesoreria caja ON caja.id = turnos_caja.cuenta_tesoreria_id
          JOIN cuentas_tesoreria destino ON destino.id = cobros.cuenta_tesoreria_id
          LEFT JOIN medios_cobro ON medios_cobro.id = cobros.medio_cobro_id
@@ -18859,6 +18860,35 @@ app.get('/api/pos/catalogo', (req, res) => {
   );
 });
 
+// Cada cobro del mostrador llega con su medio de cobro (hist. §171), que dice
+// la cuenta donde entra la plata (el efectivo, la caja del turno) y, en el
+// crédito, el plan de cuotas. Sin medio, con la cuenta suelta como antes.
+// Devuelve { error } o { resueltos: [{ cobro, medio, plan, cuentaId }] }.
+function cobrosDelMostrador(cobros, organizacionId, cajaId) {
+  if (!Array.isArray(cobros)) return { error: 'Los cobros no son válidos.' };
+  const buscarCuenta = db.prepare('SELECT 1 FROM cuentas_tesoreria WHERE id = ? AND organizacion_id = ?');
+  const medios = cobros.some((c) => c?.medio_cobro_id != null) ? mediosDeCobro(organizacionId, { soloActivos: true }) : [];
+  const resueltos = [];
+  for (const cobro of cobros) {
+    if (!esNumeroValido(cobro?.importe) || !(cobro.importe > 0)) {
+      return { error: 'Cada cobro tiene que tener un importe mayor a 0.' };
+    }
+    if (cobro.medio_cobro_id != null) {
+      const { medio, plan, error } = medioDelCobro(cobro, medios);
+      if (error) return { error };
+      const destino = cuentaDelMedio(medio, cobro.cuenta_tesoreria_id, organizacionId, cajaId);
+      if (destino.error) return { error: destino.error };
+      resueltos.push({ cobro, medio, plan, cuentaId: destino.cuentaId });
+      continue;
+    }
+    if (!buscarCuenta.get(Number(cobro.cuenta_tesoreria_id), organizacionId)) {
+      return { error: 'La cuenta de tesorería de un cobro no existe.' };
+    }
+    resueltos.push({ cobro, medio: null, plan: null, cuentaId: Number(cobro.cuenta_tesoreria_id) });
+  }
+  return { resueltos };
+}
+
 // Venta de mostrador: la venta y sus cobros (uno o varios medios) en una sola
 // transacción, colgada del turno. Los cobros no pueden pasarse del total (el
 // vuelto lo calcula la pantalla); si suman menos, el resto queda en la cuenta
@@ -18907,30 +18937,8 @@ app.post('/api/pos/ventas', (req, res) => {
   const errorStock = validarStockDisponible(items, depositoCaja ?? depositoPredeterminadoId(organizacionId), organizacionId);
   if (errorStock) return res.status(400).json({ error: errorStock });
 
-  if (!Array.isArray(cobros)) return res.status(400).json({ error: 'Los cobros no son válidos.' });
-  const buscarCuenta = db.prepare('SELECT 1 FROM cuentas_tesoreria WHERE id = ? AND organizacion_id = ?');
-  // Cada cobro llega con su medio de cobro (hist. §171), que dice la cuenta
-  // donde entra la plata (el efectivo, la caja del turno) y, en el crédito, el
-  // plan de cuotas. Sin medio, con la cuenta suelta como antes.
-  const medios = cobros.some((c) => c?.medio_cobro_id != null) ? mediosDeCobro(organizacionId, { soloActivos: true }) : [];
-  const resueltos = [];
-  for (const cobro of cobros) {
-    if (!esNumeroValido(cobro?.importe) || !(cobro.importe > 0)) {
-      return res.status(400).json({ error: 'Cada cobro tiene que tener un importe mayor a 0.' });
-    }
-    if (cobro.medio_cobro_id != null) {
-      const { medio, plan, error } = medioDelCobro(cobro, medios);
-      if (error) return res.status(400).json({ error });
-      const destino = cuentaDelMedio(medio, cobro.cuenta_tesoreria_id, organizacionId, turno.cuenta_tesoreria_id);
-      if (destino.error) return res.status(400).json({ error: destino.error });
-      resueltos.push({ cobro, medio, plan, cuentaId: destino.cuentaId });
-      continue;
-    }
-    if (!buscarCuenta.get(Number(cobro.cuenta_tesoreria_id), organizacionId)) {
-      return res.status(400).json({ error: 'La cuenta de tesorería de un cobro no existe.' });
-    }
-    resueltos.push({ cobro, medio: null, plan: null, cuentaId: Number(cobro.cuenta_tesoreria_id) });
-  }
+  const { resueltos, error: errorCobros } = cobrosDelMostrador(cobros, organizacionId, turno.cuenta_tesoreria_id);
+  if (errorCobros) return res.status(400).json({ error: errorCobros });
   const total = redondear2(items.reduce((acc, i) => acc + i.cantidad * i.precio_unitario, 0));
   const cobrado = redondear2(cobros.reduce((acc, c) => acc + c.importe, 0));
   if (cobrado > total) {
@@ -18977,7 +18985,8 @@ app.post('/api/pos/ventas', (req, res) => {
           cuentaId,
           'Punto de venta',
           organizacionId,
-          medio ? { id: medio.id, cuotas: plan?.cuotas ?? null } : null
+          medio ? { id: medio.id, cuotas: plan?.cuotas ?? null } : null,
+          turno.id
         );
         auditar(req, {
           accion: 'crear',
@@ -19035,6 +19044,257 @@ app.post('/api/pos/ventas/:id/cancelar-qr', asincrono(async (req, res) => {
   ventasEsperandoQr.delete(ventaId);
   res.json({ id: ventaId, estado: 'anulada' });
 }));
+
+// El turno abierto de la empresa en el que opera el mostrador, o el error.
+function turnoAbiertoDelMostrador(turnoId, organizacionId) {
+  const turno = turnoDeLaEmpresa(Number(turnoId), organizacionId);
+  return turno?.estado === 'abierto' ? turno : null;
+}
+
+// Cobrar a cuenta desde el mostrador (hist. §194, de Praxia): el cliente paga
+// su deuda sin llevarse nada. Lo pagado salda sus ventas de la más vieja a la
+// más nueva (por vencimiento), con los medios de siempre menos la cuenta
+// corriente, y cada parte es un cobro común de esa venta, colgado del turno.
+// No se cobra más de lo que debe.
+app.post('/api/pos/cobro-a-cuenta', (req, res) => {
+  const organizacionId = req.usuario.organizacion_id;
+  const turno = turnoAbiertoDelMostrador(req.body?.turno_caja_id, organizacionId);
+  if (!turno) return res.status(400).json({ error: 'Abrí la caja antes de cobrar.' });
+  const cliente = db
+    .prepare('SELECT id, nombre FROM clientes WHERE id = ? AND organizacion_id = ?')
+    .get(Number(req.body?.cliente_id), organizacionId);
+  if (!cliente || cliente.nombre === CONSUMIDOR_FINAL) return res.status(400).json({ error: 'Elegí el cliente que paga.' });
+  const { resueltos, error } = cobrosDelMostrador(req.body?.cobros ?? [], organizacionId, turno.cuenta_tesoreria_id);
+  if (error) return res.status(400).json({ error });
+  if (!resueltos.length) return res.status(400).json({ error: 'Cargá cuánto paga.' });
+
+  const deudas = db
+    .prepare(
+      `SELECT id FROM ventas WHERE cliente_id = ? AND organizacion_id = ? AND estado = 'activa'
+        ORDER BY COALESCE(fecha_vencimiento, fecha), id`
+    )
+    .all(cliente.id, organizacionId)
+    .map((v) => ventaParaCobrar(v.id, organizacionId))
+    .filter((v) => v.saldo >= 0.005);
+  const debe = redondear2(deudas.reduce((acc, v) => acc + v.saldo, 0));
+  const paga = redondear2(resueltos.reduce((acc, r) => acc + r.cobro.importe, 0));
+  if (debe < 0.005) return res.status(400).json({ error: `${cliente.nombre} no debe nada.` });
+  if (paga > debe) return res.status(400).json({ error: `${cliente.nombre} debe ${debe.toFixed(2)}: no se cobra más que eso.` });
+
+  const cobrosHechos = withTransaction(() => {
+    const hechos = [];
+    let venta = 0;
+    let saldoVenta = deudas[0].saldo;
+    for (const { cobro, medio, plan, cuentaId } of resueltos) {
+      let resto = redondear2(cobro.importe);
+      while (resto >= 0.005) {
+        const parte = redondear2(Math.min(resto, saldoVenta));
+        const ventaId = deudas[venta].id;
+        const id = registrarCobro(
+          ventaId,
+          cliente.id,
+          parte,
+          cuentaId,
+          'Cobro a cuenta (punto de venta)',
+          organizacionId,
+          medio ? { id: medio.id, cuotas: plan?.cuotas ?? null } : null,
+          turno.id
+        );
+        if (medio) registrarCostosDelMedio({ ventaId, medio, plan, importe: parte, cuentaId, organizacionId });
+        auditar(req, {
+          accion: 'crear',
+          entidad: 'cobro',
+          entidad_id: id,
+          operacion_tipo: 'venta',
+          operacion_id: ventaId,
+          detalle: `Cobro a cuenta #${id} de $${parte}${medio ? ` con ${medio.nombre}` : ''} sobre la venta #${ventaId} (turno #${turno.id})`
+        });
+        hechos.push({ venta_id: ventaId, importe: parte, medio: medio?.nombre ?? null });
+        resto = redondear2(resto - parte);
+        saldoVenta = redondear2(saldoVenta - parte);
+        if (saldoVenta < 0.005 && venta < deudas.length - 1) saldoVenta = deudas[++venta].saldo;
+      }
+    }
+    return hechos;
+  });
+  res.status(201).json({ cliente: cliente.nombre, pagado: paga, saldo: redondear2(debe - paga), cobros: cobrosHechos });
+});
+
+// Un gasto de caja (hist. §194, de Praxia): las bolsas, el flete, lo que sale
+// del cajón. Es un gasto común, pagado con la caja del turno, en la categoría
+// elegida o en "Gastos de caja", que se crea la primera vez (el empleado no
+// puede crear categorías). Se corrige desde Gastos, como cualquiera.
+app.post('/api/pos/gastos', (req, res) => {
+  const organizacionId = req.usuario.organizacion_id;
+  const turno = turnoAbiertoDelMostrador(req.body?.turno_caja_id, organizacionId);
+  if (!turno) return res.status(400).json({ error: 'Abrí la caja antes de anotar un gasto.' });
+  const descripcion = String(req.body?.descripcion ?? '').trim();
+  if (!descripcion) return res.status(400).json({ error: 'Escribí en qué se gastó.' });
+  let categoriaId = req.body?.categoria_id;
+  if (categoriaId == null || categoriaId === '') {
+    categoriaId =
+      db.prepare("SELECT id FROM categorias_gasto WHERE organizacion_id = ? AND nombre = 'Gastos de caja'").get(organizacionId)?.id ??
+      Number(
+        db.prepare("INSERT INTO categorias_gasto (nombre, tipo, organizacion_id) VALUES ('Gastos de caja', 'operativo', ?)").run(organizacionId)
+          .lastInsertRowid
+      );
+  }
+  const validacion = validarGasto({ ...req.body, categoria_id: categoriaId, cuenta_tesoreria_id: turno.cuenta_tesoreria_id }, organizacionId);
+  if (validacion.error) return res.status(400).json({ error: validacion.error });
+  const id = withTransaction(() => {
+    const gastoId = crearGasto({ ...validacion, proveedorId: null, descripcion, organizacionId });
+    auditar(req, {
+      accion: 'crear',
+      entidad: 'gasto',
+      entidad_id: gastoId,
+      operacion_tipo: 'turno_caja',
+      operacion_id: turno.id,
+      detalle: `Gasto #${gastoId} de $${validacion.monto} pagado con la caja "${turno.cuenta}" (turno #${turno.id}): ${descripcion}`
+    });
+    return gastoId;
+  });
+  res.status(201).json({ id });
+});
+
+// Lo que pasó en el turno, para verlo desde el mostrador (hist. §194): sus
+// ventas (para reimprimir o anular), los cobros a cuenta y los gastos pagados
+// con la caja (los movimientos de la caja que vienen de un gasto, dentro del
+// turno).
+app.get('/api/turnos-caja/:id/detalle', (req, res) => {
+  const organizacionId = req.usuario.organizacion_id;
+  const turno = turnoDeLaEmpresa(Number(req.params.id), organizacionId);
+  if (!turno) return res.status(404).json({ error: 'Turno no encontrado.' });
+  const ventas = db
+    .prepare(
+      `SELECT ventas.id, ventas.estado, clientes.nombre AS cliente,
+              (SELECT MIN(fecha) FROM auditoria WHERE entidad = 'venta' AND entidad_id = ventas.id AND accion = 'crear') AS creada,
+              (SELECT COALESCE(SUM(cantidad * precio_unitario), 0) FROM venta_items WHERE venta_id = ventas.id) AS total,
+              (SELECT COALESCE(SUM(importe), 0) FROM cobros WHERE venta_id = ventas.id) AS cobrado,
+              (SELECT 1 FROM facturas WHERE venta_id = ventas.id LIMIT 1) AS facturada
+         FROM ventas JOIN clientes ON clientes.id = ventas.cliente_id
+        WHERE ventas.turno_caja_id = ? AND ventas.organizacion_id = ?
+        ORDER BY ventas.id DESC`
+    )
+    .all(turno.id, organizacionId)
+    .map((v) => ({ ...v, total: redondear2(v.total), cobrado: redondear2(v.cobrado), facturada: Boolean(v.facturada) }));
+  const aCuenta = db
+    .prepare(
+      `SELECT cobros.id, cobros.venta_id, cobros.importe, clientes.nombre AS cliente,
+              COALESCE(medios_cobro.nombre, cuentas_tesoreria.nombre) AS medio
+         FROM cobros
+         JOIN ventas ON ventas.id = cobros.venta_id
+         JOIN clientes ON clientes.id = ventas.cliente_id
+         JOIN cuentas_tesoreria ON cuentas_tesoreria.id = cobros.cuenta_tesoreria_id
+         LEFT JOIN medios_cobro ON medios_cobro.id = cobros.medio_cobro_id
+        WHERE cobros.turno_caja_id = ? AND ventas.turno_caja_id IS NOT cobros.turno_caja_id
+        ORDER BY cobros.id DESC`
+    )
+    .all(turno.id);
+  const hasta = turno.estado === 'abierto' ? SQL_ULTIMO_MOVIMIENTO_TESORERIA.get().id : turno.hasta_movimiento_id;
+  const gastos = db
+    .prepare(
+      `SELECT gastos.id, gastos.importe, gastos.descripcion, gastos.categoria_id, categorias_gasto.nombre AS categoria
+         FROM movimientos_tesoreria
+         JOIN gastos ON gastos.id = movimientos_tesoreria.gasto_id
+         JOIN categorias_gasto ON categorias_gasto.id = gastos.categoria_id
+        WHERE movimientos_tesoreria.cuenta_tesoreria_id = ? AND movimientos_tesoreria.id > ? AND movimientos_tesoreria.id <= ?
+          AND gastos.estado = 'activo' AND gastos.venta_id IS NULL
+        ORDER BY gastos.id DESC`
+    )
+    .all(turno.cuenta_tesoreria_id, turno.desde_movimiento_id, hasta);
+  res.json({ ventas, a_cuenta: aCuenta, gastos, total_gastos: redondear2(gastos.reduce((acc, g) => acc + g.importe, 0)) });
+});
+
+// Anular una venta desde el mostrador (hist. §194, de Praxia): con motivo, y
+// solo mientras su turno sigue abierto, porque lo cobrado vuelve del cajón
+// (después, la venta se devuelve desde Ventas). Los cobros se deshacen con su
+// entrada a la caja y a la cuenta corriente, y la auditoría guarda cada uno.
+// Un empleado necesita que lo autorice un administrador del negocio, con su
+// mail y su contraseña ahí mismo (cuenta como intento de login: el mismo tope).
+// Lo cobrado por Mercado Pago no se deshace acá: se devuelve en Mercado Pago.
+app.post('/api/pos/ventas/:id/anular', (req, res) => {
+  const organizacionId = req.usuario.organizacion_id;
+  const motivoEscrito = String(req.body?.motivo ?? '').trim();
+  if (!motivoEscrito) return res.status(400).json({ error: 'Escribí por qué se anula.' });
+  const venta = db
+    .prepare('SELECT id, cliente_id, deposito_id, estado, carga_inicial, turno_caja_id FROM ventas WHERE id = ? AND organizacion_id = ?')
+    .get(Number(req.params.id), organizacionId);
+  if (!venta) return res.status(404).json({ error: 'Venta no encontrada.' });
+  const turno = venta.turno_caja_id ? turnoDeLaEmpresa(venta.turno_caja_id, organizacionId) : null;
+  if (!turno || turno.estado !== 'abierto') {
+    return res.status(400).json({ error: 'Desde el mostrador se anula solo una venta del turno abierto. Esta se devuelve desde Ventas.' });
+  }
+  if (venta.estado === 'anulada') return res.status(400).json({ error: 'Esta venta ya está anulada.' });
+  if (db.prepare('SELECT 1 FROM facturas WHERE venta_id = ?').get(venta.id)) {
+    return res.status(400).json({ error: 'Esta venta tiene factura: se devuelve desde Ventas, con su nota de crédito.' });
+  }
+  if (db.prepare("SELECT 1 FROM devoluciones WHERE venta_id = ? AND estado = 'activa'").get(venta.id)) {
+    return res.status(400).json({ error: 'Esta venta tiene una devolución asociada, no se puede anular.' });
+  }
+  if (db.prepare('SELECT 1 FROM integracion_pagos JOIN cobros ON cobros.id = integracion_pagos.cobro_id WHERE cobros.venta_id = ?').get(venta.id)) {
+    return res.status(400).json({ error: 'Se cobró con Mercado Pago: devolvé el pago en Mercado Pago y la venta desde Ventas.' });
+  }
+
+  // Quién autoriza: el mismo, si es admin; si no, un admin con su contraseña.
+  let autorizo = req.usuario;
+  if (req.usuario.rol !== 'admin') {
+    const email = String(req.body?.autoriza_email ?? '').trim().toLowerCase();
+    const password = req.body?.autoriza_password;
+    if (!email || typeof password !== 'string') {
+      return res.status(403).json({ error: 'Para anular hace falta que lo autorice un administrador.' });
+    }
+    if (bloqueado(email) || ipBloqueada(req.ip)) {
+      return res.status(429).json({ error: 'Demasiados intentos fallidos. Probá de nuevo en unos minutos.' });
+    }
+    const admin = db
+      .prepare(
+        `SELECT usuarios.id, usuarios.nombre, usuarios.password_hash, usuarios.password_salt
+           FROM usuarios JOIN usuario_organizaciones pertenencia ON pertenencia.usuario_id = usuarios.id
+          WHERE lower(usuarios.email) = ? AND pertenencia.organizacion_id = ? AND pertenencia.rol = 'admin' AND pertenencia.activo = 1`
+      )
+      .get(email, organizacionId);
+    const ok = admin?.password_hash
+      ? verificarPassword(password, admin.password_hash, admin.password_salt)
+      : (verificarPassword(password, HASH_DUMMY.hash, HASH_DUMMY.salt), false);
+    if (!ok) {
+      registrarIntentoFallido(email, req.ip);
+      return res.status(403).json({ error: 'El mail o la contraseña del administrador no son correctos.' });
+    }
+    limpiarIntentos(email);
+    autorizo = admin;
+  }
+
+  const cobros = db
+    .prepare(
+      `SELECT cobros.id, cobros.importe, COALESCE(medios_cobro.nombre, cuentas_tesoreria.nombre) AS medio
+         FROM cobros
+         JOIN cuentas_tesoreria ON cuentas_tesoreria.id = cobros.cuenta_tesoreria_id
+         LEFT JOIN medios_cobro ON medios_cobro.id = cobros.medio_cobro_id
+        WHERE cobros.venta_id = ?`
+    )
+    .all(venta.id);
+  withTransaction(() => {
+    for (const cobro of cobros) {
+      db.prepare('DELETE FROM movimientos_tesoreria WHERE cobro_id = ?').run(cobro.id);
+      db.prepare('DELETE FROM movimientos_cc_clientes WHERE cobro_id = ?').run(cobro.id);
+      db.prepare('DELETE FROM cobros WHERE id = ?').run(cobro.id);
+    }
+    revertirVentaAnulada(venta, organizacionId);
+    const devuelto = cobros.map((c) => `$${c.importe} (${c.medio})`).join(', ');
+    auditar(req, {
+      accion: 'anular',
+      entidad: 'venta',
+      entidad_id: venta.id,
+      operacion_tipo: 'turno_caja',
+      operacion_id: turno.id,
+      valor_anterior: cobros.length ? JSON.stringify({ cobros }) : null,
+      detalle: `Venta #${venta.id} anulada desde el punto de venta (turno #${turno.id}). Motivo: ${motivoEscrito}.${
+        autorizo.id !== req.usuario.id ? ` Autorizó: ${autorizo.nombre}.` : ''
+      }${devuelto ? ` Se devolvió ${devuelto}.` : ''}`
+    });
+  });
+  res.json({ id: venta.id, estado: 'anulada', devuelto: redondear2(cobros.reduce((acc, c) => acc + c.importe, 0)) });
+});
 
 /* ---------- Socios, planes y cuotas (CLAUDE.md §29, hist. §74 y §75) ---------- */
 

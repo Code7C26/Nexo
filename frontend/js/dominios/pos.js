@@ -6,7 +6,7 @@
  * venta común con sus cobros, colgada del turno abierto de la caja.
  */
 
-import { camposFicha, cantidad, esFraccionable, esc, fechaHoraAR, hoyISO, money, numero } from "../core/formato.js";
+import { camposFicha, cantidad, esAdmin, esFraccionable, esc, fechaHoraAR, hoyISO, money, numero } from "../core/formato.js";
 import { avisar, confirmar, filaVacia } from "../core/ui.js";
 import { api, refrescar } from "../core/api.js";
 import { icono } from "../core/iconos.js";
@@ -25,7 +25,7 @@ import {
   opcionesSelect
 } from "../core/fiscal.js";
 import { limpiarError, limpiarErrores, marcarError } from "../core/campos.js";
-import { armarHojaFactura, cargarQr, imprimirComprobante, imprimirTicketDeVenta } from "../core/comprobante.js";
+import { armarHojaFactura, armarReciboPago, cargarQr, imprimirComprobante, imprimirTicket, imprimirTicketDeVenta } from "../core/comprobante.js";
 import { alEntrarEnVista, recargar } from "../core/registro.js";
 
 const CONSUMIDOR_FINAL = "Consumidor final";
@@ -1862,6 +1862,214 @@ document.addEventListener("keydown", (e) => {
   // búsqueda en vez de perderse. El espacio queda para los botones.
   const enCampo = e.target.closest?.("input, select, textarea");
   if (!enCampo && e.key.length === 1 && e.key !== " " && !e.ctrlKey && !e.metaKey && !e.altKey) posBuscar.focus();
+});
+
+/* ---------- Lo de Praxia: el turno, cobrar a cuenta y gastos (hist. §194) ---------- */
+
+const modalPosTurno = document.getElementById("modalPosTurno");
+const modalPosACuenta = document.getElementById("modalPosACuenta");
+const modalPosGasto = document.getElementById("modalPosGasto");
+const formAnular = document.getElementById("formPosAnular");
+const formACuenta = document.getElementById("formPosACuenta");
+const formGasto = document.getElementById("formPosGasto");
+let detalleTurno = null;
+let anulando = null;
+
+// Las tres ventanas se cierran igual que las otras del mostrador.
+for (const [modal, boton] of [
+  [modalPosTurno, "modalPosTurnoClose"],
+  [modalPosACuenta, "modalPosACuentaClose"],
+  [modalPosGasto, "modalPosGastoClose"]
+]) {
+  document.getElementById(boton).addEventListener("click", () => (modal.hidden = true));
+  modal.addEventListener("click", (e) => {
+    if (e.target === modal) modal.hidden = true;
+  });
+}
+
+// Después de cobrar, gastar o anular: las cifras del turno al día.
+async function refrescarTurno() {
+  turno = await api(`/api/turnos-caja/${turno.id}`, { error: "No se pudo leer el turno." });
+  renderTurno();
+  refrescar([recargar("caja")]);
+}
+
+const horaDe = (utc) => (utc ? fechaHoraAR(utc).split(" ")[1] : "");
+
+function notaDeVenta(v) {
+  if (v.estado === "anulada") return "Anulada";
+  if (v.facturada) return "Con factura";
+  return v.cobrado < v.total - CENTAVO ? `Debe ${money(v.total - v.cobrado)}` : "";
+}
+
+async function pintarDetalleTurno() {
+  detalleTurno = await api(`/api/turnos-caja/${turno.id}/detalle`, { error: "No se pudo cargar el turno." });
+  const { ventas, a_cuenta: aCuenta, gastos, total_gastos: totalGastos } = detalleTurno;
+  const filaVenta = (v) => {
+    const anulada = v.estado === "anulada";
+    const quien = v.cliente === CONSUMIDOR_FINAL ? "" : ` · ${esc(v.cliente)}`;
+    return `
+      <li class="${anulada ? "fila-anulada" : ""}">
+        <span class="pos-turno-quien">Venta #${v.id}${quien}<small>${esc([horaDe(v.creada), notaDeVenta(v)].filter(Boolean).join(" · "))}</small></span>
+        <strong class="mono">${money(v.total)}</strong>
+        <button type="button" class="btn btn-secundario btn-chico" data-reimprimir="${v.id}">Reimprimir</button>
+        ${anulada || v.facturada ? "" : `<button type="button" class="btn btn-secundario btn-chico" data-anular="${v.id}">Anular</button>`}
+      </li>`;
+  };
+  const filaACuenta = (c) =>
+    `<li><span class="pos-turno-quien">${esc(c.cliente)}<small>${esc(c.medio)}</small></span><strong class="mono">${money(c.importe)}</strong></li>`;
+  const filaGasto = (g) =>
+    `<li><span class="pos-turno-quien">${esc(g.descripcion ?? g.categoria)}<small>${esc(g.categoria)}</small></span><strong class="mono">${money(g.importe)}</strong></li>`;
+  document.getElementById("posTurnoDetalle").innerHTML = `
+    ${ventas.length ? `<ul class="pos-turno-lista">${ventas.map(filaVenta).join("")}</ul>` : `<p class="form-note">Todavía no hay ventas en este turno.</p>`}
+    ${aCuenta.length ? `<p class="pos-cierre-subtitulo">Cobros a cuenta</p><ul class="pos-turno-lista">${aCuenta.map(filaACuenta).join("")}</ul>` : ""}
+    ${gastos.length ? `<p class="pos-cierre-subtitulo">Gastos de la caja: ${money(totalGastos)}</p><ul class="pos-turno-lista">${gastos.map(filaGasto).join("")}</ul>` : ""}`;
+}
+
+document.getElementById("btnPosTurnoDetalle").addEventListener("click", async () => {
+  formAnular.hidden = true;
+  await pintarDetalleTurno();
+  modalPosTurno.hidden = false;
+});
+
+document.getElementById("posTurnoDetalle").addEventListener("click", (e) => {
+  const reimprimir = e.target.closest("[data-reimprimir]");
+  const anular = e.target.closest("[data-anular]");
+  if (reimprimir) enviando(reimprimir, () => imprimirTicketDeVenta(Number(reimprimir.dataset.reimprimir)));
+  if (anular) {
+    anulando = detalleTurno.ventas.find((v) => v.id === Number(anular.dataset.anular));
+    formAnular.reset();
+    document.getElementById("posAnularTitulo").textContent = `Anular la venta #${anulando.id} (${money(anulando.total)})`;
+    document.getElementById("posAnularNota").textContent =
+      anulando.cobrado > CENTAVO
+        ? `Vuelve el stock y sale de la caja lo cobrado: ${money(anulando.cobrado)}. Devolvéselo al cliente.`
+        : "Vuelve el stock y la venta queda en la papelera.";
+    document.getElementById("posAnularAutoriza").hidden = esAdmin();
+    formAnular.hidden = false;
+    formAnular.motivo.focus();
+  }
+});
+
+document.getElementById("btnPosAnularCancelar").addEventListener("click", () => {
+  formAnular.hidden = true;
+});
+
+formAnular.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const body = { motivo: formAnular.motivo.value.trim() };
+  if (!body.motivo) {
+    avisar("Escribí por qué se anula.", "atencion");
+    return;
+  }
+  if (!esAdmin()) {
+    body.autoriza_email = formAnular.autoriza_email.value.trim();
+    body.autoriza_password = formAnular.autoriza_password.value;
+  }
+  const r = await enviando(document.getElementById("formPosAnularSubmit"), () =>
+    api(`/api/pos/ventas/${anulando.id}/anular`, { method: "POST", body, error: "No se pudo anular la venta." })
+  );
+  formAnular.hidden = true;
+  avisar(r.devuelto > CENTAVO ? `Venta #${anulando.id} anulada: devolvé ${money(r.devuelto)}.` : `Venta #${anulando.id} anulada.`, "ok");
+  await Promise.all([pintarDetalleTurno(), refrescarTurno()]);
+  // Volvió el stock: el catálogo, de nuevo.
+  fijarCatalogo(await api(`/api/pos/catalogo?caja=${cajaId}`, { error: "No se pudo cargar el catálogo." }));
+  renderCatalogo();
+});
+
+/* --- Cobrar a cuenta --- */
+
+const clienteACuenta = () => clientes.find((c) => c.nombre === formACuenta.cliente.value.trim());
+
+function pintarDeudaACuenta() {
+  const cliente = clienteACuenta();
+  let texto = "";
+  if (cliente) texto = cliente.deuda > CENTAVO ? `Debe ${money(cliente.deuda)}.` : `${cliente.nombre} no debe nada.`;
+  document.getElementById("posACuentaDeuda").textContent = texto;
+  if (cliente?.deuda > CENTAVO && !formACuenta.importe.value) formACuenta.importe.value = String(redondear(cliente.deuda));
+}
+
+document.getElementById("btnPosACuenta").addEventListener("click", async () => {
+  // La deuda de cada uno, al día: pudo haber cobros desde otra pantalla.
+  fijarClientes(await api("/api/clientes", { error: "No se pudieron cargar los clientes." }));
+  document.getElementById("posClientesDeuda").innerHTML = clientes
+    .filter((c) => c.deuda > CENTAVO)
+    .map((c) => `<option value="${esc(c.nombre)}">${esc(money(c.deuda))}</option>`)
+    .join("");
+  formACuenta.reset();
+  formACuenta.imprimir.checked = true;
+  formACuenta.medio.innerHTML = medios.map((m) => `<option value="${m.id}">${esc(m.nombre)}</option>`).join("");
+  pintarDeudaACuenta();
+  modalPosACuenta.hidden = false;
+  formACuenta.cliente.focus();
+});
+
+formACuenta.cliente.addEventListener("input", pintarDeudaACuenta);
+formACuenta.cliente.addEventListener("change", pintarDeudaACuenta);
+
+formACuenta.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const cliente = clienteACuenta();
+  const importe = Number(formACuenta.importe.value);
+  if (!cliente) {
+    avisar("Elegí el cliente de la lista.", "atencion");
+    return;
+  }
+  if (!(importe > 0)) {
+    avisar("Cargá cuánto paga.", "atencion");
+    return;
+  }
+  const medio = medios.find((m) => m.id === Number(formACuenta.medio.value));
+  const cobro = medio ? { medio_cobro_id: medio.id, importe } : { cuenta_tesoreria_id: turno.cuenta_tesoreria_id, importe };
+  const r = await enviando(document.getElementById("formPosACuentaSubmit"), () =>
+    api("/api/pos/cobro-a-cuenta", {
+      method: "POST",
+      body: { turno_caja_id: turno.id, cliente_id: cliente.id, cobros: [cobro] },
+      error: "No se pudo cobrar."
+    })
+  );
+  modalPosACuenta.hidden = true;
+  avisar(
+    r.saldo > CENTAVO ? `${r.cliente} pagó ${money(r.pagado)}: le quedan ${money(r.saldo)}.` : `${r.cliente} pagó ${money(r.pagado)}: quedó al día.`,
+    "ok"
+  );
+  if (formACuenta.imprimir.checked) {
+    imprimirTicket(armarReciboPago({ cliente: r.cliente, pagado: r.pagado, saldo: r.saldo, medio: medio?.nombre }));
+  }
+  await refrescarTurno();
+});
+
+/* --- Gasto de caja --- */
+
+document.getElementById("btnPosGasto").addEventListener("click", async () => {
+  formGasto.reset();
+  const detalle = await api(`/api/turnos-caja/${turno.id}/detalle`, { error: "No se pudo cargar el turno." });
+  const n = detalle.gastos.length;
+  document.getElementById("posGastoTotal").textContent = n
+    ? `En este turno ya salieron ${money(detalle.total_gastos)} en ${numero(n)} ${n === 1 ? "gasto" : "gastos"}.`
+    : "";
+  modalPosGasto.hidden = false;
+  formGasto.descripcion.focus();
+});
+
+formGasto.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const descripcion = formGasto.descripcion.value.trim();
+  const importe = Number(formGasto.importe.value);
+  if (!descripcion || !(importe > 0)) {
+    avisar("Cargá en qué se gastó y cuánto.", "atencion");
+    return;
+  }
+  await enviando(document.getElementById("formPosGastoSubmit"), () =>
+    api("/api/pos/gastos", {
+      method: "POST",
+      body: { turno_caja_id: turno.id, descripcion, importe },
+      error: "No se pudo anotar el gasto."
+    })
+  );
+  modalPosGasto.hidden = true;
+  avisar(`Gasto anotado: ${money(importe)} salieron de la caja.`, "ok");
+  refrescar([recargar("gastos")]);
+  await refrescarTurno();
 });
 
 // Se carga al entrar en la vista (ver mostrarVista en core/router.js).

@@ -1388,7 +1388,13 @@
               <div><dt>Vendido</dt><dd class="mono" id="posTurnoVendido">$0,00</dd></div>
               <div><dt>En caja</dt><dd class="mono" id="posTurnoEsperado">$0,00</dd></div>
             </dl>
-            <button type="button" class="btn btn-secundario" id="btnPosCerrarCaja"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#lock"></use></svg> Cerrar caja</button>
+            <!-- Lo de Praxia (hist. §194): el turno, cobrar a cuenta y los gastos de la caja. -->
+            <div class="pos-turno-acciones">
+              <button type="button" class="btn btn-secundario" id="btnPosTurnoDetalle"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#receipt-text"></use></svg> Ventas del turno</button>
+              <button type="button" class="btn btn-secundario" id="btnPosACuenta"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#hand-coins"></use></svg> Cobrar a cuenta</button>
+              <button type="button" class="btn btn-secundario" id="btnPosGasto"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#banknote"></use></svg> Gasto de caja</button>
+              <button type="button" class="btn btn-secundario" id="btnPosCerrarCaja"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#lock"></use></svg> Cerrar caja</button>
+            </div>
           </section>
 
           <div class="pos-layout">
@@ -7807,6 +7813,88 @@
           <input type="text" name="nota" maxlength="200" placeholder="Motivo de la diferencia, si la hay" />
         </label>
         <button type="submit" class="btn btn-primary btn-full" id="formPosCierreSubmit">Cerrar caja</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Lo que pasó en el turno (hist. §194): sus ventas, para reimprimir el
+       ticket o anular con motivo, los cobros a cuenta y los gastos de la caja. -->
+  <div class="modal" id="modalPosTurno" role="dialog" aria-modal="true" aria-labelledby="modalPosTurnoTitulo" hidden>
+    <div class="modal-card pos-modal pos-modal-ancho">
+      <div class="modal-head">
+        <h3 id="modalPosTurnoTitulo">Ventas del turno</h3>
+        <button class="modal-close" id="modalPosTurnoClose" aria-label="Cerrar"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#x"></use></svg></button>
+      </div>
+      <div id="posTurnoDetalle"></div>
+      <form id="formPosAnular" class="form pos-anular" hidden>
+        <p class="pos-cierre-subtitulo" id="posAnularTitulo"></p>
+        <p class="form-note" id="posAnularNota"></p>
+        <label>Por qué se anula
+          <input type="text" name="motivo" maxlength="200" required placeholder="Se equivocó de producto, no pagó…" />
+        </label>
+        <div id="posAnularAutoriza" hidden>
+          <p class="form-note">Lo tiene que autorizar un administrador, con su mail y su contraseña.</p>
+          <div class="form-fila">
+            <label>Mail del administrador
+              <input type="email" name="autoriza_email" autocomplete="off" />
+            </label>
+            <label>Contraseña
+              <input type="password" name="autoriza_password" autocomplete="off" />
+            </label>
+          </div>
+        </div>
+        <div class="pos-anular-botones">
+          <button type="button" class="btn btn-secundario" id="btnPosAnularCancelar">Cancelar</button>
+          <button type="submit" class="btn btn-peligro" id="formPosAnularSubmit">Anular la venta</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Cobrar a cuenta (hist. §194): el cliente paga su deuda sin llevarse nada. -->
+  <div class="modal" id="modalPosACuenta" role="dialog" aria-modal="true" aria-labelledby="modalPosACuentaTitulo" hidden>
+    <div class="modal-card pos-modal">
+      <div class="modal-head">
+        <h3 id="modalPosACuentaTitulo">Cobrar a cuenta</h3>
+        <button class="modal-close" id="modalPosACuentaClose" aria-label="Cerrar"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#x"></use></svg></button>
+      </div>
+      <form id="formPosACuenta" class="form">
+        <label>Cliente
+          <input type="text" name="cliente" list="posClientesDeuda" autocomplete="off" required placeholder="Quién paga" />
+        </label>
+        <datalist id="posClientesDeuda"></datalist>
+        <p class="pos-diferencia" id="posACuentaDeuda" aria-live="polite"></p>
+        <div class="form-fila">
+          <label>Cuánto paga
+            <input type="number" name="importe" step="0.01" min="0.01" required inputmode="decimal" placeholder="0.00" />
+          </label>
+          <label>Cómo paga
+            <select name="medio"></select>
+          </label>
+        </div>
+        <label class="form-check"><input type="checkbox" name="imprimir" checked /> Imprimir el comprobante con el saldo</label>
+        <button type="submit" class="btn btn-primary btn-full" id="formPosACuentaSubmit">Cobrar</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Gasto de caja (hist. §194): lo que sale del cajón. -->
+  <div class="modal" id="modalPosGasto" role="dialog" aria-modal="true" aria-labelledby="modalPosGastoTitulo" hidden>
+    <div class="modal-card pos-modal">
+      <div class="modal-head">
+        <h3 id="modalPosGastoTitulo">Gasto de caja</h3>
+        <button class="modal-close" id="modalPosGastoClose" aria-label="Cerrar"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#x"></use></svg></button>
+      </div>
+      <form id="formPosGasto" class="form">
+        <p class="form-note">Lo que sale del cajón: bolsas, flete, un arreglo. Se descuenta de lo que tiene que haber en la caja y queda en Gastos.</p>
+        <label>En qué se gastó
+          <input type="text" name="descripcion" maxlength="120" required placeholder="Bolsas, flete, limpieza…" />
+        </label>
+        <label>Cuánto
+          <input type="number" name="importe" step="0.01" min="0.01" required inputmode="decimal" placeholder="0.00" />
+        </label>
+        <p class="form-note" id="posGastoTotal"></p>
+        <button type="submit" class="btn btn-primary btn-full" id="formPosGastoSubmit">Anotar el gasto</button>
       </form>
     </div>
   </div>
