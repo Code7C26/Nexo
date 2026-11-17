@@ -21,6 +21,16 @@
 
 ## Estado actual (17 de noviembre de 2026)
 
+**17 de noviembre, hist. §191: Factura A | Factura B también en Facturas
+(commiteado en `solla`, sin publicar).** Al facturar una venta y en la factura
+suelta, el inscripto elige A o B como en el mostrador: la A pide CUIT y nombre
+(condición inscripto o monotributo); la B no (consumidor final o exento, que
+pide CUIT). Pasar a B a un cliente inscripto le saca el CUIT a esa factura y
+no toca su ficha: el inscripto que compra como consumidor final. La letra
+sigue saliendo de la condición del receptor. Sin cambios de servidor. 428
+tests. También sin publicar: el aviso nuevo del comprobante interno en el
+cobro.
+
 **17 de noviembre, hist. §190: repaso de las reglas de ARCA (publicado, PR
 #95).** Todas bien aplicadas (letra, CUIT de la A, notas
 asociadas, importes, condición y documento del receptor, servicios, CAE, QR,
