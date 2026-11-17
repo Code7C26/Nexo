@@ -734,6 +734,39 @@ export const SECCIONES_EN = {
       { nota: "What you collect with your Mercado Pago connected doesn't need to be set up here: Nexo records the real cost of each payment." }
     ]
   },
+  "turno-mostrador": {
+    titulo: "During the shift: payments on account, register expenses and voids",
+    pantalla: "Point of sale",
+    preguntas: ["how do i collect a debt at the counter", "a customer comes to pay what they owe", "how do i record cash taken from the register", "how do i void a counter sale", "how do i reprint a receipt", "how do i set up quick picks"],
+    palabras: ["account", "debt", "credit", "expense", "register", "bags", "void", "reprint", "receipt", "quick", "picks", "shift"],
+    bloques: [
+      "With the register open, at the top of the counter you have everything that happens in the shift, without leaving the screen.",
+      { pasos: [
+        "**Collect on account**: the customer pays their debt without taking anything. Choose them, enter how much and how they pay: the oldest is settled first, and a slip prints with what they still owe.",
+        "**Register expense**: what comes out of the drawer (bags, freight, a repair). It's taken off what should be in the register and stays in Expenses.",
+        "**Shift sales**: each sale of the shift, to reprint the receipt or void it with the reason. What was collected comes back out of the drawer and the stock goes back to the warehouse.",
+        "**Quick picks**: tap **Set up quick picks**, mark your usual products and tap **Done**. They're saved on that register."
+      ] },
+      { nota: "An employee can only void with an administrator's email and password, right there. A sale from a closed shift, or with an invoice, is returned from Sales." }
+    ]
+  },
+  sucursales: {
+    titulo: "Branches and the day close",
+    pantalla: "Settings › Branches",
+    preguntas: ["how do i add another store", "i have two branches", "how do i see the day's register close", "how much did all the registers sell", "how do i make a register sell from its warehouse", "how do i see the month close"],
+    palabras: ["branch", "branches", "store", "stores", "close", "day", "month", "registers", "warehouse", "count", "differences"],
+    bloques: [
+      "If you have more than one store, each branch groups its warehouse, its registers and the people who work there.",
+      { pasos: [
+        "Go to **Settings › Branches** and tap **Add a branch**.",
+        "Enter the name and choose its warehouse: one you already have or a new one with the branch's name.",
+        "Check its registers (or create a new one) and who works there. Someone with branches only opens those registers.",
+        "Tap **Add branch**."
+      ] },
+      "Each register only sells what's in its branch's warehouse. If a product isn't there, the counter says which other branch has it, so you can send the customer.",
+      "The **Register close** (from **Cash** or the point of sale) adds up every register of every branch: what was sold, how you were paid, what left the drawer, the differences and what was sold outside the registers. **Monthly** also shows it day by day."
+    ]
+  },
   "mercado-pago": {
     titulo: "Charging with Mercado Pago",
     pantalla: "Settings › Mercado Pago",
