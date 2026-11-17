@@ -18,7 +18,7 @@ import {
   totalDelRenglon
 } from './factura-proveedor.js';
 import { armarMensaje, esMailValido, mailConfigurado, mandarMail, MailError, plantillaMail } from './mail.js';
-import { ZONA_HORARIA, fechaDeHoy, fechaLocalDe, inicioDeHoyUTC } from './fecha.js';
+import { ZONA_HORARIA, fechaDeHoy, fechaLocalDe, horaLocalDe, inicioDeHoyUTC, utcDeLocal } from './fecha.js';
 import { clavePublicaVapid, clavesVapidNuevas, direccionDePushValida, mandarAviso } from './webpush.js';
 import {
   canjearCodigo as canjearCodigoGoogle,
@@ -4915,6 +4915,265 @@ app.patch('/api/depositos/:id', soloAdmin, (req, res) => {
     }
   });
   res.json({ id: depositoId });
+});
+
+/* ---------- Horarios y fichaje (hist. §196) ---------- */
+//
+// De Praxia, pedido para la presentación (CLAUDE.md §39: los horarios sí, los
+// sueldos no). Cada persona ficha su entrada y su salida desde Nexo; el admin
+// carga el horario de cada uno por día de la semana, corrige el fichaje que
+// alguien se olvidó, y ve el informe: horas, llegadas tarde, faltas y los
+// turnos de caja que abrió. El horario se guarda en la hora del negocio; el
+// fichaje, en UTC, como la auditoría.
+
+const ES_HORA = /^([01]\d|2[0-3]):[0-5]\d$/;
+// Llegar hasta 5 minutos después no cuenta como tarde.
+const TOLERANCIA_TARDE_MIN = 5;
+const MAX_DIAS_INFORME = 62;
+const minutosDeHora = (hora) => Number(hora.slice(0, 2)) * 60 + Number(hora.slice(3, 5));
+const FICHAJE_ABIERTO = db.prepare('SELECT * FROM fichajes WHERE usuario_id = ? AND organizacion_id = ? AND salida IS NULL');
+
+function franjasDe(usuarioId, organizacionId) {
+  return db
+    .prepare('SELECT dia_semana, desde, hasta FROM horarios WHERE usuario_id = ? AND organizacion_id = ? ORDER BY dia_semana, desde')
+    .all(usuarioId, organizacionId);
+}
+
+const fichajeConHora = (f) => ({
+  ...f,
+  fecha: fechaLocalDe(f.entrada),
+  hora_entrada: horaLocalDe(f.entrada),
+  hora_salida: f.salida ? horaLocalDe(f.salida) : null
+});
+
+// Lo de quien mira: si está adentro, lo fichado hoy y su horario de hoy.
+app.get('/api/fichajes/mio', (req, res) => {
+  const { id: usuarioId, organizacion_id: organizacionId } = req.usuario;
+  const hoy = fechaDeHoy();
+  const abierto = FICHAJE_ABIERTO.get(usuarioId, organizacionId);
+  const deHoy = db
+    .prepare('SELECT * FROM fichajes WHERE usuario_id = ? AND organizacion_id = ? AND fecha_local(entrada) = ? ORDER BY entrada')
+    .all(usuarioId, organizacionId, hoy);
+  res.json({
+    abierto: abierto ? fichajeConHora(abierto) : null,
+    hoy: deHoy.map(fichajeConHora),
+    horario_hoy: franjasDe(usuarioId, organizacionId).filter((f) => f.dia_semana === diaDeLaSemana(hoy))
+  });
+});
+
+app.post('/api/fichajes', (req, res) => {
+  const { id: usuarioId, organizacion_id: organizacionId } = req.usuario;
+  if (FICHAJE_ABIERTO.get(usuarioId, organizacionId)) return res.status(409).json({ error: 'Ya fichaste la entrada.' });
+  const id = withTransaction(() => {
+    const nuevo = Number(
+      db
+        .prepare("INSERT INTO fichajes (usuario_id, organizacion_id, entrada) VALUES (?, ?, datetime('now'))")
+        .run(usuarioId, organizacionId).lastInsertRowid
+    );
+    auditar(req, {
+      accion: 'crear',
+      entidad: 'usuario',
+      entidad_id: usuarioId,
+      operacion_tipo: 'fichaje',
+      operacion_id: nuevo,
+      detalle: 'Fichó la entrada'
+    });
+    return nuevo;
+  });
+  res.status(201).json(fichajeConHora(db.prepare('SELECT * FROM fichajes WHERE id = ?').get(id)));
+});
+
+app.post('/api/fichajes/salida', (req, res) => {
+  const { id: usuarioId, organizacion_id: organizacionId } = req.usuario;
+  const abierto = FICHAJE_ABIERTO.get(usuarioId, organizacionId);
+  if (!abierto) return res.status(409).json({ error: 'No fichaste la entrada.' });
+  withTransaction(() => {
+    // Una salida en el mismo segundo que la entrada queda un segundo después.
+    db.prepare("UPDATE fichajes SET salida = MAX(datetime('now'), datetime(entrada, '+1 second')) WHERE id = ?").run(abierto.id);
+    auditar(req, {
+      accion: 'cambiar_estado',
+      entidad: 'usuario',
+      entidad_id: usuarioId,
+      operacion_tipo: 'fichaje',
+      operacion_id: abierto.id,
+      detalle: 'Fichó la salida'
+    });
+  });
+  res.json(fichajeConHora(db.prepare('SELECT * FROM fichajes WHERE id = ?').get(abierto.id)));
+});
+
+// El admin corrige un fichaje (se olvidó de fichar la salida, o la entrada
+// quedó mal): la hora del negocio, en el mismo día de la entrada.
+app.patch('/api/fichajes/:id', soloAdmin, (req, res) => {
+  const organizacionId = req.usuario.organizacion_id;
+  const fichaje = db.prepare('SELECT * FROM fichajes WHERE id = ? AND organizacion_id = ?').get(Number(req.params.id), organizacionId);
+  if (!fichaje) return res.status(404).json({ error: 'Fichaje no encontrado.' });
+  const { entrada, salida } = req.body ?? {};
+  for (const hora of [entrada, salida]) {
+    if (hora != null && hora !== '' && !ES_HORA.test(String(hora))) return res.status(400).json({ error: 'La hora va como 09:30.' });
+  }
+  const fecha = fechaLocalDe(fichaje.entrada);
+  const nuevaEntrada = entrada ? utcDeLocal(fecha, entrada) : fichaje.entrada;
+  const nuevaSalida = salida ? utcDeLocal(fecha, salida) : salida === '' ? null : fichaje.salida;
+  if (nuevaSalida && nuevaSalida <= nuevaEntrada) return res.status(400).json({ error: 'La salida tiene que ser después de la entrada.' });
+  if (!nuevaSalida && fichaje.salida === null && FICHAJE_ABIERTO.get(fichaje.usuario_id, organizacionId)?.id !== fichaje.id) {
+    return res.status(400).json({ error: 'Esa persona ya tiene un fichaje abierto.' });
+  }
+  withTransaction(() => {
+    db.prepare('UPDATE fichajes SET entrada = ?, salida = ?, corregido_por = ? WHERE id = ?').run(nuevaEntrada, nuevaSalida, req.usuario.id, fichaje.id);
+    const antes = fichajeConHora(fichaje);
+    auditar(req, {
+      accion: 'editar',
+      entidad: 'usuario',
+      entidad_id: fichaje.usuario_id,
+      operacion_tipo: 'fichaje',
+      operacion_id: fichaje.id,
+      valor_anterior: JSON.stringify({ entrada: antes.hora_entrada, salida: antes.hora_salida }),
+      valor_nuevo: JSON.stringify({ entrada: horaLocalDe(nuevaEntrada), salida: nuevaSalida ? horaLocalDe(nuevaSalida) : null }),
+      detalle: `Corrigió el fichaje del ${fecha.split('-').reverse().join('/')}`
+    });
+  });
+  res.json(fichajeConHora(db.prepare('SELECT * FROM fichajes WHERE id = ?').get(fichaje.id)));
+});
+
+// El horario de cada persona del negocio, para cargarlo.
+app.get('/api/horarios', soloAdmin, (req, res) => {
+  const organizacionId = req.usuario.organizacion_id;
+  const personas = db
+    .prepare(
+      `SELECT usuarios.id, usuarios.nombre, pertenencia.rol
+         FROM usuario_organizaciones pertenencia JOIN usuarios ON usuarios.id = pertenencia.usuario_id
+        WHERE pertenencia.organizacion_id = ? AND pertenencia.activo = 1
+        ORDER BY usuarios.nombre`
+    )
+    .all(organizacionId);
+  res.json(personas.map((p) => ({ ...p, franjas: franjasDe(p.id, organizacionId) })));
+});
+
+// Reemplaza el horario entero de una persona: [{ dia_semana, desde, hasta }].
+app.put('/api/horarios/:usuarioId', soloAdmin, (req, res) => {
+  const organizacionId = req.usuario.organizacion_id;
+  const usuarioId = Number(req.params.usuarioId);
+  const persona = db
+    .prepare(
+      `SELECT usuarios.nombre FROM usuario_organizaciones pertenencia JOIN usuarios ON usuarios.id = pertenencia.usuario_id
+        WHERE pertenencia.usuario_id = ? AND pertenencia.organizacion_id = ? AND pertenencia.activo = 1`
+    )
+    .get(usuarioId, organizacionId);
+  if (!persona) return res.status(404).json({ error: 'Esa persona no trabaja en este negocio.' });
+  const franjas = req.body?.franjas;
+  if (!Array.isArray(franjas) || franjas.length > 28) return res.status(400).json({ error: 'El horario no es válido.' });
+  for (const f of franjas) {
+    if (!Number.isInteger(f?.dia_semana) || f.dia_semana < 0 || f.dia_semana > 6 || !ES_HORA.test(String(f.desde)) || !ES_HORA.test(String(f.hasta))) {
+      return res.status(400).json({ error: 'Cada franja lleva el día y las horas como 09:30.' });
+    }
+    if (f.hasta <= f.desde) return res.status(400).json({ error: 'En cada franja, la hora de salida va después de la de entrada.' });
+  }
+  for (let dia = 0; dia < 7; dia++) {
+    const delDia = franjas.filter((f) => f.dia_semana === dia).sort((a, b) => a.desde.localeCompare(b.desde));
+    if (delDia.some((f, i) => i > 0 && f.desde < delDia[i - 1].hasta)) {
+      return res.status(400).json({ error: 'Dos franjas del mismo día se pisan.' });
+    }
+  }
+  const antes = franjasDe(usuarioId, organizacionId);
+  withTransaction(() => {
+    db.prepare('DELETE FROM horarios WHERE usuario_id = ? AND organizacion_id = ?').run(usuarioId, organizacionId);
+    const insertar = db.prepare('INSERT INTO horarios (usuario_id, organizacion_id, dia_semana, desde, hasta) VALUES (?, ?, ?, ?, ?)');
+    for (const f of franjas) insertar.run(usuarioId, organizacionId, f.dia_semana, f.desde, f.hasta);
+    auditar(req, {
+      accion: 'editar',
+      entidad: 'usuario',
+      entidad_id: usuarioId,
+      operacion_tipo: 'horario',
+      valor_anterior: JSON.stringify(antes),
+      valor_nuevo: JSON.stringify(franjas.map(({ dia_semana, desde, hasta }) => ({ dia_semana, desde, hasta }))),
+      detalle: `Cambió el horario de ${persona.nombre}`
+    });
+  });
+  res.json({ franjas: franjasDe(usuarioId, organizacionId) });
+});
+
+// El informe del período: por persona y por día, lo planificado contra lo
+// fichado. Llegó tarde si la primera entrada del día pasó la primera franja
+// por más de la tolerancia; faltó si tenía horario, el día ya pasó (u hoy, sin
+// fichar) y no fichó. Suma los turnos de caja que abrió ese día.
+app.get('/api/fichajes/informe', soloAdmin, (req, res) => {
+  const organizacionId = req.usuario.organizacion_id;
+  const hoy = fechaDeHoy();
+  const desde = ES_DIA.test(String(req.query.desde ?? '')) ? req.query.desde : hoy;
+  const hasta = ES_DIA.test(String(req.query.hasta ?? '')) ? req.query.hasta : desde;
+  if (hasta < desde) return res.status(400).json({ error: 'El período termina antes de empezar.' });
+  const fechas = [];
+  for (let f = desde; f <= hasta && fechas.length <= MAX_DIAS_INFORME; f = sumarDias(f, 1)) fechas.push(f);
+  if (fechas.length > MAX_DIAS_INFORME) return res.status(400).json({ error: `El informe es de hasta ${MAX_DIAS_INFORME} días.` });
+
+  const personas = db
+    .prepare(
+      `SELECT usuarios.id, usuarios.nombre FROM usuario_organizaciones pertenencia JOIN usuarios ON usuarios.id = pertenencia.usuario_id
+        WHERE pertenencia.organizacion_id = ? AND pertenencia.activo = 1 ORDER BY usuarios.nombre`
+    )
+    .all(organizacionId);
+  const fichajes = db
+    .prepare('SELECT * FROM fichajes WHERE organizacion_id = ? AND fecha_local(entrada) BETWEEN ? AND ? ORDER BY entrada')
+    .all(organizacionId, desde, hasta)
+    .map(fichajeConHora);
+  const turnos = db
+    .prepare(
+      `SELECT abierto_por, fecha_local(abierto_en) AS fecha, COUNT(*) AS cantidad FROM turnos_caja
+        WHERE organizacion_id = ? AND fecha_local(abierto_en) BETWEEN ? AND ? GROUP BY abierto_por, 2`
+    )
+    .all(organizacionId, desde, hasta);
+  const ahora = horaLocalDe(new Date().toISOString().slice(0, 19).replace('T', ' '));
+
+  const resultado = personas.map((p) => {
+    const franjas = franjasDe(p.id, organizacionId);
+    const dias = fechas.map((fecha) => {
+      const plan = franjas.filter((f) => f.dia_semana === diaDeLaSemana(fecha));
+      const suyos = fichajes.filter((f) => f.usuario_id === p.id && f.fecha === fecha);
+      const planificados = plan.reduce((acc, f) => acc + minutosDeHora(f.hasta) - minutosDeHora(f.desde), 0);
+      const trabajados = suyos.reduce((acc, f) => {
+        const fin = f.salida ?? new Date().toISOString().slice(0, 19).replace('T', ' ');
+        return acc + Math.max(0, Math.round((Date.parse(`${fin.replace(' ', 'T')}Z`) - Date.parse(`${f.entrada.replace(' ', 'T')}Z`)) / 60000));
+      }, 0);
+      // Cada franja contra el primer fichaje que cae en ella: con horario
+      // cortado, entrar 15:38 para la de las 16:00 no es tarde para la de las 9.
+      const tarde = plan.reduce((acc, franja) => {
+        const desde = minutosDeHora(franja.desde);
+        const hasta = minutosDeHora(franja.hasta);
+        const fichaje = suyos.find((f) => {
+          const entra = minutosDeHora(f.hora_entrada);
+          const sale = f.hora_salida ? minutosDeHora(f.hora_salida) : Infinity;
+          return entra < hasta && sale > desde;
+        });
+        const minutos = fichaje ? minutosDeHora(fichaje.hora_entrada) - desde : 0;
+        return acc + (minutos > TOLERANCIA_TARDE_MIN ? minutos : 0);
+      }, 0);
+      const yaEmpezo = fecha < hoy || (fecha === hoy && plan.length && ahora > plan[0].desde);
+      return {
+        fecha,
+        plan,
+        fichajes: suyos.map(({ id, hora_entrada, hora_salida, corregido_por }) => ({ id, hora_entrada, hora_salida, corregido: Boolean(corregido_por) })),
+        minutos_planificados: planificados,
+        minutos_trabajados: trabajados,
+        tarde_min: tarde,
+        falta: Boolean(plan.length && !suyos.length && yaEmpezo && fecha <= hoy),
+        turnos_caja: turnos.find((t) => t.abierto_por === p.id && t.fecha === fecha)?.cantidad ?? 0
+      };
+    });
+    return {
+      id: p.id,
+      nombre: p.nombre,
+      tiene_horario: franjas.length > 0,
+      minutos_planificados: dias.reduce((acc, d) => acc + (d.fecha <= hoy ? d.minutos_planificados : 0), 0),
+      minutos_trabajados: dias.reduce((acc, d) => acc + d.minutos_trabajados, 0),
+      llegadas_tarde: dias.filter((d) => d.tarde_min > 0).length,
+      minutos_tarde: dias.reduce((acc, d) => acc + d.tarde_min, 0),
+      faltas: dias.filter((d) => d.falta).length,
+      turnos_caja: dias.reduce((acc, d) => acc + d.turnos_caja, 0),
+      dias
+    };
+  });
+  res.json({ desde, hasta, tolerancia_min: TOLERANCIA_TARDE_MIN, personas: resultado });
 });
 
 /* ---------- Sucursales (hist. §193) ---------- */

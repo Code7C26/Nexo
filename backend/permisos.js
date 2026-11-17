@@ -106,6 +106,15 @@ export const RUTAS_PERMISOS = {
   'GET /api/depositos': 'ambos',
   'POST /api/depositos': 'admin',
   'PATCH /api/depositos/:id': 'admin',
+  // Horarios y fichaje (hist. §196): cada persona ficha lo suyo; cargar
+  // horarios, corregir fichajes y el informe son del admin.
+  'GET /api/fichajes/mio': 'ambos',
+  'POST /api/fichajes': 'ambos',
+  'POST /api/fichajes/salida': 'ambos',
+  'PATCH /api/fichajes/:id': 'admin',
+  'GET /api/fichajes/informe': 'admin',
+  'GET /api/horarios': 'admin',
+  'PUT /api/horarios/:usuarioId': 'admin',
   // Sucursales (hist. §193): verlas es de los dos (el punto de venta dice de
   // qué sucursal es cada caja); armarlas es configuración del negocio.
   'GET /api/sucursales': 'ambos',

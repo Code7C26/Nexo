@@ -767,6 +767,21 @@ export const SECCIONES_EN = {
       "The **Register close** (from **Cash** or the point of sale) adds up every register of every branch: what was sold, how you were paid, what left the drawer, the differences and what was sold outside the registers. **Monthly** also shows it day by day."
     ]
   },
+  horarios: {
+    titulo: "Schedules and clocking in",
+    pantalla: "Schedules",
+    preguntas: ["how do i clock in", "how do i clock out", "how do i set an employee's schedule", "who arrived late", "how many hours did they work", "they forgot to clock out"],
+    palabras: ["schedule", "schedules", "clock", "in", "out", "late", "hours", "absent", "absence", "employee", "shift"],
+    bloques: [
+      "Each person clocks in and out from **Schedules**, with the button at the top. They also see today's schedule there.",
+      { pasos: [
+        "The administrator sets each person's schedule in **Everyone's schedule** › **Set schedule**: per day, the start and end time (with a split shift, both blocks).",
+        "In **Who came and how long they worked** they see, for today, the week or the month, each person's hours, late arrivals, absences and the register shifts they opened.",
+        "If someone forgot to clock in or out, tap **Fix** on that day and enter the time: it's marked as fixed and recorded in the audit log."
+      ] },
+      { nota: "Arriving up to 5 minutes late doesn't count as late. Payroll isn't done in Nexo." }
+    ]
+  },
   "mercado-pago": {
     titulo: "Charging with Mercado Pago",
     pantalla: "Settings › Mercado Pago",

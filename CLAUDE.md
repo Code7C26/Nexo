@@ -1709,7 +1709,9 @@ con el equipo:
 - Sueldos y liquidación (RRHH). ~~Gestión de empleados~~: **los horarios y
   el fichaje de empleados salen de esta lista** (decisión del usuario del 17
   de noviembre de 2026, de lo que tiene Praxia) y entran antes de la
-  presentación. Ver `handoff.md`.
+  presentación. Ver `handoff.md`. Hechos (hist. §196): horario por día de la
+  semana, fichaje de entrada y salida, y el informe de horas, llegadas tarde
+  y faltas.
 - Contabilidad de partida doble / libro mayor contable formal (Nexo lleva
   tesorería y cuentas corrientes, no reemplaza a un sistema contable).
 - Facturación internacional / multi-moneda.
