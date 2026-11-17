@@ -173,7 +173,7 @@ const SECCIONES_ES = [
     titulo: "Vender en el mostrador (Punto de venta)",
     pantalla: ["#/pos", "Punto de venta"],
     modulo: "pos",
-    preguntas: ["cómo vendo en el mostrador", "cómo abro la caja", "cómo cierro la caja", "cómo cobro con el lector", "cómo hago el arqueo", "cómo doy el vuelto", "cómo cobro con dos medios de pago", "cómo imprimo el ticket", "cómo facturo en el mostrador"],
+    preguntas: ["cómo vendo en el mostrador", "cómo abro la caja", "cómo cierro la caja", "cómo cobro con el lector", "cómo hago el arqueo", "cómo doy el vuelto", "cómo cobro con dos medios de pago", "cómo imprimo el ticket", "cómo facturo en el mostrador", "cómo hago una factura a en el mostrador"],
     palabras: ["mostrador", "punto", "pos", "caja", "turno", "abrir", "cerrar", "arqueo", "vuelto", "lector", "escanear", "codigo", "barras", "cobrar", "rapida", "ticket", "imprimir", "impresora"],
     bloques: [
       "Es la pantalla para vender rápido, parado frente al cliente.",
@@ -185,6 +185,7 @@ const SECCIONES_ES = [
         "Al terminar el día, tocá **Cerrar caja** y contá el efectivo: Nexo te dice si coincide con lo que debería haber."
       ] },
       "Sin elegir cliente, la venta va a Consumidor final. Para dejarle algo a cuenta a alguien, elegí el cliente: a Consumidor final no se le fía.",
+      "Para facturarle a una empresa o a un monotributista, en el cobro tocá **Facturar a un cliente con CUIT** y cargá su CUIT, su nombre y su condición frente al IVA. Si ya está en tus clientes, Nexo lo encuentra por el CUIT; si no, lo crea. La letra sale sola.",
       "El ticket es para impresoras de 80 mm. Se vuelve a imprimir desde la ficha de la venta, con **Ticket**.",
       { nota: "Si no ves Punto de venta en el menú, prendelo en Configuración › Funciones." }
     ],

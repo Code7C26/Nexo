@@ -15,7 +15,16 @@ import { cantidadDeEtiqueta, leerEtiqueta } from "../core/balanza.js";
 import { mejorOferta, proximaPromocion } from "../core/ofertas.js";
 import { aplicarDescuento } from "../core/descuento.js";
 import { negocio } from "../core/negocio.js";
-import { letraPrevista } from "../core/fiscal.js";
+import {
+  CONDICIONES_FISCALES,
+  condicionFiscal,
+  errorCuit,
+  esCondicionFiscal,
+  formatearCuit,
+  letraPrevista,
+  opcionesSelect
+} from "../core/fiscal.js";
+import { limpiarError, limpiarErrores, marcarError } from "../core/campos.js";
 import { armarHojaFactura, cargarQr, imprimirComprobante, imprimirTicketDeVenta } from "../core/comprobante.js";
 import { alEntrarEnVista, recargar } from "../core/registro.js";
 
@@ -159,12 +168,7 @@ async function cargarTodo() {
   cuentas = tesoreria.cuentas;
   cajas = cuentas.filter((c) => c.tipo === "efectivo");
   fijarCatalogo(items);
-  // "Consumidor final" es el cliente de las ventas sin cliente: elegirlo a
-  // mano no cambia nada, y a ese cliente no se le fía.
-  clientes = listaClientes.filter((c) => c.nombre !== CONSUMIDOR_FINAL);
-  document.getElementById("posClientes").innerHTML = clientes
-    .map((c) => `<option value="${esc(c.nombre)}"></option>`)
-    .join("");
+  fijarClientes(listaClientes);
 
   // La caja se recuerda por dispositivo: la PC del mostrador opera siempre la
   // misma. Si no hay recuerdo, la que ya tiene un turno abierto.
@@ -177,6 +181,15 @@ async function cargarTodo() {
   if (turno) leerCarrito();
   else carrito = [];
   render();
+}
+
+// "Consumidor final" es el cliente de las ventas sin cliente: elegirlo a mano
+// no cambia nada, y a ese cliente no se le fía.
+function fijarClientes(lista) {
+  clientes = lista.filter((c) => c.nombre !== CONSUMIDOR_FINAL);
+  document.getElementById("posClientes").innerHTML = clientes
+    .map((c) => `<option value="${esc(c.nombre)}"></option>`)
+    .join("");
 }
 
 function fijarCatalogo(items) {
@@ -819,6 +832,7 @@ function abrirCobro() {
     )
     .join("");
   renderFilasCobro();
+  cerrarClienteCuit();
   renderComprobante();
   actualizarCobro();
   btnPosQr.hidden = !negocio.mercado_pago?.conectado;
@@ -957,6 +971,180 @@ document.getElementById("posComprobanteOpciones").addEventListener("click", (e) 
   renderComprobante();
   actualizarCobro();
 });
+
+/* ---------- Alta rápida de un cliente con CUIT (hist. §188) ---------- */
+
+// Una factura A necesita un cliente con CUIT y condición frente al IVA. Se
+// carga acá, sin ir a Clientes: se busca por CUIT entre los del negocio y, si
+// no está, se crea. No se elige la letra: sigue saliendo de la condición del
+// negocio y la del cliente.
+const btnPosClienteCuit = document.getElementById("btnPosClienteCuit");
+const posClienteCuit = document.getElementById("posClienteCuit");
+const posClienteCuitNumero = document.getElementById("posClienteCuitNumero");
+const posClienteCuitNombre = document.getElementById("posClienteCuitNombre");
+const posClienteCuitCondicion = document.getElementById("posClienteCuitCondicion");
+const posClienteCuitNota = document.getElementById("posClienteCuitNota");
+opcionesSelect(posClienteCuitCondicion, CONDICIONES_FISCALES);
+
+const digitosDe = (texto) => String(texto ?? "").replace(/\D/g, "");
+const tieneCuit = (cliente) => digitosDe(cliente?.documento).length === 11;
+const clientePorCuit = (cuit) => clientes.find((c) => digitosDe(c.documento) === cuit);
+// Lo que el PATCH de clientes espera: pisa con vacío lo que no viene, así que
+// va la ficha entera con lo que cambia.
+const fichaDelCliente = (c, cambios) => ({
+  nombre: c.nombre,
+  email: c.email,
+  telefono: c.telefono,
+  direccion: c.direccion,
+  documento: c.documento,
+  notas: c.notas,
+  lista_precio_id: c.lista_precio_id,
+  condicion_pago: c.condicion_pago,
+  condicion_iva: c.condicion_iva,
+  ...cambios
+});
+
+// Solo cuando hace falta: se puede facturar y el cliente es consumidor final
+// o le falta el CUIT o la condición.
+function renderClienteCuit() {
+  const completo = tieneCuit(cobro.cliente) && esCondicionFiscal(cobro.cliente?.condicion_iva);
+  btnPosClienteCuit.hidden = !posClienteCuit.hidden || !sePuedeFacturar() || completo;
+}
+
+function cerrarClienteCuit() {
+  posClienteCuit.hidden = true;
+  limpiarErrores(posClienteCuit);
+  renderClienteCuit();
+}
+
+function notaClienteCuit(texto) {
+  posClienteCuitNota.hidden = !texto;
+  posClienteCuitNota.textContent = texto;
+}
+
+// Arranca con lo que ya se sabe del cliente del cobro, si hay uno.
+btnPosClienteCuit.addEventListener("click", () => {
+  const actual = cobro.cliente;
+  posClienteCuitNumero.value = tieneCuit(actual) ? formatearCuit(actual.documento) : "";
+  posClienteCuitNombre.value = actual?.nombre ?? "";
+  posClienteCuitCondicion.value = esCondicionFiscal(actual?.condicion_iva) ? actual.condicion_iva : "responsable_inscripto";
+  notaClienteCuit("");
+  posClienteCuit.hidden = false;
+  renderClienteCuit();
+  posClienteCuitNumero.focus();
+});
+
+document.getElementById("btnPosClienteCuitCancelar").addEventListener("click", () => {
+  cerrarClienteCuit();
+  btnPosClienteCuit.focus();
+});
+
+// Con el CUIT completo, si ya es un cliente se avisa y se trae lo suyo.
+posClienteCuitNumero.addEventListener("input", () => {
+  limpiarError(posClienteCuitNumero);
+  const existente = clientePorCuit(digitosDe(posClienteCuitNumero.value));
+  notaClienteCuit(existente ? `Ya está en tus clientes: ${existente.nombre}.` : "");
+  if (!existente) return;
+  posClienteCuitNombre.value = existente.nombre;
+  if (esCondicionFiscal(existente.condicion_iva)) posClienteCuitCondicion.value = existente.condicion_iva;
+});
+
+posClienteCuitNumero.addEventListener("blur", () => {
+  const error = errorCuit(posClienteCuitNumero.value);
+  if (error) marcarError(posClienteCuitNumero, error);
+  else posClienteCuitNumero.value = formatearCuit(posClienteCuitNumero.value);
+});
+
+posClienteCuitNombre.addEventListener("input", () => limpiarError(posClienteCuitNombre));
+
+// Enter en un campo de acá guarda el cliente, no confirma la venta.
+posClienteCuit.addEventListener("keydown", (e) => {
+  if (e.key !== "Enter" || e.target.tagName === "BUTTON") return;
+  e.preventDefault();
+  document.getElementById("btnPosClienteCuitGuardar").click();
+});
+
+document.getElementById("btnPosClienteCuitGuardar").addEventListener("click", (e) => {
+  enviando(e.currentTarget, guardarClienteCuit);
+});
+
+// El cliente al que se le factura, o null si falta un dato o no se confirmó.
+async function clienteParaFacturar() {
+  limpiarErrores(posClienteCuit);
+  const cuit = digitosDe(posClienteCuitNumero.value);
+  const error = cuit ? errorCuit(posClienteCuitNumero.value) : "Escribí el CUIT del cliente.";
+  if (error) {
+    marcarError(posClienteCuitNumero, error);
+    posClienteCuitNumero.focus();
+    return null;
+  }
+  const nombre = posClienteCuitNombre.value.trim();
+  const condicion = posClienteCuitCondicion.value;
+  const documento = formatearCuit(cuit);
+
+  // La lista de ahora, no la de cuando se abrió el mostrador: otro puesto pudo
+  // cargarlo, y no se duplica.
+  fijarClientes(await api("/api/clientes", { error: "No se pudieron cargar los clientes." }));
+  const existente = clientePorCuit(cuit);
+  if (existente) {
+    if (existente.condicion_iva === condicion) return existente;
+    const cuerpo = esCondicionFiscal(existente.condicion_iva)
+      ? `${existente.nombre} figura como ${condicionFiscal(existente.condicion_iva)}. ¿Lo pasás a ${condicionFiscal(condicion)}?`
+      : `${existente.nombre} ya está en tus clientes, pero sin la condición frente al IVA. ¿Le guardás ${condicionFiscal(condicion)}?`;
+    if (!(await confirmar({ titulo: "Completar el cliente", cuerpo, aceptar: "Guardar" }))) return null;
+    await api(`/api/clientes/${existente.id}`, {
+      method: "PATCH",
+      body: fichaDelCliente(existente, { condicion_iva: condicion }),
+      error: "No se pudo guardar el cliente."
+    });
+    return existente;
+  }
+
+  if (!nombre) {
+    marcarError(posClienteCuitNombre, "Escribí el nombre o la razón social.");
+    posClienteCuitNombre.focus();
+    return null;
+  }
+  // El cliente del cobro, si es el mismo nombre, se completa: cargarlo de
+  // nuevo lo duplicaría.
+  const actual = cobro.cliente ? clientes.find((c) => c.id === cobro.cliente.id) : null;
+  if (actual && actual.nombre.trim().toLowerCase() === nombre.toLowerCase()) {
+    const cuerpo = `¿Le guardás a ${actual.nombre} el CUIT ${documento} y ${condicionFiscal(condicion)}?`;
+    if (!(await confirmar({ titulo: "Completar el cliente", cuerpo, aceptar: "Guardar" }))) return null;
+    await api(`/api/clientes/${actual.id}`, {
+      method: "PATCH",
+      body: fichaDelCliente(actual, { documento, condicion_iva: condicion }),
+      error: "No se pudo guardar el cliente."
+    });
+    return actual;
+  }
+
+  const { id } = await api("/api/clientes", {
+    method: "POST",
+    body: { nombre, documento, condicion_iva: condicion },
+    error: "No se pudo crear el cliente."
+  });
+  return { id };
+}
+
+async function guardarClienteCuit() {
+  const elegido = await clienteParaFacturar();
+  if (!elegido) return;
+  fijarClientes(await api("/api/clientes", { error: "No se pudieron cargar los clientes." }));
+  const cliente = clientes.find((c) => c.id === elegido.id);
+  if (!cliente) return;
+  // Queda también en el campo del mostrador: si se cierra el cobro, sigue.
+  cobro.cliente = cliente;
+  posCliente.value = cliente.nombre;
+  document.getElementById("posCobroCliente").textContent = cliente.nombre;
+  cobro.facturar = true;
+  cerrarClienteCuit();
+  renderComprobante();
+  actualizarCobro();
+  refrescar([recargar("clientes")]);
+  avisar(`La factura sale a nombre de ${cliente.nombre}.`, "ok");
+  enfocarImporte(0);
+}
 
 // Lo que la factura dice de cómo se pagó. Con varios medios, manda el de más
 // plata; sin cobros, quedó todo en cuenta corriente.

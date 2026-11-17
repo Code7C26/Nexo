@@ -11,7 +11,7 @@
 
 - Al cerrar una etapa, se hacen tres cosas:
   - su relato completo se agrega al final de `docs/proyecto/handoff-historico.md` con el
-    siguiente número (hoy el último es §187);
+    siguiente número (hoy el último es §188);
   - acá se actualizan "Estado actual" y "Qué sigue";
   - si cambió alguna decisión vigente, se actualiza también esa lista.
 - Nunca apilar secciones "Última etapa" en este archivo: así fue como llegó a
@@ -20,6 +20,26 @@
   reescribe nada.
 
 ## Estado actual (17 de noviembre de 2026)
+
+**17 de noviembre, hist. §188: alta rápida de un cliente con CUIT en el cobro
+del punto de venta (commiteado en `solla`, sin publicar).** Para hacer una
+factura A sin ir a Clientes: en el cobro, "Facturar a un cliente con CUIT"
+(solo si se puede facturar y el cliente es consumidor final o le falta el CUIT
+o la condición) abre CUIT, nombre y condición. Lo busca por CUIT entre los
+clientes; si está sin condición (o con otra), se la guarda con una
+confirmación; si no está, lo crea. El botón pasa solo a "Factura A". La letra
+sigue saliendo de las dos condiciones. Sin cambios de esquema ni rutas
+nuevas. 427 tests. Probado en el navegador (celular) con ARCA simulado.
+
+**17 de noviembre, hist. §188: alta rápida de un cliente con CUIT en el cobro
+del punto de venta (commiteado en `solla`, sin publicar).** Para hacer una
+factura A sin ir a Clientes: en el cobro, "Facturar a un cliente con CUIT"
+(solo si se puede facturar y el cliente es consumidor final o le falta el CUIT
+o la condición) abre CUIT, nombre y condición. Lo busca por CUIT entre los
+clientes; si está sin condición (o con otra), se la guarda con una
+confirmación; si no está, lo crea. El botón pasa solo a "Factura A". La letra
+sigue saliendo de las dos condiciones. Sin cambios de esquema ni rutas
+nuevas. 427 tests. Probado en el navegador (celular) con ARCA simulado.
 
 **17 de noviembre, hist. §187: las facturas desde el Gmail del negocio
 (publicado, PR #92).** Configuración → Gmail, con su logo:
@@ -2036,7 +2056,8 @@ noviembre" de más abajo. El usuario pidió sí o sí para la oficial: sucursale
 cierre de caja, facturar desde el punto de venta y el ticket impreso. El orden
 es mío (primero lo chico que se muestra, después la etapa grande):
 1. ~~**Facturar desde el punto de venta y el ticket impreso**~~ (hecho, hist.
-   §184; falta probarlo con una impresora térmica): al cobrar, elegir
+   §184, y §188 con el alta rápida del cliente con CUIT para la A; falta
+   probarlo con una impresora térmica): al cobrar, elegir
    factura A, B o sin factura (la letra la propone el cliente, como en Ventas)
    e imprimir el ticket en el momento. Hoy el mostrador solo cobra y se
    factura después desde Ventas. El dueño sigue facturando desde Ventas lo que
@@ -2642,8 +2663,8 @@ presencial. Reemplaza al plan hasta el 1 de diciembre de hist. §66.
 
 **Producto, en orden:**
 1. ~~D: punto de venta y turno de caja~~ **hecha** (hist. §67 y §68). Para
-   después: descuentos y precio editable en el mostrador, alta rápida de
-   cliente y venta sin conexión.
+   después: precio editable en el mostrador y venta sin conexión (los
+   descuentos y el alta rápida de cliente ya están, hist. §175 y §188).
 2. **F: tipos de negocio, unidades y servicios: hecha** (hist. §70).
    Prioridad del usuario del 19 de octubre. Tipos: comercio general (incluye
    indumentaria y ferretería), carnicería, verdulería, kiosco o almacén,

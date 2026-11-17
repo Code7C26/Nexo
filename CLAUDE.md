@@ -1333,8 +1333,10 @@ por unidad, y la auditoría anota quién lo hizo. Lo hace cualquier rol, sin top
 (decisión del usuario).
 **Factura y ticket al cobrar** (hist. §184): en el cobro se elige si la venta
 sale con factura (la letra sale sola, como en Ventas) y si se imprime el ticket
-de 80 mm, que lleva el CAE y el QR cuando hay factura. Queda para después: precio editable por
-renglón en el mostrador, alta rápida de cliente y venta sin conexión.
+de 80 mm, que lleva el CAE y el QR cuando hay factura. Para una factura A, el
+cobro carga ahí mismo al cliente con CUIT y condición frente al IVA: lo busca
+por CUIT y, si no está, lo crea (hist. §188); la letra no se elige. Queda para
+después: precio editable por renglón en el mostrador y venta sin conexión.
 
 ---
 
