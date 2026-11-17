@@ -54,9 +54,11 @@ import {
   alicuotaIva,
   condicionFiscal,
   condicionIvaCliente,
+  errorCuit,
   letraPrevista,
   opcionesSelect
 } from "./core/fiscal.js";
+import { limpiarError, limpiarErrores, marcarError } from "./core/campos.js";
 import "./dominios/usuarios.js";
 import "./dominios/configuracion.js";
 import "./dominios/perfil.js";
@@ -1503,8 +1505,9 @@ const modal = document.getElementById("modalFactura");
 // ficha del cliente y se pueden corregir para esta factura. El servidor guarda
 // una foto (datosDeLaFactura en server.js).
 function prepararDatosFactura(form, cliente, { conPeriodo, condicionVenta = "contado", vencimiento = "" }) {
-  opcionesSelect(form.receptor_condicion_iva, CONDICIONES_RECEPTOR);
   opcionesSelect(form.condicion_venta, CONDICIONES_VENTA);
+  limpiarErrores(form);
+  delete form.dataset.cuitApartado;
   if (form.receptor_nombre) form.receptor_nombre.value = cliente?.nombre ?? "";
   completarReceptor(form, cliente, { pisar: true });
   form.condicion_venta.value = condicionVenta;
@@ -1512,7 +1515,6 @@ function prepararDatosFactura(form, cliente, { conPeriodo, condicionVenta = "con
   form.periodo_desde.value = "";
   form.periodo_hasta.value = "";
   form.vencimiento_pago.value = vencimiento;
-  mostrarLetraPrevista(form);
 }
 
 // Lo de la ficha del cliente en los campos. Sin `pisar`, solo completa los
@@ -1525,21 +1527,101 @@ function completarReceptor(form, cliente, { pisar }) {
   poner("receptor_documento", cliente?.documento);
   poner("receptor_domicilio", cliente?.direccion);
   if (pisar || form.receptor_condicion_iva.value === "consumidor_final") {
-    form.receptor_condicion_iva.value = cliente?.condicion_iva || "consumidor_final";
+    fijarCondicionReceptor(form, cliente?.condicion_iva);
   }
   const deTodos = cliente?.nombre === "Consumidor final";
   form.querySelector("[data-guardar-cliente]").hidden = deTodos;
   form.guardar_en_cliente.checked = !deTodos;
-  mostrarLetraPrevista(form);
 }
 
-// La letra que va a salir cambia con la condición del cliente: se dice antes.
-function mostrarLetraPrevista(form) {
-  const letra = letraPrevista(negocio.condicion_iva, form.receptor_condicion_iva.value);
-  if (letra) {
+/* ---------- La letra en Facturas (hist. §191) ---------- */
+
+// Como en el mostrador: el inscripto elige "Factura A" o "Factura B", y cada
+// una pide sus datos. La letra igual sale de las dos condiciones (el servidor
+// la saca de la del receptor): elegir la A deja elegir solo las condiciones
+// que la dan, y la B las que no. Un inscripto que compra como consumidor final
+// va en B, sin sus datos y sin tocar su ficha.
+const haceAyB = () => negocio.condicion_iva === "responsable_inscripto";
+const CONDICIONES_DE_CADA_LETRA = {
+  A: { responsable_inscripto: CONDICIONES_RECEPTOR.responsable_inscripto, monotributo: CONDICIONES_RECEPTOR.monotributo },
+  B: { consumidor_final: CONDICIONES_RECEPTOR.consumidor_final, exento: CONDICIONES_RECEPTOR.exento }
+};
+const letraDelForm = (form) => letraPrevista(negocio.condicion_iva, form.receptor_condicion_iva.value);
+// El que tiene una condición frente al IVA tiene CUIT: en la A y en la B a un
+// exento se pide. A un consumidor final, el DNI o nada.
+const pideCuit = (form) => haceAyB() && form.receptor_condicion_iva.value !== "consumidor_final";
+
+// La condición del receptor, con las opciones de su letra.
+function fijarCondicionReceptor(form, condicion) {
+  const select = form.receptor_condicion_iva;
+  const valor = condicion || "consumidor_final";
+  const letra = haceAyB() ? letraPrevista(negocio.condicion_iva, valor) : null;
+  opcionesSelect(select, letra ? CONDICIONES_DE_CADA_LETRA[letra] : CONDICIONES_RECEPTOR);
+  select.value = valor;
+  // Un texto viejo que no es de la lista: la primera de la letra.
+  if (!select.value) select.selectedIndex = 0;
+  pintarLetras(form);
+}
+
+function pintarLetras(form) {
+  const caja = form.querySelector("[data-letras]");
+  caja.hidden = !haceAyB();
+  const letra = letraDelForm(form);
+  if (haceAyB()) {
+    caja.innerHTML = ["A", "B"]
+      .map((l) => `<button type="button" class="segmento" data-letra="${l}" aria-pressed="${l === letra}">Factura ${l}</button>`)
+      .join("");
+  } else if (letra) {
     form.querySelector("[data-letra-sola]").textContent =
       `Va a salir una factura ${letra}, según tu condición frente al IVA y la del cliente.`;
   }
+  const documento = form.receptor_documento;
+  form.querySelector("[data-documento-etiqueta]").textContent = pideCuit(form) ? "CUIT" : "CUIT o DNI";
+  documento.placeholder = pideCuit(form) ? "20-12345678-9" : "Opcional";
+  limpiarError(documento);
+}
+
+function elegirLetra(form, letra) {
+  if (letraDelForm(form) === letra) return;
+  const nombre = form.receptor_nombre ?? form.cliente;
+  if (letra === "A") {
+    // La A va a nombre de alguien con CUIT: el nombre de "Consumidor final"
+    // no sirve, y lo cargado queda en su ficha.
+    if (nombre.value.trim() === "Consumidor final") nombre.value = "";
+    form.guardar_en_cliente.checked = true;
+    // Si se pasó a la B y se vuelve, el CUIT que tenía.
+    if (!form.receptor_documento.value) form.receptor_documento.value = form.dataset.cuitApartado ?? "";
+  } else {
+    // Compra como consumidor final: sin su CUIT, y su ficha no cambia.
+    form.dataset.cuitApartado = form.receptor_documento.value;
+    form.receptor_documento.value = "";
+    form.guardar_en_cliente.checked = false;
+  }
+  fijarCondicionReceptor(form, letra === "A" ? "responsable_inscripto" : "consumidor_final");
+  (letra === "A" ? (nombre.value ? form.receptor_documento : nombre) : form.receptor_documento).focus();
+}
+
+// Lo que ARCA no aceptaría, dicho debajo del campo antes de mandar. true si
+// está bien.
+function receptorValido(form) {
+  limpiarErrores(form);
+  const nombre = form.receptor_nombre ?? form.cliente;
+  if (pideCuit(form)) {
+    const cuit = form.receptor_documento.value;
+    const falta = letraDelForm(form) === "A" ? "Escribí el CUIT: sin él, no puede ser factura A." : "Escribí el CUIT del exento.";
+    const error = cuit.trim() ? errorCuit(cuit) : falta;
+    if (error) {
+      marcarError(form.receptor_documento, error);
+      form.receptor_documento.focus();
+      return false;
+    }
+  }
+  if (letraDelForm(form) === "A" && !nombre.value.trim()) {
+    marcarError(nombre, "Escribí el nombre o la razón social.");
+    nombre.focus();
+    return false;
+  }
+  return true;
 }
 
 // Lo que va al servidor. El período, solo si se ve.
@@ -1564,15 +1646,21 @@ function datosFacturaDelForm(form) {
 
 for (const id of ["formFacturarVenta", "formFactura"]) {
   const form = document.getElementById(id);
-  form.receptor_condicion_iva.addEventListener("change", () => mostrarLetraPrevista(form));
+  form.receptor_condicion_iva.addEventListener("change", () => pintarLetras(form));
+  form.querySelector("[data-letras]").addEventListener("click", (e) => {
+    const boton = e.target.closest("[data-letra]");
+    if (boton) elegirLetra(form, boton.dataset.letra);
+  });
+  form.receptor_documento.addEventListener("input", () => limpiarError(form.receptor_documento));
 }
 
 // Si el negocio cargó su condición frente al IVA, la letra la pone el
-// servidor (hist. §113) y elegirla confundiría: se muestra el porqué.
+// servidor (hist. §113) y elegirla confundiría: se muestra el porqué (o, al
+// inscripto, A y B para elegir a quién).
 function mostrarLetraSiSeElige(form) {
   const sola = Boolean(negocio.condicion_iva);
   form.querySelector("[data-letra-elegida]").hidden = sola;
-  form.querySelector("[data-letra-sola]").hidden = !sola;
+  form.querySelector("[data-letra-sola]").hidden = !sola || haceAyB();
   // Con factura electrónica (etapa E), el punto de venta es el que se dio de
   // alta en ARCA y el número lo da ARCA: no se elige.
   const electronica = negocio.factura_electronica?.activa;
@@ -1619,6 +1707,7 @@ document.getElementById("formFactura").addEventListener("submit", async (e) => {
   e.preventDefault();
   const form = e.target;
   const tipoElegido = form.tipo.value;
+  if (!receptorValido(form)) return;
 
   const emitida = await api("/api/facturas", {
     method: "POST",
@@ -5075,6 +5164,7 @@ modalFacturarVenta.addEventListener("click", (e) => {
 document.getElementById("formFacturarVenta").addEventListener("submit", async (e) => {
   e.preventDefault();
   const form = e.target;
+  if (!receptorValido(form)) return;
 
   // Con factura electrónica, puede tardar lo que tarde ARCA.
   const boton = form.querySelector('button[type="submit"]');

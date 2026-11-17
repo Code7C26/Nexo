@@ -4855,6 +4855,19 @@ html[data-ejemplo] #btnCompraFactura { display: none; }
   font-size: var(--txt-sm);
   font-weight: 600;
 }
+/* Factura A | Factura B, a lo ancho (hist. §191). Más específico que
+   .segmentos, que está más abajo. */
+.factura-receptor .factura-letras {
+  display: flex;
+  flex-wrap: nowrap;
+  align-self: stretch;
+}
+.factura-receptor .factura-letras[hidden] { display: none; }
+.factura-letras .segmento {
+  flex: 1 1 0;
+  min-height: 44px;
+  font-size: var(--txt-sm);
+}
 .form-fila-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 @media (max-width: 560px) {
   .form-fila-3 { grid-template-columns: minmax(0, 1fr); }

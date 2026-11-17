@@ -233,7 +233,7 @@ export const SECCIONES_EN = {
       "You can invoice a sale you already recorded, or make a standalone invoice.",
       { pasos: [
         "For a sale: open it and tap **Invoice**. For a standalone one: **Invoices › New invoice**.",
-        "Check the customer's details and the sale terms.",
+        "If you're a registered VAT taxpayer, choose **Invoice A** or **Invoice B**: the A asks for the customer's CUIT and the B doesn't. Check their details and the sale terms.",
         "Tap **Generate invoice**. From its profile, **Print / PDF**."
       ] },
       "The letter is set automatically, based on your VAT status and the customer's, so you never issue one ARCA doesn't accept:",
@@ -241,7 +241,7 @@ export const SECCIONES_EN = {
         "If you're a **registered VAT taxpayer** (responsable inscripto): A to another registered taxpayer or to a monotributo taxpayer, and B to an end consumer or an exempt one. A monotributo taxpayer doesn't get a B: since 2021 they get an A.",
         "If you're **monotributo or exempt**: always C."
       ] },
-      "For an A, the customer needs their CUIT on file. If they don't give it to you, it isn't an A: charge them as an end consumer.",
+      "For an A, the customer needs their CUIT on file. If they don't give it to you, it isn't an A: it's a B to an end consumer. A registered taxpayer buying for themselves also gets a B: choose **Invoice B** and it goes out without their details, without changing their record.",
       "The A shows the VAT separately; the B says how much VAT the price contains, as the fiscal transparency law requires. An A to a monotributo taxpayer carries a note saying that VAT only counts for the monotributo regime.",
       "The invoice keeps the customer's details as they were at that moment: if you change their record later, the invoice doesn't change.",
       "At the Point of sale you choose the invoice when charging, without coming here: tapping **Invoice A** lets you enter the customer with their CUIT right there.",

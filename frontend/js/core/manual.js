@@ -298,7 +298,7 @@ const SECCIONES_ES = [
       "Podés facturar una venta que ya cargaste, o hacer una factura suelta.",
       { pasos: [
         "Para una venta: abrila y tocá **Facturar**. Para una suelta: **Facturas › Nueva factura**.",
-        "Revisá los datos del cliente y la condición de venta.",
+        "Si sos responsable inscripto, elegí **Factura A** o **Factura B**: la A te pide el CUIT del cliente y la B no. Revisá sus datos y la condición de venta.",
         "Tocá **Generar factura**. Desde su ficha, **Imprimir / PDF**."
       ] },
       "La letra sale sola, según tu condición frente al IVA y la del cliente, así nunca sale una que ARCA no acepta:",
@@ -306,7 +306,7 @@ const SECCIONES_ES = [
         "Si sos **responsable inscripto**: A a otro inscripto o a un monotributista, y B a un consumidor final o a un exento. A un monotributista no se le hace B: desde 2021 le corresponde la A.",
         "Si sos **monotributista o exento**: siempre C."
       ] },
-      "Para una A, el cliente tiene que tener su CUIT cargado. Si no te lo da, no es A: cobrale como consumidor final.",
+      "Para una A, el cliente tiene que tener su CUIT cargado. Si no te lo da, no es A: es una B a consumidor final. Un inscripto que compra para él también va en B: elegí **Factura B** y sale sin sus datos, sin cambiar su ficha.",
       "La A muestra el IVA aparte; la B dice cuánto IVA contiene el precio, como pide la ley de transparencia fiscal. La A a un monotributista lleva una leyenda que aclara que ese IVA solo le sirve para el monotributo.",
       "La factura guarda los datos del cliente de ese momento: si después cambiás su ficha, la factura no cambia.",
       "En el Punto de venta la factura se elige al cobrar, sin pasar por acá: tocando **Factura A** cargás ahí mismo al cliente con su CUIT.",

@@ -4866,6 +4866,9 @@ export default {
   "¿A quién se le factura?": "Who is the invoice for?",
   "Como figura en su constancia de ARCA": "As it appears on their ARCA certificate",
   "Confirmar cliente": "Confirm customer",
+  "Tipo de factura": "Invoice type",
+  "Escribí el CUIT: sin él, no puede ser factura A.": "Enter the CUIT: without it, it can't be invoice A.",
+  "Escribí el CUIT del exento.": "Enter the exempt customer's CUIT.",
   // La leyenda de la RG 5003 va impresa en la factura, siempre en castellano.
   "El crédito fiscal discriminado en el presente comprobante, sólo podrá ser computado a efectos del Régimen de Sostenimiento e Inclusión Fiscal para Pequeños Contribuyentes de la Ley Nº 27.618": null,
   "Ya está en tus clientes: {0}.": "Already in your customers: {0}.",
