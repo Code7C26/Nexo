@@ -11,7 +11,7 @@
 
 - Al cerrar una etapa, se hacen tres cosas:
   - su relato completo se agrega al final de `docs/proyecto/handoff-historico.md` con el
-    siguiente número (hoy el último es §191);
+    siguiente número (hoy el último es §192);
   - acá se actualizan "Estado actual" y "Qué sigue";
   - si cambió alguna decisión vigente, se actualiza también esa lista.
 - Nunca apilar secciones "Última etapa" en este archivo: así fue como llegó a
@@ -20,6 +20,15 @@
   reescribe nada.
 
 ## Estado actual (17 de noviembre de 2026)
+
+**17 de noviembre, hist. §192: el manual de uso, al día (commiteado en
+`solla`, sin publicar).** 13 secciones nuevas (lo que ya tenías,
+notificaciones, WhatsApp, ofertas, producción, balanza, medios de cobro,
+Mercado Pago, Tienda Nube y Mercado Libre, venta online, factura por mail,
+unir repetidos y planes), en castellano y en inglés, con el grupo "Vender por
+internet"; corregido dónde van el CUIT y la condición. 54 secciones, 437
+tests. **Queda:** el costo de cada servicio en Trabajos y el ingreso por
+pantalla en Socios.
 
 **17 de noviembre, hist. §191: Factura A | Factura B también en Facturas
 (commiteado en `solla`, sin publicar).** Al facturar una venta y en la factura

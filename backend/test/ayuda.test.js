@@ -60,7 +60,17 @@ const PREGUNTAS = [
   ['cómo sé qué productos reponer', 'que-reponer'],
   ['cómo cargo un socio del gimnasio', 'socios'],
   ['cómo cobro una venta que me deben', 'cobrar'],
-  ['algo no anda, cómo aviso?', 'avisar-problema']
+  ['algo no anda, cómo aviso?', 'avisar-problema'],
+  // Las secciones que se sumaron al poner el manual al día (hist. §192).
+  ['¿cómo cargo la mercadería que tenía antes de usar nexo?', 'lo-que-tenias'],
+  ['¿cómo hago para que me lleguen notificaciones?', 'notificaciones'],
+  ['cómo armo una promo por cantidad', 'ofertas'],
+  ['cuánto me sale fabricar algo con su receta', 'produccion'],
+  ['dónde cargo la comisión de la tarjeta de crédito', 'medios-cobro'],
+  ['cómo conecto mi tienda nube', 'tiendas-online'],
+  ['cómo le mando la factura por mail al cliente', 'factura-por-mail'],
+  ['¿cómo junto un cliente que está repetido?', 'unir-repetidos'],
+  ['qué trae el plan gratis', 'plan']
 ];
 
 for (const [pregunta, esperada] of PREGUNTAS) {
