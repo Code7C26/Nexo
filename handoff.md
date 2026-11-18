@@ -22,7 +22,7 @@
 ## Estado actual (18 de noviembre de 2026)
 
 **18 de noviembre, hist. §199: la compu de la caja, los empleados con PIN y
-los turnos cumplidos (punto 5 rehecho, sin publicar todavía).**
+los turnos cumplidos (punto 5 rehecho, publicado, PR #101).**
 - El admin, en el mostrador, toca **Usar esta compu como caja** y sale de su
   cuenta. Desde ahí la compu solo es el mostrador de esa caja, con su propia
   cookie (`nexo_caja`). Si alguien entra con su cuenta en esa compu, manda su
