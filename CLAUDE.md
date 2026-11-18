@@ -612,6 +612,13 @@ Datos principales:
 - estado
 - observaciones
 
+Implementado hoy: la lista de precios de cada proveedor (hist. §198): se
+carga desde su mensaje, una planilla, el PDF o una foto, se cruza con el
+catálogo y se revisa antes de guardar (`proveedor_listas`,
+`proveedor_precios`). No toca el costo del producto (§7): propone el costo
+al cargarle una compra y compara proveedores en la ficha del producto. En el
+menú, Proveedores va en Compras.
+
 ---
 
 # 12. CUENTAS CORRIENTES

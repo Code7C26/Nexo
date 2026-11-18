@@ -62,7 +62,9 @@ const LISTADO_DE = {
   '/api/devoluciones-proveedor/:id': '/api/devoluciones-proveedor',
   '/api/recetas/:id': '/api/recetas',
   '/api/producciones/:id': '/api/producciones',
-  '/api/productos/:id/componentes-venta': '/api/productos'
+  '/api/productos/:id/componentes-venta': '/api/productos',
+  '/api/productos/:id/precios-proveedores': '/api/productos',
+  '/api/proveedores/:id/precios': '/api/proveedores'
 };
 const IDS_POR_RUTA = 10;
 

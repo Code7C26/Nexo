@@ -58,7 +58,6 @@ const VISTAS_CONSTRUIDAS = {
   ofertas: { titulo: "Ofertas", dominio: "Maestros", nav: "productos" },
   // Con el módulo crm, la página de clientes es el CRM (hist. §91).
   clientes: { titulo: "Clientes", tituloConModulo: ["crm", "CRM"], dominio: "Maestros" },
-  proveedores: { titulo: "Proveedores", dominio: "Maestros" },
   pos: { titulo: "Punto de venta", dominio: "Embudo de venta" },
   presupuestos: { titulo: "Presupuestos", dominio: "Embudo de venta" },
   trabajos: { titulo: "Trabajos", dominio: "Embudo de venta" },
@@ -73,6 +72,7 @@ const VISTAS_CONSTRUIDAS = {
   socios: { titulo: "Socios", dominio: "Socios" },
   "planes-socio": { titulo: "Planes", dominio: "Socios" },
   compras: { titulo: "Compras", dominio: "Embudo de compra" },
+  proveedores: { titulo: "Proveedores", dominio: "Embudo de compra" },
   "devoluciones-proveedor": { titulo: "Devoluciones a proveedor", dominio: "Embudo de compra" },
   stock: { titulo: "Stock", dominio: "Stock" },
   "reportes-stock": { titulo: "Reportes de stock", dominio: "Stock" },
@@ -105,7 +105,9 @@ const VISTAS_CONSTRUIDAS = {
   },
   "producto-detalle": { titulo: "Producto", dominio: "Maestros", nav: "productos", esFicha: true },
   "cliente-detalle": { titulo: "Cliente", dominio: "Maestros", nav: "clientes", esFicha: true },
-  "proveedor-detalle": { titulo: "Proveedor", dominio: "Maestros", nav: "proveedores", esFicha: true },
+  "proveedor-detalle": { titulo: "Proveedor", dominio: "Embudo de compra", nav: "proveedores", esFicha: true },
+  // Cargar la lista de precios de un proveedor (18 de noviembre de 2026).
+  "proveedor-lista": { titulo: "Lista de precios", dominio: "Embudo de compra", nav: "proveedores", esFicha: true },
   "socio-detalle": { titulo: "Socio", dominio: "Socios", nav: "socios", esFicha: true },
   "produccion-detalle": { titulo: "Producción", dominio: "Producción", nav: "produccion", esFicha: true },
 
@@ -131,6 +133,7 @@ const VISTAS_SOLO_ADMIN = new Set([
   "compra-detalle",
   "devoluciones-proveedor",
   "devolucion-proveedor-detalle",
+  "proveedor-lista",
   "planes-socio",
   "ofertas",
   "venta-online",

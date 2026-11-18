@@ -14699,3 +14699,73 @@ que no se pagó, y avisaba "Venta anulada".
   deja cancelarlo: si el cliente lo paga después de haber pagado de otra
   forma, ese pago entra como "para revisar", igual que antes.
 
+
+## §198 — 18 de noviembre de 2026: la lista de precios del proveedor, Proveedores en Compras, Mercado Pago fuera de los canales y el QR al cobrar una deuda
+
+Pedidos del usuario, de una sola vez:
+
+- **Proveedores pasa al grupo Compras** del menú (sale de Maestros). Sigue
+  siendo de los dos roles y de todo negocio: el grupo ya no es entero de admin
+  ni del módulo de compras; el rol y el módulo ocultan solo Compras y Dev. a
+  proveedor (`index.html`, `core/router.js`: dominio "Embudo de compra").
+- **Mercado Pago no es un canal de venta** (el usuario lo había aclarado): sale
+  de "Tus tiendas" en Venta online, y su logo de la lista de canales
+  (`dominios/venta-online.js`, `core/canales.js`). En Configuración ya estaba en
+  "Cobros".
+- **El QR al cobrar una venta o una deuda** (Registrar cobro, que abren
+  Cuentas corrientes y Ventas): con la caja del QR armada, "Cobrar con QR"
+  arriba (menos comisión) y "Mandar un link de pago" abajo, avisando que el
+  link cobra más. El QR va por el importe escrito (una parte de la deuda) o
+  por todo; la pantalla espera el pago como el mostrador y "No pagó" (o cerrar
+  el cobro) cancela la orden en Mercado Pago sin tocar la venta. Sin la caja
+  armada, solo el link, con el aviso de armarla.
+  - Servidor: `POST /api/ventas/:id/qr` acepta `importe` (`importePedido`,
+    compartido con el link); `POST /api/ventas/:id/qr/cancelar` (los dos
+    roles); `/api/negocio` suma `mercado_pago.qr_caja`.
+- **La lista de precios del proveedor** (la idea de Vrader, sin su criterio:
+  nada de "❌ = sin stock" ni de perfumes). En la ficha del proveedor,
+  "Cargar lista" abre una página en dos pasos: pegar el mensaje o una planilla
+  copiada, o subir el PDF, un CSV o fotos; y revisar.
+  - `backend/lista-proveedor.js` lee el texto sin IA (precio = el último
+    número con "$" o el que no es un tamaño, un bulto, una fecha ni un código;
+    números argentinos; columnas con tabulador o punto y coma; "c/u" es por
+    unidad; el bulto sale de "x8", "pack 6"). El PDF se pasa a texto en el
+    navegador con pdf.js; si no tiene texto (escaneado) va como foto. La foto
+    la lee la IA (`leerListaDePrecios` en `interprete.js`, plan Pro, el mismo
+    cupo que la factura).
+  - Cada renglón se busca como en la factura del proveedor (hist. §151): lo
+    recordado de ese proveedor en `proveedor_articulos` (lo comparten la lista
+    y la factura), el código y un nombre parecido. Para listas de miles de
+    renglones, cada uno se compara solo con los 30 productos que más palabras
+    raras comparten (comparando contra todo, 3000 × 3000 tardaba minutos).
+  - La revisión: Con producto / Para revisar / Sin producto, buscar, elegir el
+    producto con la lista de Nexo, cuántas trae el pack, el precio por unidad
+    con IVA (si la lista era sin IVA, se suma el del producto) y cuánto cambió
+    contra la lista anterior.
+  - **Esquema (aditivo):** tablas `proveedor_listas` (proveedor, fecha desde
+    la que valen, origen, sin IVA, quién) y `proveedor_precios` (producto o
+    variante, cómo lo llama el proveedor, precio por unidad con IVA). El precio
+    de hoy es el de la última lista; borrar una lista vuelve a la anterior.
+    Unir proveedores mueve sus listas.
+  - **No toca el costo de los productos** (§7, decidido por mí): se usa para
+    proponer el costo al cargar una compra a ese proveedor (solo en un costo
+    vacío o puesto por la lista, nunca sobre uno escrito a mano), en la ficha
+    del proveedor (precio, cambio, tu costo de hoy, "Cambiar" a mano, listas
+    cargadas) y en la ficha del producto ("Lo que te cobran tus proveedores",
+    del más barato al más caro).
+  - Rutas (admin, son costos): `GET /api/proveedores/:id/precios`,
+    `POST /api/proveedores/:id/lista/leer`, `POST /api/proveedores/:id/listas`,
+    `DELETE /api/proveedores/:id/listas/:listaId`,
+    `GET /api/productos/:id/precios-proveedores`. La auditoría lo anota como un
+    cambio del proveedor (la lista de entidades tiene CHECK y no se tocó).
+- Probado: `test/lista-proveedor.test.js` (14 casos), un caso nuevo en
+  `test/mercadopago.test.js`, 462 tests, lint, i18n y `verificar-migracion` en
+  verde; en el navegador (compu y celular) la carga, la revisión, guardar, la
+  segunda lista con lo recordado, la compra con el costo propuesto y la ficha
+  del producto. Manual al día ("La lista de precios de un proveedor").
+- **No probado:** el QR de Registrar cobro con el Mercado Pago real (la
+  pantalla se miró simulando la conexión) y la lectura de un PDF real de un
+  proveedor.
+- **`npm run regresion` no anda**: el login del admin sembrado da 401, también
+  corriéndolo desde el commit anterior sin estos cambios. Es del script, no de
+  esta etapa; queda para arreglar.

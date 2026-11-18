@@ -240,10 +240,11 @@ document.getElementById("onlineProductosCanal").addEventListener("click", (e) =>
 });
 
 // Las tiendas: si están conectadas y lo que espera que alguien lo mire.
+// Mercado Pago no va: es un medio de cobro, no un canal de venta (está en
+// Configuración → Cobros).
 const TIENDAS = [
   { plataforma: "tiendanube", nombre: "Tienda Nube", seccion: "tienda-nube" },
-  { plataforma: "mercadolibre", nombre: "Mercado Libre", seccion: "mercado-libre" },
-  { plataforma: "mercadopago", nombre: "Mercado Pago", seccion: "mercado-pago" }
+  { plataforma: "mercadolibre", nombre: "Mercado Libre", seccion: "mercado-libre" }
 ];
 function pintarTiendas({ conexiones }) {
   document.getElementById("onlineTiendas").innerHTML = TIENDAS.map((t) => {

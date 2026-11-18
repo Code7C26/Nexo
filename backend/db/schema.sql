@@ -2095,3 +2095,35 @@ CREATE TABLE IF NOT EXISTS mercadopago_tarifas (
   actualizado_en TEXT NOT NULL,
   UNIQUE (organizacion_id, cuotas)
 );
+
+-- La lista de precios de un proveedor (pedido del usuario, 18 de noviembre de
+-- 2026): lo que cobra por cada producto, cargado desde su mensaje, su
+-- planilla, su PDF o una foto (lista-proveedor.js), o a mano. Cada carga es
+-- una lista con su fecha (desde cuándo valen esos precios) y sus renglones;
+-- el precio de hoy es el de la última, y las anteriores quedan para ver si
+-- subió. No toca el costo del producto, que sale de las compras con el
+-- promedio ponderado (CLAUDE.md §7): propone el costo al cargar una compra a
+-- ese proveedor y deja comparar proveedores.
+CREATE TABLE IF NOT EXISTS proveedor_listas (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  organizacion_id INTEGER NOT NULL REFERENCES organizaciones(id),
+  proveedor_id INTEGER NOT NULL REFERENCES proveedores(id),
+  fecha TEXT NOT NULL,
+  origen TEXT NOT NULL CHECK (origen IN ('mensaje', 'archivo', 'foto', 'a_mano')),
+  precios_sin_iva INTEGER NOT NULL DEFAULT 0 CHECK (precios_sin_iva IN (0, 1)),
+  usuario_id INTEGER REFERENCES usuarios(id),
+  creado TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- Un producto (o una variante) en una lista. precio es el de una unidad con
+-- IVA, como el costo unitario de una compra: si la lista era por bulto o sin
+-- IVA, ya está pasado. descripcion: cómo lo llama el proveedor. variante_id
+-- nulo en un producto con variantes: el mismo precio para todas.
+CREATE TABLE IF NOT EXISTS proveedor_precios (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  lista_id INTEGER NOT NULL REFERENCES proveedor_listas(id),
+  producto_id INTEGER NOT NULL REFERENCES productos(id),
+  variante_id INTEGER REFERENCES producto_variantes(id),
+  descripcion TEXT,
+  precio REAL NOT NULL CHECK (precio >= 0)
+);

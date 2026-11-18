@@ -610,9 +610,34 @@ Reglas:
 - Un renglón por cada artículo. No incluyas como renglón los subtotales, el IVA, las percepciones, los totales ni las leyendas.
 - Si la imagen no es un comprobante de compra, devolvé {"es_comprobante": false, "renglones": []}.`;
 
-async function leerConGroq(imagenes) {
+// La lista de precios de un proveedor en una foto o un PDF escaneado (pedido
+// del usuario, 18 de noviembre de 2026). El texto (un mensaje, una planilla o
+// un PDF con texto) no pasa por acá: lo lee lista-proveedor.js sin IA.
+const INSTRUCCIONES_LISTA = `Sos el lector de listas de precios de Nexo, un sistema de gestión para comercios argentinos. La imagen es la lista de precios o el catálogo que un PROVEEDOR le manda al comercio. Pasá a JSON los artículos con su precio, sin inventar nada.
+
+Respondé SOLO con un objeto JSON con esta forma:
+{
+  "precios_sin_iva": true si la lista dice que los precios son sin IVA o "+ IVA", false si dice que lo incluyen, null si no dice,
+  "renglones": [
+    {
+      "codigo": "código del artículo tal cual figura (puede ser el código de barras), o null",
+      "descripcion": "descripción tal cual figura",
+      "precio": número del precio,
+      "unidades_por_bulto": si el precio es de un pack, caja, bulto, fardo o display, cuántas unidades trae; si es de una unidad, null
+    }
+  ]
+}
+
+Reglas:
+- Los números van como números JSON: "1.234,56" es 1234.56.
+- Si hay varias columnas de precio (por ejemplo mayorista y minorista, o contado y lista), tomá la que el comercio paga por comprar: la mayorista o la de contado.
+- "X 500 GR" o "X 2.25 L" es el tamaño de cada unidad, no un bulto.
+- Un renglón por artículo. No incluyas títulos, rubros, encabezados, condiciones de venta ni leyendas.
+- Si la imagen no es una lista de precios, devolvé {"renglones": []}.`;
+
+async function leerConGroq(imagenes, instrucciones = INSTRUCCIONES_FACTURA) {
   const contenido = [
-    { type: 'text', text: INSTRUCCIONES_FACTURA },
+    { type: 'text', text: instrucciones },
     ...imagenes.map((img) => ({ type: 'image_url', image_url: { url: `data:${img.tipo};base64,${img.datos}` } }))
   ];
   // Por llamarGroq, para esperar lo que pide Groq cuando se pasa del cupo por
@@ -642,7 +667,7 @@ async function leerConGroq(imagenes) {
   return parsearJsonDelModelo(respuesta.choices?.[0]?.message?.content);
 }
 
-async function leerConGemini(imagenes) {
+async function leerConGemini(imagenes, instrucciones = INSTRUCCIONES_FACTURA) {
   const client = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
   let response;
   try {
@@ -653,7 +678,7 @@ async function leerConGemini(imagenes) {
           role: 'user',
           parts: [
             ...imagenes.map((img) => ({ inlineData: { mimeType: img.tipo, data: img.datos } })),
-            { text: INSTRUCCIONES_FACTURA }
+            { text: instrucciones }
           ]
         }
       ],
@@ -680,9 +705,9 @@ function parsearJsonDelModelo(texto) {
 
 const LECTORES = { groq: leerConGroq, gemini: leerConGemini };
 
-// imagenes: [{ tipo: 'image/jpeg', datos: base64 }], las páginas de un mismo
-// comprobante. Devuelve el objeto crudo; factura-proveedor.js lo limpia.
-export async function leerComprobante(imagenes) {
+// Lee las imágenes con el primer proveedor de IA que conteste. `que` es lo que
+// se lee, para los mensajes: "facturas" o "listas de precios".
+async function leerImagenes(imagenes, instrucciones, { que, cual }) {
   // El stub "lee" la primera imagen como el JSON de la lectura: los tests
   // mandan la factura ya escrita, como hace la voz con la frase.
   if (process.env.NEXO_INTERPRETE === 'stub') {
@@ -694,12 +719,12 @@ export async function leerComprobante(imagenes) {
   }
   const disponibles = proveedoresDisponibles();
   if (!disponibles.length) {
-    throw new InterpreteError('Falta configurar la clave de la IA (GROQ_API_KEY): todavía no se pueden leer facturas.');
+    throw new InterpreteError(`Falta configurar la clave de la IA (GROQ_API_KEY): todavía no se pueden leer ${que}.`);
   }
   let ultimo;
   for (const nombre of disponibles) {
     try {
-      return await LECTORES[nombre](imagenes);
+      return await LECTORES[nombre](imagenes, instrucciones);
     } catch (err) {
       console.error(`[interprete] Falló la lectura con ${nombre}:`, err.message);
       ultimo = err;
@@ -707,9 +732,21 @@ export async function leerComprobante(imagenes) {
     }
   }
   if (ultimo instanceof FalloProveedor && ultimo.cupo) {
-    throw new InterpreteError('La lectura de facturas está con mucho uso en este momento. Probá de nuevo en un minuto.', 503);
+    throw new InterpreteError(`La lectura de ${que} está con mucho uso en este momento. Probá de nuevo en un minuto.`, 503);
   }
-  throw new InterpreteError('No se pudo leer la factura. Probá de nuevo, o con una foto más nítida.', 502);
+  throw new InterpreteError(`No se pudo leer ${cual}. Probá de nuevo, o con una foto más nítida.`, 502);
+}
+
+// imagenes: [{ tipo: 'image/jpeg', datos: base64 }], las páginas de un mismo
+// comprobante. Devuelve el objeto crudo; factura-proveedor.js lo limpia.
+export function leerComprobante(imagenes) {
+  return leerImagenes(imagenes, INSTRUCCIONES_FACTURA, { que: 'facturas', cual: 'la factura' });
+}
+
+// Las páginas de la lista de precios de un proveedor. Devuelve el objeto
+// crudo; lista-proveedor.js lo limpia.
+export function leerListaDePrecios(imagenes) {
+  return leerImagenes(imagenes, INSTRUCCIONES_LISTA, { que: 'listas de precios', cual: 'la lista' });
 }
 
 // --- Intérprete stub -------------------------------------------------

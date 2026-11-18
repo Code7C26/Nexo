@@ -20,7 +20,7 @@ const PAGINAS_MAX = 4;
 const LADO_MAX = 1800;
 const CALIDAD = 0.82;
 
-class ErrorArchivo extends Error {}
+export class ErrorArchivo extends Error {}
 
 function canvasAImagen(canvas) {
   const dataUrl = canvas.toDataURL("image/jpeg", CALIDAD);
@@ -49,7 +49,7 @@ async function fotoAImagen(archivo) {
 }
 
 let pdfjsPromesa = null;
-function cargarPdfjs() {
+export function cargarPdfjs() {
   pdfjsPromesa ??= import(VENDOR_PDFJS)
     .then((pdfjs) => {
       pdfjs.GlobalWorkerOptions.workerSrc = VENDOR_PDFJS_WORKER;
@@ -89,8 +89,9 @@ async function pdfAImagenes(archivo, lugar) {
 }
 
 // archivos: los que eligió la persona (fotos y/o PDF) → las páginas que se
-// mandan a leer, hasta PAGINAS_MAX.
-async function archivosAImagenes(archivos) {
+// mandan a leer, hasta PAGINAS_MAX. También la lista de precios de un
+// proveedor en foto (dominios/lista-proveedor.js).
+export async function archivosAImagenes(archivos) {
   const imagenes = [];
   for (const archivo of archivos) {
     const lugar = PAGINAS_MAX - imagenes.length;

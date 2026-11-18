@@ -11,7 +11,7 @@
 
 - Al cerrar una etapa, se hacen tres cosas:
   - su relato completo se agrega al final de `docs/proyecto/handoff-historico.md` con el
-    siguiente número (hoy el último es §197);
+    siguiente número (hoy el último es §198);
   - acá se actualizan "Estado actual" y "Qué sigue";
   - si cambió alguna decisión vigente, se actualiza también esa lista.
 - Nunca apilar secciones "Última etapa" en este archivo: así fue como llegó a
@@ -19,7 +19,27 @@
 - Lo que deja de ser cierto se corrige o se borra de acá. En el histórico no se
   reescribe nada.
 
-## Estado actual (17 de noviembre de 2026)
+## Estado actual (18 de noviembre de 2026)
+
+**18 de noviembre, hist. §198: la lista de precios del proveedor, Proveedores
+en Compras, Mercado Pago fuera de los canales y el QR al cobrar una deuda.**
+- En la ficha del proveedor, **Cargar lista**: el mensaje, una planilla
+  pegada, el PDF, un CSV o una foto; Nexo busca cada renglón en el catálogo
+  (como la factura, con lo recordado de ese proveedor) y se revisa antes de
+  guardar. Tablas nuevas `proveedor_listas` y `proveedor_precios` (aditivo).
+  No toca el costo de los productos (decidido por mí, §7): propone el costo
+  en la compra a ese proveedor y compara proveedores en la ficha del producto.
+- Proveedores pasó al grupo Compras del menú (de los dos roles, como antes).
+- Mercado Pago salió de "Tus tiendas": es un medio de cobro, no un canal.
+- Registrar cobro (Cuentas corrientes, Ventas): **Cobrar con QR** (menos
+  comisión) además del link, por el importe escrito o todo lo que debe.
+- 462 tests. **Falta:** probar el QR con el Mercado Pago real y la lista con un
+  PDF real de un proveedor. **`npm run regresion` está roto** (el login del
+  admin sembrado da 401 también en el commit anterior): arreglar el script.
+- **Pregunta del usuario contestada:** los anuncios se cargan como un gasto
+  (categoría Publicidad) y Venta online muestra cuánto rinden; una sección de
+  anuncios con Meta o Google Ads es §39 (fuera de alcance por ahora).
+
 
 **17 de noviembre, hist. §197: el QR que no se pagó ya no anula la venta.**
 "No pagó: cobrar de otra forma" cancela el QR en Mercado Pago y la misma venta
@@ -1469,6 +1489,51 @@ con su admin (adopta la organización sembrada).
 
 Las que no están en `CLAUDE.md` y que alguien podría "arreglar" sin saberlo:
 
+**Cajas y empleados (decidido por el usuario el 17 de noviembre; a construir)**
+- **La compu de la caja tiene su cuenta, no el empleado** (como Praxia). Esa
+  cuenta solo opera el mostrador de su caja: vender, cobrar, abrir y cerrar la
+  caja y fichar; no entra a Configuración, precios ni reportes.
+- **La caja no se abre con usuario y contraseña:** el dueño, en el local, entra
+  con su cuenta y toca "Usar esta compu como Caja 1"; la compu queda vinculada
+  (sesión de dispositivo) y se desvincula desde la cuenta del dueño. Así nadie
+  vende ni cambia nada desde su casa.
+- **Los empleados no tienen cuenta de Nexo:** son personas que carga el dueño
+  (nombre, PIN corto, sucursal, horario) y cambian todo el tiempo. En la caja
+  se identifican con el PIN para fichar entrada y salida y para quedar como
+  quien atendió cada venta y abrió o cerró la caja.
+- **Las cuentas personales siguen** para el dueño, un encargado o el contador.
+- Cambia lo de hist. §193–§196: el fichaje y "quiénes trabajan" pasan de las
+  cuentas a los empleados, y anular en el mostrador pide el PIN de un
+  encargado en vez de la contraseña del admin.
+- **Sumado el mismo día (idea de Gemini que trajo el usuario):** la caja queda
+  conectada pero bloqueada ("¿quién atiende?"); el empleado pone su PIN y vende
+  a su nombre, y un botón "bloquear" deja entrar a otro sin cerrar nada (relevo
+  del almuerzo). Cada venta, cobro y movimiento guarda sucursal, caja y
+  empleado. **Desbloquear no es fichar:** fichar entrada y salida es un botón
+  aparte, o el relevo ensucia los horarios.
+- **Biometría, después:** desde el navegador no se sabe de quién es la huella
+  (Windows Hello solo dice "alguien de esta compu"); un lector de fichaje
+  necesita un programa puente, y la cara o la huella son datos sensibles (Ley
+  25.326, consentimiento escrito). Para la presentación: PIN y, si da, foto al
+  fichar.
+- **Los dos modelos conviven, cada negocio usa el suyo:** local con mostrador
+  = cajas vinculadas y empleados con PIN; online o servicios = cuentas
+  personales con permisos por sección (punto 4); socios que son todos dueños =
+  varios administradores (ya existe). Propuesta: el **empleado** es la persona
+  del negocio y la **cuenta de Nexo es opcional** (el cajero sin cuenta, el
+  encargado con PIN y cuenta, en una tienda online todos con cuenta).
+- Orden: primero cajas vinculadas, empleados con PIN, relevo y fichaje en la
+  caja; después los permisos por sección.
+- **Para qué lo quiere el dueño (dicho por el usuario):** saber las horas de
+  cada empleado para administrar los pagos, que suelen ser fijos por turno:
+  hay que poder ver **si cumplió cada turno** (entró a horario, se quedó
+  completo, faltó). El informe de hist. §196 da horas, tardanzas y faltas por
+  día; falta mirarlo "por turno cumplido", pensado para pagar. Los sueldos y la
+  liquidación siguen fuera de §39: Nexo dice qué se cumplió, no cuánto pagar.
+- **Más adelante, no ahora (el usuario no sabe si sumarlo):** el empleado con
+  cuenta ve sus propias estadísticas (sus horas, sus turnos, lo que vendió),
+  para que esté "blanqueado" lo que sabe él y lo que sabe el dueño.
+
 **Multi-empresa y seguridad**
 - **Se entra con el mail, y es único en todo Nexo** (hist. §102, reemplaza al
   "usuario único" de §45). El login no pide empresa. El nombre de usuario
@@ -2133,8 +2198,9 @@ empleados**; después de presentar se puede mejorar mucho más. El orden es mío
    sección** de Praxia: para ver o para editar, y por sucursal (un contador,
    un socio, un encargado). Cambia el esquema: se planifica y se explica la
    migración antes de tocarlo (§27, §34).
-5. ~~**Horarios y fichaje de empleados**~~ (hecho, hist. §196; falta fichar
-   con ubicación o código del local). (De Praxia, pedido para la oficial el
+5. ~~**Horarios y fichaje de empleados**~~ (hecho, hist. §196). **Se rehace
+   sobre el modelo de cuenta por caja** (ver "Decisiones vigentes", Cajas y
+   empleados): es lo próximo, con el informe de turnos cumplidos para pagar. (De Praxia, pedido para la oficial el
    17 de noviembre): horario planificado, entrada y salida reales, llegadas
    tarde y horas, cruzado con los turnos de caja. El usuario lo sacó de §39
    (solo los horarios; los sueldos siguen afuera). Va después del 4: se apoya
@@ -2168,9 +2234,21 @@ para el tele y la captura del chat de WhatsApp de la 19.
 
 **Para más adelante (lista del usuario del 16 de noviembre, más lo que sumé
 yo).** Sin orden fijo; cada uno se planifica al arrancarlo:
-- Horarios del gimnasio con actividades, profesores y cupos, sobre la misma
-  base que los turnos (barbería, consultorios). Con los turnos y la factura se
-  abren los profesionales independientes (médicos, abogados, contadores).
+- **Grilla de clases del gimnasio** (idea del usuario, 17 de noviembre):
+  - una grilla semanal con todas las actividades, que pueden ser al mismo
+    tiempo (no una después de la otra);
+  - cada actividad es de horario libre (musculación: abierta todo el día) o de
+    horario fijo (funcional, crossfit: martes y jueves a las 19);
+  - a cada horario se le asignan uno o varios profes;
+  - la entrada del socio a una clase puede quedar anotada (cupos, quién vino),
+    pero no es como la caja: se diseña aparte, sobre el ingreso de socios que
+    ya existe (hist. §74, §144);
+  - extra: publicar o mandar la grilla (una página pública del gimnasio, una
+    imagen para Instagram o el estado de WhatsApp, o el link por mensaje).
+  Comparte base con los turnos de barbería y consultorios y con los horarios
+  de los empleados (hist. §196: los profes son personas del negocio). Con los
+  turnos y la factura se abren los profesionales independientes (médicos,
+  abogados, contadores).
 - Más rubros, cada uno con su módulo (restaurante: mesas y comandas).
 - Shopify y otros canales, con el molde de Tienda Nube y Mercado Libre (§32).
 - Página propia del negocio: primero "tu tienda en un link" (la 32), después
@@ -2187,8 +2265,9 @@ yo).** Sin orden fijo; cada uno se planifica al arrancarlo:
   atado a nada. Propuesta: la **sucursal** junta su depósito, sus cajas y su
   punto de venta de ARCA; cada persona se asigna a una o más sucursales con un
   **perfil** (dueño, encargado, cajero) y el dueño elige qué secciones ve cada
-  uno. **Una cuenta por persona, no por caja** (Praxia lo hace por caja): la
-  caja se elige al abrir el turno y así queda quién vendió, abrió y cerró. Con
+  uno. ~~Una cuenta por persona, no por caja~~ **Corregido por el usuario el
+  17 de noviembre: una cuenta por caja, como Praxia** (ver "Decisiones
+  vigentes", Cajas y empleados). Con
   esto, el **cierre del día y del mes** sumando todas las cajas y sucursales.
   Los cambios del dueño ya llegan al instante a las cajas (es una sola web).
   **Decidido por el usuario (16 de noviembre):** cada caja vende solo del
@@ -2216,6 +2295,15 @@ yo).** Sin orden fijo; cada uno se planifica al arrancarlo:
 - **Hoy fuera de alcance en CLAUDE.md §39:** sueldos y RRHH, contabilidad con
   balances y Meta Ads. Están en la lista del usuario para el futuro; al
   arrancar alguno, se saca de §39 con el equipo (como pasó con producción).
+
+**Para la oficial, la demo del mostrador con lector (17 de noviembre, para
+después):** conseguir un lector USB 2D (lee pantallas de celular) y preparar
+un negocio de demo a medida, con productos reales ya cargados y verificados
+(su código de barras del envase), un producto por kilo con PLU y la etiqueta
+de balanza de ejemplo `2000001012505` (PLU 1, 1,250 kg, formato 20 + PLU de 5
++ gramos de 5 + verificador). Probar el lector antes en la compu de la
+presentación (Bloc de notas: escribe el número y baja de renglón). Si no hay
+lector, la cámara del celular con Chrome en Android.
 
 **Para la oficial, lo que falta de §183:** completar la 33 (nombre, rubro y
 ciudad de cada negocio, en `docs/pitch/fuentes/index.html`, y confirmar con
