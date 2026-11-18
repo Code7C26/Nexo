@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { createHash, scryptSync, randomBytes, randomInt, timingSafeEqual } from 'node:crypto';
 import db, { withTransaction, registrarAuditoria, resembrarEtapasCrm, sembrarCatalogosBase, crearMediosDeCuenta } from './db/index.js';
-import { corregir, interpretar, InterpreteError, leerComprobante, transcribir, vozDisponible } from './interprete.js';
+import { corregir, interpretar, InterpreteError, leerComprobante, leerListaDePrecios, transcribir, vozDisponible } from './interprete.js';
 import { ayudaSeguraDelManual, respuestaDeAyuda as respuestaDeAyudaWhatsApp } from './ayuda-whatsapp.js';
 import { consultaParaWhatsApp, responderConsulta } from './consultas.js';
 import {
@@ -17,6 +17,7 @@ import {
   normalizarLectura,
   totalDelRenglon
 } from './factura-proveedor.js';
+import { RENGLONES_MAX as RENGLONES_LISTA_MAX, asociarRenglones, leerLista, normalizarLecturaDeLista } from './lista-proveedor.js';
 import { armarMensaje, esMailValido, mailConfigurado, mandarMail, MailError, plantillaMail } from './mail.js';
 import { ZONA_HORARIA, fechaDeHoy, fechaLocalDe, horaLocalDe, inicioDeHoyUTC, utcDeLocal } from './fecha.js';
 import { clavePublicaVapid, clavesVapidNuevas, direccionDePushValida, mandarAviso } from './webpush.js';
@@ -6971,6 +6972,8 @@ app.post('/api/proveedores/:id/unir', soloAdmin, (req, res) => {
             AND clave IN (SELECT clave FROM proveedor_articulos WHERE proveedor_id = ?)`
       ).run(otro.id, quedaId);
       db.prepare('UPDATE proveedor_articulos SET proveedor_id = ? WHERE proveedor_id = ?').run(quedaId, otro.id);
+      // Sus listas de precios pasan al que queda, con su fecha.
+      db.prepare('UPDATE proveedor_listas SET proveedor_id = ? WHERE proveedor_id = ?').run(quedaId, otro.id);
       db.prepare('DELETE FROM proveedores WHERE id = ?').run(otro.id);
     }
     if (cambios) {
@@ -11434,6 +11437,335 @@ app.post('/api/compras/leer-comprobante', soloAdmin, soloConAsistente, express.j
     items
   });
 }));
+
+/* ---------- La lista de precios del proveedor (18 de noviembre de 2026) ---------- */
+//
+// Lo que cobra cada proveedor por cada producto, cargado desde su mensaje, su
+// planilla, su PDF o una foto, o a mano (schema.sql, proveedor_listas). Leer
+// no guarda nada: devuelve los renglones ya buscados en el catálogo para que
+// la persona los revise, y lo que confirma se guarda como una lista con su
+// fecha. No toca el costo de los productos (CLAUDE.md §7): propone el costo al
+// cargar una compra a ese proveedor y deja comparar proveedores. Son costos:
+// todo es del admin (permisos.js).
+
+const ORIGENES_LISTA = ['mensaje', 'archivo', 'foto', 'a_mano'];
+const TEXTO_LISTA_MAX = 2_000_000;
+const PRECIO_LISTA_MAX = 1e10;
+
+function proveedorDeLaEmpresa(id, organizacionId) {
+  return db.prepare('SELECT id, nombre FROM proveedores WHERE id = ? AND organizacion_id = ?').get(Number(id), organizacionId);
+}
+
+// Lo que se puede encontrar en una lista: lo mismo que en una factura, más
+// cada producto con variantes entero (el proveedor suele dar un precio para
+// todos los talles).
+function catalogoParaLista(organizacionId) {
+  const catalogo = catalogoParaFactura(organizacionId);
+  const conVariantes = new Map();
+  for (const e of catalogo) {
+    if (e.variante_id && !conVariantes.has(e.producto_id)) {
+      conVariantes.set(e.producto_id, { ...e, variante_id: null, nombre: e.producto, sku: null, codigo_barras: null });
+    }
+  }
+  return [...catalogo, ...conVariantes.values()];
+}
+
+const claveDePrecio = (productoId, varianteId) => `${productoId}:${varianteId ?? ''}`;
+
+// Los precios de hoy de un proveedor: por producto (o variante), el de su
+// última lista (por fecha y, el mismo día, la última cargada), con el de la
+// lista anterior para ver cuánto cambió. Map clave → { precio, fecha, ... }.
+function preciosDelProveedor(proveedorId, organizacionId) {
+  const filas = db
+    .prepare(
+      `SELECT proveedor_precios.producto_id, proveedor_precios.variante_id, proveedor_precios.precio,
+              proveedor_precios.descripcion, proveedor_listas.fecha, proveedor_listas.id AS lista_id
+         FROM proveedor_precios
+         JOIN proveedor_listas ON proveedor_listas.id = proveedor_precios.lista_id
+        WHERE proveedor_listas.proveedor_id = ? AND proveedor_listas.organizacion_id = ?
+        ORDER BY proveedor_listas.fecha DESC, proveedor_listas.id DESC, proveedor_precios.id DESC`
+    )
+    .all(proveedorId, organizacionId);
+  const precios = new Map();
+  for (const f of filas) {
+    const clave = claveDePrecio(f.producto_id, f.variante_id);
+    const actual = precios.get(clave);
+    if (!actual) precios.set(clave, { ...f, anterior: null });
+    else if (!actual.anterior && f.lista_id !== actual.lista_id) actual.anterior = { precio: f.precio, fecha: f.fecha };
+  }
+  return precios;
+}
+
+// El nombre con que se muestra un producto o una variante de la lista.
+function nombreEnLista(nombre, varianteId) {
+  if (!varianteId) return nombre;
+  const valores = combinacionVariante(varianteId).replace(/[^/:]+:\s*/g, '').replace(/\s*\/\s*/g, ' ');
+  return valores ? `${nombre} ${valores}`.trim() : nombre;
+}
+
+app.get('/api/proveedores/:id/precios', soloAdmin, (req, res) => {
+  const organizacionId = req.usuario.organizacion_id;
+  const proveedor = proveedorDeLaEmpresa(req.params.id, organizacionId);
+  if (!proveedor) return res.status(404).json({ error: 'Proveedor no encontrado.' });
+  // El costo de hoy, el mismo que muestra Productos: con variantes, el
+  // promedio por stock; de una variante, el suyo.
+  const productos = new Map(
+    db
+      .prepare(
+        `SELECT productos.id, productos.nombre, productos.precio_costo, productos.activo,
+                COALESCE(stock_actual.cantidad, 0) AS stock_total, sv.stock_variantes, sv.valorizado_variantes
+           FROM productos
+           LEFT JOIN stock_actual ON stock_actual.producto_id = productos.id${JOIN_STOCK_VARIANTES}
+          WHERE productos.organizacion_id = ?`
+      )
+      .all(organizacionId)
+      .map(({ stock_variantes, valorizado_variantes, ...p }) => {
+        const valorizado = valorizadoProducto(p.precio_costo, p.stock_total, stock_variantes, valorizado_variantes);
+        return [p.id, { ...p, precio_costo: stock_variantes && p.stock_total > 0 ? valorizado / p.stock_total : p.precio_costo }];
+      })
+  );
+  const costoVariante = db.prepare('SELECT precio_costo FROM producto_variantes WHERE id = ?');
+  const precios = [...preciosDelProveedor(proveedor.id, organizacionId).values()]
+    .map((p) => {
+      const producto = productos.get(p.producto_id);
+      const costo = p.variante_id ? costoVariante.get(p.variante_id)?.precio_costo : producto?.precio_costo;
+      return {
+        producto_id: p.producto_id,
+        variante_id: p.variante_id,
+        nombre: nombreEnLista(producto?.nombre ?? '', p.variante_id),
+        activo: producto?.activo ?? 0,
+        descripcion: p.descripcion,
+        precio: p.precio,
+        fecha: p.fecha,
+        lista_id: p.lista_id,
+        anterior: p.anterior,
+        costo_actual: costo ?? null
+      };
+    })
+    .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'));
+  const listas = db
+    .prepare(
+      `SELECT proveedor_listas.id, proveedor_listas.fecha, proveedor_listas.origen, proveedor_listas.creado,
+              COALESCE(usuarios.nombre, usuarios.usuario) AS usuario,
+              (SELECT COUNT(*) FROM proveedor_precios WHERE proveedor_precios.lista_id = proveedor_listas.id) AS cantidad
+         FROM proveedor_listas
+         LEFT JOIN usuarios ON usuarios.id = proveedor_listas.usuario_id
+        WHERE proveedor_listas.proveedor_id = ? AND proveedor_listas.organizacion_id = ?
+        ORDER BY proveedor_listas.fecha DESC, proveedor_listas.id DESC`
+    )
+    .all(proveedor.id, organizacionId);
+  res.json({ precios, listas });
+});
+
+// Leer la lista: { texto } (el mensaje, la planilla pegada o el texto del
+// PDF, sin IA) o { imagenes } (una foto o un PDF escaneado, con la IA y el
+// mismo cupo que la factura). Devuelve cada renglón con el producto que se
+// le encontró (o ninguno) y el precio de la lista anterior de ese producto, y
+// el catálogo, para elegir a mano lo que no se encontró.
+app.post('/api/proveedores/:id/lista/leer', soloAdmin, express.json({ limit: '12mb' }), asincrono(async (req, res) => {
+  const organizacionId = req.usuario.organizacion_id;
+  const proveedor = proveedorDeLaEmpresa(req.params.id, organizacionId);
+  if (!proveedor) return res.status(404).json({ error: 'Proveedor no encontrado.' });
+
+  let lectura;
+  if (req.body?.imagenes !== undefined) {
+    const imagenes = req.body.imagenes;
+    if (!Array.isArray(imagenes) || !imagenes.length) return res.status(400).json({ error: 'No llegó ninguna imagen de la lista.' });
+    if (imagenes.length > PAGINAS_MAX) return res.status(400).json({ error: `Subí hasta ${PAGINAS_MAX} páginas por vez.` });
+    const error = validarImagenes(imagenes);
+    if (error) return res.status(400).json({ error });
+    // La foto la lee la IA, del plan Pro como la factura; el texto no.
+    if (!negocioConAsistente(organizacionId)) {
+      return res.status(403).json({ error: 'Leer una foto de la lista es del plan Pro. Pegá la lista como texto o subí el PDF.', codigo: 'limite_plan' });
+    }
+    // El cupo de la IA es el mismo que el de las facturas.
+    const ahora = Date.now();
+    const registro = lecturasPorUsuario.get(req.usuario.id);
+    if (!registro || ahora - registro.desde > REGISTROS_VENTANA_MS) {
+      lecturasPorUsuario.set(req.usuario.id, { cuenta: 1, desde: ahora });
+    } else if (++registro.cuenta > LECTURAS_MAX) {
+      return res.status(429).json({ error: 'Leíste muchas fotos en la última hora. Mientras tanto, pegá la lista como texto.' });
+    }
+    try {
+      lectura = normalizarLecturaDeLista(await leerListaDePrecios(imagenes.map(({ tipo, datos }) => ({ tipo, datos }))));
+    } catch (err) {
+      if (err instanceof InterpreteError) return res.status(err.status).json({ error: err.message });
+      throw err;
+    }
+  } else {
+    const texto = req.body?.texto;
+    if (typeof texto !== 'string' || !texto.trim()) return res.status(400).json({ error: 'Pegá el mensaje o la lista del proveedor.' });
+    if (texto.length > TEXTO_LISTA_MAX) return res.status(400).json({ error: 'La lista es demasiado larga. Cargala en partes.' });
+    lectura = { ...leerLista(texto), precios_sin_iva: null };
+  }
+  if (!lectura.renglones.length) {
+    return res.status(422).json({ error: 'No encontré precios en la lista. Cada renglón tiene que tener el producto y su precio.' });
+  }
+
+  const catalogo = catalogoParaLista(organizacionId);
+  const recordados = new Map(
+    db
+      .prepare('SELECT clave, producto_id, variante_id, unidades_por_bulto FROM proveedor_articulos WHERE proveedor_id = ? AND organizacion_id = ?')
+      .all(proveedor.id, organizacionId)
+      .map((r) => [r.clave, r])
+  );
+  const anteriores = preciosDelProveedor(proveedor.id, organizacionId);
+  const renglones = asociarRenglones(lectura.renglones, catalogo, recordados).map(({ entrada, ...r }) => {
+    const anterior = entrada ? anteriores.get(claveDePrecio(entrada.producto_id, entrada.variante_id)) : null;
+    return {
+      ...r,
+      producto: entrada ? { id: entrada.producto_id, variante_id: entrada.variante_id, nombre: entrada.nombre } : null,
+      anterior: anterior ? { precio: anterior.precio, fecha: anterior.fecha } : null
+    };
+  });
+  res.json({
+    renglones,
+    descartadas: lectura.descartadas,
+    precios_sin_iva: lectura.precios_sin_iva,
+    catalogo: catalogo.map((e) => ({
+      producto_id: e.producto_id,
+      variante_id: e.variante_id,
+      nombre: e.nombre,
+      alicuota: alicuotaNumerica(e.alicuota_iva)
+    })),
+    // Lo de hoy de cada producto, para mostrar cuánto cambió uno elegido a mano.
+    anteriores: [...anteriores.values()].map((p) => ({ producto_id: p.producto_id, variante_id: p.variante_id, precio: p.precio, fecha: p.fecha }))
+  });
+}));
+
+// Guardar la lista revisada: { fecha, origen, precios_sin_iva, renglones:
+// [{ producto_id, variante_id, precio, descripcion, clave, unidades_por_bulto }] }.
+// precio es el de una unidad con IVA, ya calculado en la pantalla. Lo que
+// trae clave se recuerda para ese proveedor, como la factura (hist. §151).
+app.post('/api/proveedores/:id/listas', soloAdmin, express.json({ limit: '4mb' }), (req, res) => {
+  const organizacionId = req.usuario.organizacion_id;
+  const proveedor = proveedorDeLaEmpresa(req.params.id, organizacionId);
+  if (!proveedor) return res.status(404).json({ error: 'Proveedor no encontrado.' });
+  const fecha = req.body?.fecha === undefined ? fechaDeHoy() : validarFecha(req.body.fecha);
+  if (!fecha) return res.status(400).json({ error: 'La fecha de la lista no es válida.' });
+  const origen = req.body?.origen ?? 'a_mano';
+  if (!ORIGENES_LISTA.includes(origen)) return res.status(400).json({ error: 'No se sabe de dónde salió la lista.' });
+  const renglones = req.body?.renglones;
+  if (!Array.isArray(renglones) || !renglones.length) return res.status(400).json({ error: 'La lista no tiene ningún producto con precio.' });
+  if (renglones.length > RENGLONES_LISTA_MAX) {
+    return res.status(400).json({ error: `Una lista puede tener hasta ${RENGLONES_LISTA_MAX} productos.` });
+  }
+
+  const producto = db.prepare('SELECT id FROM productos WHERE id = ? AND organizacion_id = ?');
+  const variante = db.prepare('SELECT id FROM producto_variantes WHERE id = ? AND producto_id = ?');
+  // Un mismo producto dos veces vale una: la última.
+  const porProducto = new Map();
+  for (const r of renglones) {
+    const productoId = Number(r?.producto_id);
+    const varianteId = r?.variante_id ? Number(r.variante_id) : null;
+    const precio = Number(r?.precio);
+    if (!producto.get(productoId, organizacionId)) return res.status(400).json({ error: 'Uno de los productos de la lista no existe.' });
+    if (varianteId && !variante.get(varianteId, productoId)) {
+      return res.status(400).json({ error: 'Una de las variantes de la lista no es de su producto.' });
+    }
+    if (r?.precio === null || r?.precio === '' || !esNumeroValido(precio) || precio < 0 || precio > PRECIO_LISTA_MAX) {
+      return res.status(400).json({ error: 'Cada precio tiene que ser un número mayor o igual a 0.' });
+    }
+    const descripcion = typeof r.descripcion === 'string' ? r.descripcion.trim().slice(0, 200) || null : null;
+    porProducto.set(claveDePrecio(productoId, varianteId), {
+      productoId,
+      varianteId,
+      precio: redondear2(precio),
+      descripcion,
+      articulo: descripcion ? renglonDeFactura({ clave: r.clave, descripcion, unidades_por_bulto: r.unidades_por_bulto ?? 1 }) : null
+    });
+  }
+
+  const DE_DONDE = { mensaje: 'desde un mensaje', archivo: 'desde un archivo', foto: 'desde una foto', a_mano: 'a mano' };
+  const listaId = withTransaction(() => {
+    const { lastInsertRowid } = db
+      .prepare(
+        `INSERT INTO proveedor_listas (organizacion_id, proveedor_id, fecha, origen, precios_sin_iva, usuario_id)
+         VALUES (?, ?, ?, ?, ?, ?)`
+      )
+      .run(organizacionId, proveedor.id, fecha, origen, req.body?.precios_sin_iva ? 1 : 0, req.usuario.id);
+    const insertar = db.prepare(
+      'INSERT INTO proveedor_precios (lista_id, producto_id, variante_id, descripcion, precio) VALUES (?, ?, ?, ?, ?)'
+    );
+    // Lo que el proveedor llama así es este producto, confirmado por la
+    // persona: la próxima lista (o factura) de ese proveedor lo encuentra.
+    const recordar = db.prepare(
+      `INSERT INTO proveedor_articulos (organizacion_id, proveedor_id, clave, descripcion, producto_id, variante_id, unidades_por_bulto)
+       VALUES (?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT (proveedor_id, clave) DO UPDATE SET
+         descripcion = excluded.descripcion, producto_id = excluded.producto_id, variante_id = excluded.variante_id,
+         unidades_por_bulto = excluded.unidades_por_bulto, actualizado = datetime('now')`
+    );
+    for (const r of porProducto.values()) {
+      insertar.run(lastInsertRowid, r.productoId, r.varianteId, r.descripcion, r.precio);
+      if (r.articulo) {
+        recordar.run(organizacionId, proveedor.id, r.articulo.clave, r.articulo.descripcion, r.productoId, r.varianteId, r.articulo.unidades_por_bulto);
+      }
+    }
+    const cuantos = `${porProducto.size} ${porProducto.size === 1 ? 'producto' : 'productos'}`;
+    auditar(req, {
+      accion: 'editar',
+      entidad: 'proveedor',
+      entidad_id: proveedor.id,
+      detalle: `Lista de precios de ${proveedor.nombre} del ${fechaLegible(fecha)}: ${cuantos}, ${DE_DONDE[origen]} (lista #${lastInsertRowid})`
+    });
+    return Number(lastInsertRowid);
+  });
+  res.status(201).json({ id: listaId, cantidad: porProducto.size });
+});
+
+// Borrar una lista cargada por error: sus precios dejan de valer y vuelve a
+// valer la anterior. Queda en la auditoría.
+app.delete('/api/proveedores/:id/listas/:listaId', soloAdmin, (req, res) => {
+  const organizacionId = req.usuario.organizacion_id;
+  const proveedor = proveedorDeLaEmpresa(req.params.id, organizacionId);
+  if (!proveedor) return res.status(404).json({ error: 'Proveedor no encontrado.' });
+  const lista = db
+    .prepare('SELECT id, fecha FROM proveedor_listas WHERE id = ? AND proveedor_id = ? AND organizacion_id = ?')
+    .get(Number(req.params.listaId), proveedor.id, organizacionId);
+  if (!lista) return res.status(404).json({ error: 'Esa lista no existe.' });
+  withTransaction(() => {
+    const borrados = Number(db.prepare('DELETE FROM proveedor_precios WHERE lista_id = ?').run(lista.id).changes);
+    db.prepare('DELETE FROM proveedor_listas WHERE id = ?').run(lista.id);
+    auditar(req, {
+      accion: 'anular',
+      entidad: 'proveedor',
+      entidad_id: proveedor.id,
+      detalle: `Borró la lista de precios de ${proveedor.nombre} del ${fechaLegible(lista.fecha)} (lista #${lista.id}, ${borrados} ${borrados === 1 ? 'precio' : 'precios'})`
+    });
+  });
+  res.json({ ok: true });
+});
+
+// Lo que cobra cada proveedor por un producto, del más barato al más caro:
+// el precio de la última lista de cada uno (y de cada variante).
+app.get('/api/productos/:id/precios-proveedores', soloAdmin, (req, res) => {
+  const organizacionId = req.usuario.organizacion_id;
+  const productoId = Number(req.params.id);
+  if (!db.prepare('SELECT 1 FROM productos WHERE id = ? AND organizacion_id = ?').get(productoId, organizacionId)) {
+    return res.status(404).json({ error: 'Producto no encontrado.' });
+  }
+  const filas = db
+    .prepare(
+      `SELECT proveedor_listas.proveedor_id, proveedores.nombre AS proveedor, proveedor_precios.variante_id,
+              proveedor_precios.precio, proveedor_listas.fecha
+         FROM proveedor_precios
+         JOIN proveedor_listas ON proveedor_listas.id = proveedor_precios.lista_id
+         JOIN proveedores ON proveedores.id = proveedor_listas.proveedor_id
+        WHERE proveedor_precios.producto_id = ? AND proveedor_listas.organizacion_id = ?
+        ORDER BY proveedor_listas.fecha DESC, proveedor_listas.id DESC, proveedor_precios.id DESC`
+    )
+    .all(productoId, organizacionId);
+  const vistos = new Set();
+  const precios = [];
+  for (const f of filas) {
+    const clave = `${f.proveedor_id}:${f.variante_id ?? ''}`;
+    if (vistos.has(clave)) continue;
+    vistos.add(clave);
+    precios.push({ ...f, variante: f.variante_id ? nombreEnLista('', f.variante_id) : null });
+  }
+  res.json(precios.sort((a, b) => a.precio - b.precio));
+});
 
 // Editar una compra existente, en cualquier estado (incluso ya recibida).
 // Se resuelve como revertir los efectos actuales (deuda si se había
@@ -18102,7 +18434,12 @@ app.get('/api/negocio', (req, res) => {
     plan: planDelNegocio(req.usuario.organizacion_id),
     planes: catalogoPlanes(),
     // Para ofrecer el link de pago al cobrar (hist. §130), en los dos roles.
-    mercado_pago: { conectado: mercadoPagoConectado(req.usuario.organizacion_id) },
+    // Con la caja del QR armada (hist. §147), "Registrar cobro" ofrece el QR,
+    // que cobra menos comisión que el link.
+    mercado_pago: {
+      conectado: mercadoPagoConectado(req.usuario.organizacion_id),
+      qr_caja: Boolean(cajaQr(integracionDelNegocio(req.usuario.organizacion_id, 'mercadopago')))
+    },
     // Desde qué casilla salen las facturas (hist. §187), en los dos roles.
     gmail: estadoGmail(req.usuario.organizacion_id)
   });
@@ -25142,18 +25479,23 @@ app.post('/api/ventas/:id/link-de-pago', asincrono(async (req, res) => {
   return linkDePago(req, res, { integracion, venta, saldo });
 }));
 
+// Lo que se cobra por el link o el QR: lo que falta, o menos si se pide un
+// importe (una seña, una parte de la deuda).
+function importePedido(req, saldo) {
+  const pedido = req.body?.importe;
+  if (pedido === undefined || pedido === null || pedido === '') return { importe: saldo };
+  const importe = redondear2(Number(pedido));
+  if (!esNumeroValido(Number(pedido)) || !(importe > 0)) return { error: 'El importe a cobrar tiene que ser un número mayor a 0.' };
+  if (importe > saldo) return { error: `El importe supera lo que falta cobrar ($${saldo}).` };
+  return { importe };
+}
+
 // El link de una venta ya validada: lo usan el link de "Registrar cobro" y el
 // QR del mostrador cuando no hay caja (o Mercado Pago no la deja usar).
 async function linkDePago(req, res, { integracion, venta, saldo }) {
   const organizacionId = req.usuario.organizacion_id;
-  let importe = saldo;
-  if (req.body?.importe !== undefined && req.body.importe !== null && req.body.importe !== '') {
-    importe = redondear2(Number(req.body.importe));
-    if (!esNumeroValido(Number(req.body.importe)) || !(importe > 0)) {
-      return res.status(400).json({ error: 'El importe del link tiene que ser un número mayor a 0.' });
-    }
-    if (importe > saldo) return res.status(400).json({ error: `El importe supera lo que falta cobrar ($${saldo}).` });
-  }
+  const { importe, error } = importePedido(req, saldo);
+  if (error) return res.status(400).json({ error });
   const negocio = db.prepare('SELECT nombre FROM organizaciones WHERE id = ?').get(organizacionId)?.nombre || 'Nexo';
   const email = db.prepare('SELECT email FROM clientes WHERE id = ?').get(venta.cliente_id)?.email;
   const base = urlPublica(req);
@@ -25259,9 +25601,10 @@ app.post('/api/integraciones/mercadopago/caja', soloAdmin, asincrono(async (req,
   res.json({ qr_caja: true });
 }));
 
-// El QR para cobrar una venta en el mostrador: el de la caja si se puede, si
-// no el del link. Devuelve { tipo: 'caja', qr, importe } o { url, importe }
-// (el del link).
+// El QR para cobrar una venta, en el mostrador o en "Registrar cobro" (lo que
+// se cobra de una cuenta corriente): el de la caja si se puede, si no el del
+// link. Va por lo que falta o por el importe pedido. Devuelve
+// { tipo: 'caja', qr, importe } o { url, importe } (el del link).
 app.post('/api/ventas/:id/qr', asincrono(async (req, res) => {
   const organizacionId = req.usuario.organizacion_id;
   if (!mercadoPagoConectado(organizacionId)) return res.status(409).json({ error: SIN_MERCADO_PAGO });
@@ -25271,10 +25614,12 @@ app.post('/api/ventas/:id/qr', asincrono(async (req, res) => {
   if (venta.estado === 'anulada') return res.status(400).json({ error: 'No se puede cobrar una venta anulada.' });
   const saldo = redondear2(venta.saldo);
   if (!(saldo > 0)) return res.status(400).json({ error: 'Esta venta ya está cobrada.' });
+  const pedido = importePedido(req, saldo);
+  if (pedido.error) return res.status(400).json({ error: pedido.error });
   const caja = cajaQr(integracion);
   if (caja) {
     const negocio = db.prepare('SELECT nombre FROM organizaciones WHERE id = ?').get(organizacionId).nombre;
-    const importe = saldo.toFixed(2);
+    const importe = pedido.importe.toFixed(2);
     try {
       const orden = await apiDeMercadoPago(integracion).crearOrden(
         {
@@ -25296,8 +25641,8 @@ app.post('/api/ventas/:id/qr', asincrono(async (req, res) => {
         const esperando = ventasEsperandoQr.get(venta.id);
         if (esperando) esperando.orden_id = orden.id;
         ordenesQr.set(venta.id, orden.id);
-        anotarIntegracion(integracion, 'pago', 'ok', `QR de la caja por $${saldo} para la venta #${venta.id}.`);
-        return res.json({ tipo: 'caja', qr, importe: saldo });
+        anotarIntegracion(integracion, 'pago', 'ok', `QR de la caja por $${pedido.importe} para la venta #${venta.id}.`);
+        return res.json({ tipo: 'caja', qr, importe: pedido.importe });
       }
       anotarIntegracion(integracion, 'pago', 'error', `Mercado Pago creó la orden de la venta #${venta.id} sin el QR: va el del link.`);
     } catch (err) {
@@ -25314,6 +25659,23 @@ app.post('/api/ventas/:id/qr', asincrono(async (req, res) => {
 // La orden del QR de la caja de cada venta, para preguntar si se pagó. En
 // memoria, como las ventas que esperan su QR: dura lo que dura la orden.
 const ordenesQr = new Map();
+
+// El cliente no pagó el QR de "Registrar cobro": se cancela la orden en
+// Mercado Pago, así el cartel de la caja no le cobra esta venta después. La
+// venta no se toca. Si ya se pagó, Mercado Pago no la cancela y el pago entra
+// con "Ya me pagó" o el aviso.
+app.post('/api/ventas/:id/qr/cancelar', asincrono(async (req, res) => {
+  const organizacionId = req.usuario.organizacion_id;
+  const venta = ventaParaCobrar(Number(req.params.id), organizacionId);
+  if (!venta) return res.status(404).json({ error: 'Venta no encontrada.' });
+  const ordenId = ordenesQr.get(venta.id);
+  const integracion = integracionDelNegocio(organizacionId, 'mercadopago');
+  if (ordenId && integracion) {
+    await apiDeMercadoPago(integracion).cancelarOrden(ordenId, randomBytes(16).toString('hex')).catch(() => {});
+    ordenesQr.delete(venta.id);
+  }
+  res.json({ ok: true });
+}));
 
 // Los pagos de la orden de una venta, ya cobrados en Nexo si se pagó. La
 // orden trae el número del pago en transactions.payments[].reference.id, y

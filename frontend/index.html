@@ -61,7 +61,7 @@
 
       <!-- Orden por dominio, no por cuándo se construyó cada pantalla:
            Resumen -> maestros (lo que hace falta cargado ANTES de operar)
-           -> embudo de venta -> embudo de compra -> Stock (consecuencia de
+           -> embudo de venta -> embudo de compra (con Proveedores) -> Stock (consecuencia de
            los dos embudos) -> Finanzas -> Administración (Papelera,
            Auditoría y Usuarios, siempre al final). Cada grupo es un
            .nav-seccion con su título; las que tienen solo pantallas de
@@ -87,9 +87,6 @@
           </a>
           <a href="#" class="nav-item" data-view="clientes">
             <svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#users"></use></svg> <span class="con-crm">CRM</span><span class="sin-crm">Clientes</span>
-          </a>
-          <a href="#" class="nav-item" data-view="proveedores">
-            <svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#truck"></use></svg> Proveedores
           </a>
         </div>
         <div class="nav-seccion">
@@ -134,12 +131,19 @@
             <svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#calendar-clock"></use></svg> Planes
           </a>
         </div>
-        <div class="nav-seccion nav-seccion-admin" data-modulo="compras">
+        <!-- Proveedores va con las compras (pedido del usuario, 18 de
+             noviembre): es de los dos roles y de todo negocio (a un proveedor
+             también se le anota un gasto), así que el módulo y el rol ocultan
+             solo las compras y sus devoluciones, no el grupo. -->
+        <div class="nav-seccion">
           <p class="nav-grupo">Compras</p>
-          <a href="#" class="nav-item" data-view="compras">
+          <a href="#" class="nav-item" data-view="compras" data-modulo="compras">
             <svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#shopping-bag"></use></svg> Compras
           </a>
-          <a href="#" class="nav-item" data-view="devoluciones-proveedor">
+          <a href="#" class="nav-item" data-view="proveedores">
+            <svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#truck"></use></svg> Proveedores
+          </a>
+          <a href="#" class="nav-item" data-view="devoluciones-proveedor" data-modulo="compras">
             <svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#package-minus"></use></svg> Dev. a proveedor
           </a>
         </div>
@@ -3034,6 +3038,15 @@
           </div>
         </section>
 
+        <!-- Cuánto le cobra cada proveedor, de sus listas de precios
+             (dominios/lista-proveedor.js). Solo el admin y solo si hay alguna. -->
+        <section class="panel col-admin" id="fichaProductoProveedoresPanel" aria-labelledby="fichaProductoProveedoresTitulo" hidden>
+          <div class="panel-head">
+            <h2 id="fichaProductoProveedoresTitulo">Lo que te cobran tus proveedores</h2>
+          </div>
+          <ul class="lista-prov-comparar" id="fichaProductoProveedores"></ul>
+        </section>
+
         <section class="panel" id="fichaProductoMovimientosPanel">
           <div class="panel-head">
             <h2>Movimientos de stock</h2>
@@ -3385,6 +3398,35 @@
           </div>
         </section>
 
+        <!-- La lista de precios del proveedor (18 de noviembre de 2026): la
+             pinta dominios/lista-proveedor.js. Son costos: solo el admin. -->
+        <section class="panel col-admin" aria-labelledby="fichaProvListaTitulo">
+          <div class="panel-head">
+            <h2 id="fichaProvListaTitulo">Lista de precios</h2>
+            <button type="button" class="btn btn-primary" id="btnFichaProvCargarLista"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#plus"></use></svg> Cargar lista</button>
+          </div>
+          <p class="form-note lista-prov-resumen" id="fichaProvListaResumen"></p>
+          <input type="search" class="search search-full" placeholder="Buscar un producto" id="fichaProvListaBuscar" aria-label="Buscar en la lista de precios" hidden />
+          <div class="tabla-scroll">
+          <table class="ledger-table">
+            <thead>
+              <tr>
+                <th scope="col">Producto</th>
+                <th scope="col" class="align-right">Precio</th>
+                <th scope="col">Cambio</th>
+                <th scope="col" class="align-right">Tu costo hoy</th>
+                <th scope="col">Desde</th>
+              </tr>
+            </thead>
+            <tbody id="fichaProvListaBody"></tbody>
+          </table>
+          </div>
+          <details class="lista-prov-historial" id="fichaProvListas" hidden>
+            <summary>Listas cargadas (<span id="fichaProvListasCuenta">0</span>)</summary>
+            <ul id="fichaProvListasLista"></ul>
+          </details>
+        </section>
+
         <section class="panel">
           <div class="panel-head">
             <h2>Historial de compras</h2>
@@ -3421,6 +3463,66 @@
             </thead>
             <tbody id="fichaProveedorPagos"></tbody>
           </table>
+          </div>
+        </section>
+      </section>
+
+      <!-- Vista: cargar la lista de precios de un proveedor (dominios/lista-proveedor.js).
+           Dos pasos en la misma página: de dónde sale la lista y revisar lo
+           que se encontró en el catálogo. -->
+      <section class="view" data-view="proveedor-lista" hidden>
+        <button type="button" class="btn-link" id="btnVolverListaProveedor"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#chevron-left"></use></svg> Volver a <span class="lista-prov-nombre"></span></button>
+
+        <section class="panel lista-prov-paso" id="listaPasoCargar" aria-labelledby="listaPasoCargarTitulo">
+          <div class="panel-head">
+            <h2 id="listaPasoCargarTitulo">La lista de precios de <span class="lista-prov-nombre"></span></h2>
+          </div>
+          <p class="form-note">Pegá el mensaje que te mandó o una planilla copiada de Excel, o subí el PDF o una foto. Nexo busca cada producto en tu catálogo, y vos revisás antes de guardar.</p>
+          <div class="segmentos" role="group" aria-label="De dónde sale la lista" id="listaProvModo">
+            <button type="button" class="segmento" data-modo="mensaje" aria-pressed="true">Pegar el mensaje</button>
+            <button type="button" class="segmento" data-modo="archivo" aria-pressed="false">Subir un archivo</button>
+          </div>
+          <form id="formListaProv" class="form">
+            <label id="listaProvTextoCampo">El mensaje o la planilla
+              <textarea name="texto" rows="10" class="lista-prov-texto" placeholder="Coca Cola 2,25 L x8 $21.600"></textarea>
+            </label>
+            <div class="lista-prov-archivo" id="listaProvArchivoCampo" hidden>
+              <button type="button" class="btn btn-secundario" id="btnListaProvArchivo"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#file-down"></use></svg> Elegir el archivo</button>
+              <p class="form-note" id="listaProvArchivoNombre"></p>
+              <input type="file" id="listaProvArchivo" accept="application/pdf,.csv,.txt,text/csv,text/plain,image/*" multiple hidden />
+            </div>
+            <div class="form-fila">
+              <label>Desde cuándo valen
+                <input type="date" name="fecha" required />
+              </label>
+              <label>Los precios son
+                <select name="iva">
+                  <option value="con">Con IVA</option>
+                  <option value="sin">Sin IVA (+ IVA)</option>
+                </select>
+              </label>
+            </div>
+            <button type="submit" class="btn btn-primary btn-full">Leer la lista</button>
+          </form>
+        </section>
+
+        <section class="panel lista-prov-paso" id="listaPasoRevisar" aria-labelledby="listaPasoRevisarTitulo" hidden>
+          <div class="panel-head">
+            <h2 id="listaPasoRevisarTitulo">Revisá antes de guardar</h2>
+            <button type="button" class="btn-link" id="btnListaProvOtra">Cargar otra</button>
+          </div>
+          <p class="form-note" id="listaProvResumen"></p>
+          <div class="segmentos" role="group" aria-label="Qué renglones ver" id="listaProvFiltro">
+            <button type="button" class="segmento" data-filtro="todos" aria-pressed="true">Con producto <span class="lista-prov-cuenta">0</span></button>
+            <button type="button" class="segmento" data-filtro="revisar" aria-pressed="false">Para revisar <span class="lista-prov-cuenta">0</span></button>
+            <button type="button" class="segmento" data-filtro="sin" aria-pressed="false">Sin producto <span class="lista-prov-cuenta">0</span></button>
+          </div>
+          <input type="search" class="search search-full" placeholder="Buscar en la lista" id="listaProvBuscar" aria-label="Buscar en la lista leída" />
+          <ul class="lista-prov-renglones form" id="listaProvRenglones"></ul>
+          <p class="form-note" id="listaProvMas" hidden></p>
+          <datalist id="listaProvCatalogo"></datalist>
+          <div class="lista-prov-pie">
+            <button type="button" class="btn btn-primary btn-full" id="btnListaProvGuardar">Guardar los precios</button>
           </div>
         </section>
       </section>
@@ -7477,13 +7579,25 @@
         </label>
         <button type="submit" class="btn btn-primary btn-full">Registrar cobro</button>
       </form>
-      <!-- El link de Mercado Pago (hist. §130): solo con la cuenta conectada.
-           Lo arma app.js. Va por el importe de arriba si se completó (una
-           seña), o por todo lo que falta. El mismo link da el QR. -->
+      <!-- Mercado Pago (hist. §130): solo con la cuenta conectada. Lo arma
+           app.js. Va por el importe de arriba si se completó (una seña, una
+           parte de la deuda), o por todo lo que falta. Con la caja del QR
+           armada (hist. §147), primero el QR, que cobra menos comisión; el
+           link es para mandarlo cuando el cliente no está. -->
       <div class="mp-link" id="cobroVentaMp" hidden>
         <p class="mp-link-titulo">¿Te paga con Mercado Pago?</p>
-        <p class="form-note">Creá un link de pago: se lo mandás por WhatsApp o, si está con vos, le mostrás el QR para que lo escanee. No hace falta que anotes nada: cuando paga, el cobro se registra solo en esta venta.</p>
-        <button type="button" class="btn btn-secundario btn-full" id="btnCobroMpLink"><svg class="ico ico-marca mp-emblema" aria-hidden="true" viewBox="0 0 150 104"><use href="/img/mercadopago.svg#emblema"></use></svg> Crear link de Mercado Pago</button>
+        <p class="form-note" id="cobroMpNota"></p>
+        <button type="button" class="btn btn-secundario btn-full" id="btnCobroMpQr"><svg class="ico ico-marca mp-emblema" aria-hidden="true" viewBox="0 0 150 104"><use href="/img/mercadopago.svg#emblema"></use></svg> Cobrar con QR</button>
+        <div class="mp-link-listo" id="cobroMpQrListo" hidden>
+          <img class="mp-link-qr" id="cobroMpQrCodigo" alt="Código QR para pagar con Mercado Pago" />
+          <p class="mp-link-importe" id="cobroMpQrImporte"></p>
+          <p class="pos-qr-estado" id="cobroMpQrEstado" aria-live="polite"><span class="pos-qr-punto" aria-hidden="true"></span> Esperando el pago…</p>
+          <div class="mp-link-acciones">
+            <button type="button" class="btn btn-secundario" id="btnCobroMpQrRevisar">Ya me pagó</button>
+            <button type="button" class="btn btn-secundario" id="btnCobroMpQrCancelar">No pagó</button>
+          </div>
+        </div>
+        <button type="button" class="btn btn-secundario btn-full" id="btnCobroMpLink"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#send"></use></svg> Mandar un link de pago</button>
         <div class="mp-link-listo" id="cobroMpListo" hidden>
           <img class="mp-link-qr" id="cobroMpQr" alt="Código QR del link de pago" hidden />
           <p class="mp-link-importe" id="cobroMpImporte"></p>

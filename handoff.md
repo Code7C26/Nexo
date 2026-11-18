@@ -11,7 +11,7 @@
 
 - Al cerrar una etapa, se hacen tres cosas:
   - su relato completo se agrega al final de `docs/proyecto/handoff-historico.md` con el
-    siguiente número (hoy el último es §197);
+    siguiente número (hoy el último es §198);
   - acá se actualizan "Estado actual" y "Qué sigue";
   - si cambió alguna decisión vigente, se actualiza también esa lista.
 - Nunca apilar secciones "Última etapa" en este archivo: así fue como llegó a
@@ -19,7 +19,27 @@
 - Lo que deja de ser cierto se corrige o se borra de acá. En el histórico no se
   reescribe nada.
 
-## Estado actual (17 de noviembre de 2026)
+## Estado actual (18 de noviembre de 2026)
+
+**18 de noviembre, hist. §198: la lista de precios del proveedor, Proveedores
+en Compras, Mercado Pago fuera de los canales y el QR al cobrar una deuda.**
+- En la ficha del proveedor, **Cargar lista**: el mensaje, una planilla
+  pegada, el PDF, un CSV o una foto; Nexo busca cada renglón en el catálogo
+  (como la factura, con lo recordado de ese proveedor) y se revisa antes de
+  guardar. Tablas nuevas `proveedor_listas` y `proveedor_precios` (aditivo).
+  No toca el costo de los productos (decidido por mí, §7): propone el costo
+  en la compra a ese proveedor y compara proveedores en la ficha del producto.
+- Proveedores pasó al grupo Compras del menú (de los dos roles, como antes).
+- Mercado Pago salió de "Tus tiendas": es un medio de cobro, no un canal.
+- Registrar cobro (Cuentas corrientes, Ventas): **Cobrar con QR** (menos
+  comisión) además del link, por el importe escrito o todo lo que debe.
+- 462 tests. **Falta:** probar el QR con el Mercado Pago real y la lista con un
+  PDF real de un proveedor. **`npm run regresion` está roto** (el login del
+  admin sembrado da 401 también en el commit anterior): arreglar el script.
+- **Pregunta del usuario contestada:** los anuncios se cargan como un gasto
+  (categoría Publicidad) y Venta online muestra cuánto rinden; una sección de
+  anuncios con Meta o Google Ads es §39 (fuera de alcance por ahora).
+
 
 **17 de noviembre, hist. §197: el QR que no se pagó ya no anula la venta.**
 "No pagó: cobrar de otra forma" cancela el QR en Mercado Pago y la misma venta

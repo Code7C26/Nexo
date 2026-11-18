@@ -608,6 +608,22 @@ test('el QR de la caja (hist. §147): se arma una vez con su cartel, cobra con u
   assert.equal((await empleado.post(`/api/pos/ventas/${otraVenta}/cancelar-qr`)).status, 200);
   assert.equal([...falso.ordenes.values()].at(-1).status, 'canceled');
 
+  // Desde "Registrar cobro" (lo que se debe en la cuenta corriente): el QR
+  // por una parte de lo que falta, y "No pagó" cancela la orden sin tocar la
+  // venta.
+  assert.equal((await empleado.get('/api/negocio')).json.mercado_pago.qr_caja, true);
+  const debe = await nuevaVenta(admin, 20000);
+  const parte = await empleado.post(`/api/ventas/${debe}/qr`, { importe: 5000 });
+  assert.equal(parte.status, 200, parte.texto);
+  assert.equal(parte.json.tipo, 'caja');
+  assert.equal(parte.json.importe, 5000);
+  assert.equal(enviados('POST', '/v1/orders').at(-1).datos.total_amount, '5000.00');
+  assert.equal((await empleado.post(`/api/ventas/${debe}/qr`, { importe: 25000 })).status, 400);
+  assert.equal((await empleado.post(`/api/ventas/${debe}/qr/cancelar`)).status, 200);
+  assert.equal([...falso.ordenes.values()].at(-1).status, 'canceled');
+  assert.equal((await empleado.get(`/api/ventas/${debe}`)).json.estado, 'activa');
+  assert.equal((await otro.post(`/api/ventas/${debe}/qr/cancelar`)).status, 404);
+
   // Si Mercado Pago no deja usar la API de Orders, cae al link sin frenar.
   falso.ordenesPermitidas = false;
   const conLink = await empleado.post(`/api/ventas/${await ventaQr()}/qr`);

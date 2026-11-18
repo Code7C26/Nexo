@@ -10680,3 +10680,121 @@ a.asistente-guia-whatsapp:hover { border-color: var(--line-strong); }
   .horario-dia { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .horario-dia > span { grid-column: 1 / -1; font-weight: 600; }
 }
+
+/* ---------- La lista de precios del proveedor (dominios/lista-proveedor.js) ----------
+   En la ficha del proveedor, lo de hoy con cuánto cambió; al cargar, un
+   renglón por tarjeta (lo que dice la lista arriba, el producto de Nexo y los
+   números abajo), que en el celular ocupa todo el ancho. Un precio que sube
+   es malo para el negocio: rojo; uno que baja, verde. */
+.lista-prov-resumen { margin: 0 0 var(--sp-3); }
+.lista-prov-como {
+  display: block;
+  font-size: var(--txt-xs);
+  font-weight: 400;
+  color: var(--ink-muted);
+  overflow-wrap: anywhere;
+}
+.lista-prov-cambio {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: var(--txt-xs);
+  color: var(--ink-muted);
+}
+.lista-prov-cambio .ico { width: 14px; height: 14px; }
+.lista-prov-cambio.sube { color: var(--accent-danger); }
+.lista-prov-cambio.baja { color: var(--accent-ok); }
+.lista-prov-cambiar { margin-left: var(--sp-2); font-size: var(--txt-xs); }
+.form.lista-prov-editar { flex-direction: row; gap: var(--sp-2); justify-content: flex-end; }
+.lista-prov-editar input { width: 110px; }
+.lista-prov-historial { margin-top: var(--sp-4); font-size: var(--txt-sm); }
+.lista-prov-historial[hidden] { display: none; }
+.lista-prov-historial summary { cursor: pointer; font-weight: 600; }
+.lista-prov-historial ul { list-style: none; margin: var(--sp-2) 0 0; padding: 0; }
+.lista-prov-historial li {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-2) 0;
+  border-top: 1px solid var(--line);
+  color: var(--ink-muted);
+}
+.lista-prov-historial li b { color: var(--ink); font-weight: 600; }
+
+.lista-prov-paso { display: flex; flex-direction: column; gap: var(--sp-3); }
+.lista-prov-paso[hidden] { display: none; }
+.lista-prov-paso > .form-note { margin: 0; }
+.lista-prov-texto { font-size: var(--txt-sm); min-height: 180px; }
+.lista-prov-archivo { display: flex; flex-direction: column; align-items: flex-start; gap: var(--sp-2); }
+.lista-prov-archivo[hidden] { display: none; }
+.lista-prov-archivo .form-note { margin: 0; overflow-wrap: anywhere; }
+.lista-prov-cuenta {
+  margin-left: 4px;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-muted);
+}
+
+.lista-prov-renglones { list-style: none; margin: 0; padding: 0; gap: var(--sp-2); }
+.lista-prov-renglon {
+  display: flex;
+  gap: var(--sp-3);
+  padding: var(--sp-3);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+}
+.lista-prov-renglon.es-fuera { background: var(--surface-sunk); }
+.lista-prov-renglon.es-fuera .lista-prov-numeros { opacity: 0.6; }
+.lista-prov-incluir { padding-top: 2px; }
+.lista-prov-incluir input { width: 18px; height: 18px; }
+.lista-prov-cuerpo { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: var(--sp-2); }
+.lista-prov-original {
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px var(--sp-2);
+  font-size: var(--txt-xs);
+  color: var(--ink-muted);
+  overflow-wrap: anywhere;
+}
+.lista-prov-original b { color: var(--ink); font-weight: 600; }
+.lista-prov-producto { width: 100%; }
+.lista-prov-numeros {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2) var(--sp-4);
+  font-size: var(--txt-sm);
+}
+.form .lista-prov-bulto { display: inline-flex; flex-direction: row; align-items: center; gap: 6px; }
+.lista-prov-bulto input { width: 64px; padding: 4px 6px; }
+.lista-prov-vacio { padding: var(--sp-4); text-align: center; color: var(--ink-muted); font-size: var(--txt-sm); }
+/* El botón de guardar queda a mano al bajar por una lista larga. */
+/* --abajo es la barra inferior del celular (0 en la compu). */
+.lista-prov-pie {
+  position: sticky;
+  bottom: var(--abajo, 0px);
+  padding: var(--sp-3) 0 0;
+  background: linear-gradient(to bottom, transparent, var(--surface) 30%);
+}
+
+.lista-prov-comparar { list-style: none; margin: 0; padding: 0; }
+.lista-prov-comparar li {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: var(--sp-3);
+  padding: var(--sp-2) 0;
+  border-top: 1px solid var(--line);
+}
+.lista-prov-comparar li:first-child { border-top: 0; }
+.lista-prov-comparar li.es-mejor .lista-prov-comparar-precio b { color: var(--accent-ok); }
+.lista-prov-comparar-precio { text-align: right; }
+
+@media (min-width: 760px) {
+  .lista-prov-producto { max-width: 420px; }
+  .lista-prov-pie { display: flex; justify-content: flex-end; }
+  .lista-prov-pie .btn-full { width: auto; }
+}

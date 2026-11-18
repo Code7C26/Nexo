@@ -186,7 +186,7 @@ export const SECCIONES_EN = {
         "Tap **Record payment**."
       ] },
       "The payment lowers what the customer owes and adds the money to that account in Cash.",
-      "If they pay with Mercado Pago, in the same payment tap **Create Mercado Pago link** and send it by WhatsApp, or show them the QR. When they pay, the payment is recorded on its own."
+      "If they pay with Mercado Pago, in the same payment tap **Charge with QR** if they are with you (Mercado Pago charges a lower fee for the QR), or **Send a payment link** to send it over WhatsApp. It goes for the amount you entered, or for everything they owe. When they pay, the payment is recorded on its own."
     ]
   },
   "anular-venta": {
@@ -388,6 +388,28 @@ export const SECCIONES_EN = {
     bloques: [
       "In **Suppliers › New supplier** you enter their name, CUIT, VAT status and contact. On their profile you see what you bought from them and what you owe them.",
       "If you return goods to them, it's done from **Supplier returns**: the stock goes down and it's deducted from what you owe them."
+    ]
+  },
+  "lista-proveedor": {
+    titulo: "A supplier's price list",
+    pantalla: "Suppliers",
+    preguntas: ["how do i load a supplier's price list", "the supplier sent me new prices", "how do i update a supplier's costs", "which supplier sells cheapest"],
+    palabras: ["list", "prices", "catalog", "supplier", "increase", "costs", "message", "pdf", "sheet", "compare"],
+    bloques: [
+      "When a supplier sends you their prices, you load them on their profile and Nexo matches them with your products.",
+      { pasos: [
+        "In **Suppliers**, open the supplier and tap **Load list**.",
+        "Paste the message they sent you (or a sheet copied from Excel), or upload the PDF, the CSV sheet or a photo. Choose from when they apply and whether the prices include VAT or not.",
+        "Review what it found: each line with its product, how many a pack contains and how much each one costs. What it didn't find you choose from your catalog, or leave out.",
+        "Tap **Save**."
+      ] },
+      { lista: [
+        "On the supplier's profile you see what they charge today for each product, how much it went up or down against the previous list, and your cost today.",
+        "When you enter a purchase from that supplier, each product's cost comes from their list. You can change it.",
+        "On each product's profile you see what each supplier charges you, from cheapest to most expensive.",
+        "That supplier's next list finds on its own what you already chose."
+      ] },
+      { nota: "The list doesn't change your products' cost: that comes from what you bought. A list loaded by mistake is deleted from **Loaded lists**, and the previous list's prices come back. Reading a photo is part of the Pro plan; the message, the sheet and the PDF are for everyone." }
     ]
   },
   stock: {
@@ -795,7 +817,8 @@ export const SECCIONES_EN = {
         "For the counter, enter the shop's address and tap **Set up the checkout**. Then **Download the sign to print** gives you the QR to stick on the counter."
       ] },
       { lista: [
-        "**Payment link**: when charging a sale, **Create Mercado Pago link**. You send it by WhatsApp or show them the QR.",
+        "**Payment link**: when charging a sale or a debt, **Send a payment link**. You send it by WhatsApp. Its fee is higher than the QR's.",
+        "**QR when charging a sale or a debt**: with the checkout set up, **Charge with QR** in **Record payment**. If they don't pay, **Didn't pay**.",
         "**Counter QR**: when charging, **Charge with a Mercado Pago QR**. The payment comes in when they pay."
       ] },
       "In **Is it worth offering installments?** you see what each plan costs you and how much to charge to keep the same.",

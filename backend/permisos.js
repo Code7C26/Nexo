@@ -142,6 +142,13 @@ export const RUTAS_PERMISOS = {
   'PATCH /api/proveedores/:id': 'ambos',
   // Mueve compras y cuenta corriente y borra al otro (hist. §176).
   'POST /api/proveedores/:id/unir': 'admin',
+  // La lista de precios del proveedor (18 de noviembre de 2026): son costos,
+  // como las compras.
+  'GET /api/proveedores/:id/precios': 'admin',
+  'POST /api/proveedores/:id/lista/leer': 'admin',
+  'POST /api/proveedores/:id/listas': 'admin',
+  'DELETE /api/proveedores/:id/listas/:listaId': 'admin',
+  'GET /api/productos/:id/precios-proveedores': 'admin',
   'GET /api/stock': 'ambos',
   'POST /api/stock/ajuste': 'admin',
   'GET /api/movimientos-stock': 'ambos',
@@ -238,6 +245,8 @@ export const RUTAS_PERMISOS = {
   // El QR de la venta: el de la caja o el del link (hist. §147). Armar la
   // caja en Mercado Pago es del admin.
   'POST /api/ventas/:id/qr': 'ambos',
+  // El QR de "Registrar cobro" que no se pagó: se cancela su orden.
+  'POST /api/ventas/:id/qr/cancelar': 'ambos',
   'POST /api/integraciones/mercadopago/caja': 'admin',
   // Las notificaciones de cada aparato (hist. §146): de cada persona.
   'GET /api/notificaciones': 'ambos',

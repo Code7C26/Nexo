@@ -362,7 +362,7 @@ const SECCIONES_ES = [
         "Tocá **Registrar cobro**."
       ] },
       "El cobro baja lo que debe el cliente y suma la plata a esa cuenta en Caja.",
-      "Si te paga con Mercado Pago, en el mismo cobro tocá **Crear link de Mercado Pago** y mandáselo por WhatsApp, o mostrale el QR. Cuando paga, el cobro se registra solo."
+      "Si te paga con Mercado Pago, en el mismo cobro tocá **Cobrar con QR** si está con vos (Mercado Pago cobra menos comisión por el QR), o **Mandar un link de pago** para mandárselo por WhatsApp. Va por el importe que pusiste, o por todo lo que debe. Cuando paga, el cobro se registra solo."
     ],
     ver: ["cuentas-corrientes", "caja", "mercado-pago"]
   },
@@ -464,7 +464,8 @@ const SECCIONES_ES = [
         "Para el mostrador, cargá la dirección del local y tocá **Armar la caja**. Después, **Descargar el cartel para imprimir** te da el QR para pegar en el mostrador."
       ] },
       { lista: [
-        "**Link de pago**: al cobrar una venta, **Crear link de Mercado Pago**. Se lo mandás por WhatsApp o le mostrás el QR.",
+        "**Link de pago**: al cobrar una venta o una deuda, **Mandar un link de pago**. Se lo mandás por WhatsApp. La comisión es más alta que la del QR.",
+        "**QR al cobrar una venta o una deuda**: con la caja armada, **Cobrar con QR** en **Registrar cobro**. Si no paga, **No pagó**.",
         "**QR en el mostrador**: al cobrar, **Cobrar con QR de Mercado Pago**. El cobro entra cuando paga."
       ] },
       "En **¿Te conviene ofrecer cuotas?** ves cuánto te cuesta cada plan y cuánto cobrar para que te quede lo mismo.",
@@ -801,7 +802,33 @@ const SECCIONES_ES = [
       "En **Proveedores › Nuevo proveedor** cargás su nombre, CUIT, condición frente al IVA y contacto. En su ficha ves lo que le compraste y lo que le debés.",
       "Si le devolvés mercadería, se hace desde **Dev. a proveedor**: el stock baja y se descuenta de lo que le debés."
     ],
-    ver: ["registrar-compra", "pagar-proveedor", "unir-repetidos"]
+    ver: ["registrar-compra", "pagar-proveedor", "unir-repetidos", "lista-proveedor"]
+  },
+  {
+    id: "lista-proveedor",
+    grupo: "Comprar y stock",
+    titulo: "La lista de precios de un proveedor",
+    pantalla: ["#/proveedores", "Proveedores"],
+    admin: true,
+    preguntas: ["cómo cargo la lista de precios de un proveedor", "el proveedor me mandó los precios nuevos", "cómo actualizo los costos de un proveedor", "qué proveedor me vende más barato"],
+    palabras: ["lista", "precios", "catalogo", "proveedor", "aumento", "costos", "mensaje", "pdf", "planilla", "comparar"],
+    bloques: [
+      "Cuando un proveedor te manda sus precios, los cargás en su ficha y Nexo los cruza con tus productos.",
+      { pasos: [
+        "En **Proveedores**, abrí el proveedor y tocá **Cargar lista**.",
+        "Pegá el mensaje que te mandó (o una planilla copiada de Excel), o subí el PDF, la planilla en CSV o una foto. Elegí desde cuándo valen y si los precios son con IVA o sin IVA.",
+        "Revisá lo que encontró: cada renglón con su producto, cuántas trae si es un pack y cuánto sale cada una. Lo que no encontró lo elegís de tu catálogo, o lo dejás afuera.",
+        "Tocá **Guardar**."
+      ] },
+      { lista: [
+        "En la ficha del proveedor ves lo que cobra hoy por cada producto, cuánto subió o bajó contra la lista anterior y tu costo de hoy.",
+        "Al cargarle una compra a ese proveedor, el costo de cada producto sale de su lista. Lo podés cambiar.",
+        "En la ficha de cada producto ves lo que te cobra cada proveedor, del más barato al más caro.",
+        "La próxima lista de ese proveedor encuentra sola lo que ya elegiste."
+      ] },
+      { nota: "La lista no cambia el costo de tus productos: ese sale de lo que compraste. Una lista cargada por error se borra desde **Listas cargadas**, y vuelven los precios de la anterior. Leer una foto es del plan Pro; el mensaje, la planilla y el PDF, de todos." }
+    ],
+    ver: ["proveedores", "registrar-compra"]
   },
   {
     id: "stock",

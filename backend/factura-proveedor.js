@@ -130,7 +130,7 @@ const UNIDADES = {
 };
 const VACIAS = new Set(['de', 'del', 'la', 'el', 'los', 'las', 'con', 'sin', 'y', 'en', 'por', 'x', 'u', 'un', 'uni', 'unid', 'unidades']);
 
-function palabras(s) {
+export function palabras(s) {
   return normalizarTexto(quitarBulto(normalizarTexto(s)))
     .split(' ')
     .map((p) => UNIDADES[p] ?? p)

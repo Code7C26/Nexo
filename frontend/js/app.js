@@ -92,6 +92,7 @@ import "./dominios/cierre.js";
 import "./dominios/horarios.js";
 import "./dominios/ofertas.js";
 import "./dominios/venta-online.js";
+import "./dominios/lista-proveedor.js";
 import { htmlCapacidades, respuestaDeAyuda, respuestaDeCharla, respuestaDeConsulta, respuestaDeNavegar } from "./dominios/ayuda.js";
 import { buscarEnManual, clasificarFrase, PUNTAJE_SEGURO } from "./core/buscar-ayuda.js";
 import "./core/barra-inferior.js";
@@ -1965,6 +1966,50 @@ function agregarFilaItemVenta(contenedor, listaProductos, limitarStock = true) {
   contenedor.appendChild(fila);
 }
 
+// El costo de la lista de precios del proveedor (dominios/lista-proveedor.js):
+// al elegir un producto en una compra a un proveedor con lista, se propone su
+// precio por unidad. Solo en un costo vacío o que había puesto la lista, nunca
+// sobre uno escrito a mano.
+let costosDeLista = new Map();
+let costosDeListaDe = null;
+
+async function cargarCostosDeLista(nombreProveedor) {
+  const proveedor = proveedores.find((p) => p.nombre.trim().toLowerCase() === (nombreProveedor || "").trim().toLowerCase());
+  if ((proveedor?.id ?? null) === costosDeListaDe) return;
+  costosDeListaDe = proveedor?.id ?? null;
+  costosDeLista = proveedor ? await invocar("lista-proveedor:precios", proveedor.id) : new Map();
+  for (const fila of compraItemsEl.querySelectorAll(".item-row")) proponerCostoDeLista(fila);
+  actualizarTotalCompra();
+}
+
+function proponerCostoDeLista(fila) {
+  // Solo en el formulario de compra: el del asistente tiene su proveedor.
+  if (!compraItemsEl.contains(fila)) return;
+  const precio = fila.querySelector(".item-precio");
+  if (!precio || (precio.value !== "" && !fila.dataset.costoDeLista)) return;
+  const productoId = fila.querySelector(".item-producto-id")?.value;
+  const varianteSelect = fila.querySelector(".item-variante-id");
+  const varianteId = varianteSelect && !varianteSelect.hidden ? varianteSelect.value : "";
+  // El de la variante, o el del producto (el mismo para todas).
+  const deLista = productoId ? costosDeLista.get(`${productoId}:${varianteId}`) ?? costosDeLista.get(`${productoId}:`) : null;
+  if (!deLista) {
+    if (fila.dataset.costoDeLista) {
+      precio.value = "";
+      soltarCostoDeLista(fila);
+    }
+    return;
+  }
+  precio.value = deLista.precio;
+  precio.title = `De la lista del proveedor del ${fechaAR(deLista.fecha)}`;
+  fila.dataset.costoDeLista = "1";
+  actualizarSubtotalFila(fila);
+}
+
+function soltarCostoDeLista(fila) {
+  delete fila.dataset.costoDeLista;
+  fila.querySelector(".item-precio")?.removeAttribute("title");
+}
+
 function agregarFilaItemCompra(contenedor, listaProductos) {
   const fila = document.createElement("div");
   fila.className = "item-row";
@@ -2007,15 +2052,19 @@ function agregarFilaItemCompra(contenedor, listaProductos) {
       varianteSelect.hidden = true;
       varianteSelect.value = "";
     }
+    proponerCostoDeLista(fila);
     contenedor.dispatchEvent(new Event("item-change"));
   });
 
   varianteSelect.addEventListener("change", () => {
+    proponerCostoDeLista(fila);
     contenedor.dispatchEvent(new Event("item-change"));
   });
 
   fila.querySelectorAll(".item-cantidad, .item-precio").forEach((input) => {
     input.addEventListener("input", () => {
+      // El costo escrito a mano ya no es el de la lista: no se repropone.
+      if (input.classList.contains("item-precio")) soltarCostoDeLista(fila);
       actualizarSubtotalFila(fila);
       contenedor.dispatchEvent(new Event("item-change"));
     });
@@ -2501,6 +2550,9 @@ async function abrirFichaProducto(id) {
           .join("");
 
   mostrarVista("producto-detalle", { titulo: producto.nombre });
+  // Cuánto le cobra cada proveedor (dominios/lista-proveedor.js).
+  if (esAdmin() && !esServicio) invocar("lista-proveedor:en-producto", id, producto.precio_costo);
+  else document.getElementById("fichaProductoProveedoresPanel").hidden = true;
 }
 
 async function cargarProductos() {
@@ -5321,23 +5373,134 @@ function medioParaEnviar(form) {
   };
 }
 
-/* --- El link de Mercado Pago (hist. §130) --- */
+/* --- Mercado Pago: el QR y el link (hist. §130, §147) --- */
 
-// Con la cuenta conectada, "Registrar cobro" ofrece además mandarle al
-// cliente un link de pago. El cobro no se registra acá: entra solo cuando
-// paga (o con "Ya me pagó", si el aviso no llegó).
+// Con la cuenta conectada, "Registrar cobro" ofrece cobrar con Mercado Pago:
+// el QR de la caja si está armada (Mercado Pago cobra mucho menos por él que
+// por el link) y el link, para mandárselo al que no está. Mercado Pago es un
+// medio de cobro, no un canal: sirve igual para lo que se debe en la cuenta
+// corriente. El cobro no se registra acá: entra solo cuando paga (o con "Ya
+// me pagó", si el aviso no llegó).
 const cobroMp = document.getElementById("cobroVentaMp");
 const cobroMpListo = document.getElementById("cobroMpListo");
 const btnCobroMpLink = document.getElementById("btnCobroMpLink");
+const btnCobroMpQr = document.getElementById("btnCobroMpQr");
+const cobroMpQrListo = document.getElementById("cobroMpQrListo");
+const SEGUNDOS_SONDEO_QR_COBRO = 3;
+const SONDEOS_POR_PREGUNTA_COBRO = 5;
+// El QR en pantalla: { ventaId, cobradoAntes, importe, vueltas, sondeo }.
+let qrCobro = null;
 
 function prepararLinkMercadoPago(saldo) {
+  soltarQrCobro();
+  const conCaja = Boolean(negocio.mercado_pago?.qr_caja);
   cobroMp.hidden = !(negocio.mercado_pago?.conectado && saldo > 0);
+  btnCobroMpQr.hidden = !conCaja;
+  cobroMpQrListo.hidden = true;
   cobroMpListo.hidden = true;
   btnCobroMpLink.hidden = false;
+  document.getElementById("cobroMpNota").textContent = conCaja
+    ? "Si está con vos, mostrale el QR: Mercado Pago cobra menos comisión por él. El link es para mandárselo por WhatsApp, y la comisión es más alta. Cuando paga, el cobro se registra solo."
+    : "Mandale un link de pago por WhatsApp o mostrale su QR. Cuando paga, el cobro se registra solo. Para cobrar con el QR de la caja, con menos comisión, armala en Configuración → Mercado Pago.";
 }
 
+const importeDelCobro = () => parseFloat(document.querySelector('#formCobrarVenta input[name="importe"]').value);
+
+// Entró el pago (del QR o del link): se cierra y se refresca lo que lo muestra.
+async function cobroMpEntro(cobrados) {
+  await refrescar([cargarVentas(), cargarCaja(), cargarClientes(), recargar("cuentasCorrientes")]);
+  modalCobrarVenta.hidden = true;
+  avisar(cobrados === 1 ? "Entró el pago de Mercado Pago." : `Entraron ${cobrados} pagos de Mercado Pago.`, "ok");
+  document.dispatchEvent(new CustomEvent("cobro-registrado", { detail: { ventaId: ventaACobrarId } }));
+}
+
+btnCobroMpQr.addEventListener("click", async () => {
+  const importe = importeDelCobro();
+  const ventaId = ventaACobrarId;
+  btnCobroMpQr.disabled = true;
+  let antes;
+  let qr;
+  try {
+    antes = await api(`/api/ventas/${ventaId}`, { error: "No se pudo cargar la venta." });
+    qr = await api(`/api/ventas/${ventaId}/qr`, {
+      method: "POST",
+      body: importe > 0 ? { importe } : {},
+      error: "No se pudo crear el QR de Mercado Pago."
+    });
+  } finally {
+    btnCobroMpQr.disabled = false;
+  }
+  const imagen = document.getElementById("cobroMpQrCodigo");
+  try {
+    await cargarQr();
+    const codigo = window.qrcode(0, "M");
+    codigo.addData(qr.qr ?? qr.url);
+    codigo.make();
+    imagen.src = codigo.createDataURL(4, 0);
+  } catch {
+    imagen.removeAttribute("src");
+  }
+  document.getElementById("cobroMpQrImporte").textContent = `QR por ${money(qr.importe)}`;
+  document.getElementById("cobroMpQrEstado").lastChild.textContent = " Esperando el pago…";
+  btnCobroMpQr.hidden = true;
+  cobroMpQrListo.hidden = false;
+  qrCobro = { ventaId, cobradoAntes: antes.cobrado, importe: qr.importe, caja: qr.tipo === "caja", vueltas: 0 };
+  qrCobro.sondeo = setInterval(() => revisarQrCobro(), SEGUNDOS_SONDEO_QR_COBRO * 1000);
+});
+
+// Sin api(): mientras espera no tiene que llenar la pantalla de avisos.
+async function revisarQrCobro({ preguntar = false } = {}) {
+  const actual = qrCobro;
+  if (!actual) return false;
+  actual.vueltas += 1;
+  if (preguntar || actual.vueltas % SONDEOS_POR_PREGUNTA_COBRO === 0) {
+    await fetch(`/api/ventas/${actual.ventaId}/revisar-pagos`, { method: "POST" }).catch(() => {});
+  }
+  const venta = await fetch(`/api/ventas/${actual.ventaId}`)
+    .then((r) => (r.ok ? r.json() : null))
+    .catch(() => null);
+  if (!venta || qrCobro !== actual || venta.cobrado < actual.cobradoAntes + actual.importe - 0.005) return false;
+  clearInterval(actual.sondeo);
+  qrCobro = null;
+  await cobroMpEntro(1);
+  return true;
+}
+
+// Se deja de esperar: al cerrar, al cobrar de otra forma o con "No pagó". La
+// orden del QR de la caja se cancela, así el cartel no la cobra después.
+function soltarQrCobro() {
+  const actual = qrCobro;
+  if (!actual) return;
+  clearInterval(actual.sondeo);
+  qrCobro = null;
+  if (actual.caja) fetch(`/api/ventas/${actual.ventaId}/qr/cancelar`, { method: "POST" }).catch(() => {});
+}
+
+document.getElementById("btnCobroMpQrRevisar").addEventListener("click", async (e) => {
+  const boton = e.currentTarget;
+  boton.disabled = true;
+  let pago;
+  try {
+    pago = await revisarQrCobro({ preguntar: true });
+  } finally {
+    boton.disabled = false;
+  }
+  if (!pago && qrCobro) avisar("Todavía no llegó el pago. Si en el celular del cliente dice aprobado, esperá unos segundos.", "atencion");
+});
+
+document.getElementById("btnCobroMpQrCancelar").addEventListener("click", () => {
+  soltarQrCobro();
+  cobroMpQrListo.hidden = true;
+  btnCobroMpQr.hidden = false;
+});
+
+// Cerrar el cobro por cualquier lado suelta el QR que esperaba.
+new MutationObserver(() => {
+  if (modalCobrarVenta.hidden) soltarQrCobro();
+}).observe(modalCobrarVenta, { attributes: true, attributeFilter: ["hidden"] });
+
 btnCobroMpLink.addEventListener("click", async () => {
-  const importe = parseFloat(document.querySelector('#formCobrarVenta input[name="importe"]').value);
+  const importe = importeDelCobro();
   btnCobroMpLink.disabled = true;
   let link;
   try {
@@ -5354,17 +5517,21 @@ btnCobroMpLink.addEventListener("click", async () => {
   document.getElementById("btnCobroMpWhatsapp").href = `https://wa.me/?text=${encodeURIComponent(
     `Te paso el link para pagar ${money(link.importe)} con Mercado Pago: ${link.url}`
   )}`;
-  // El QR, para que lo escanee desde el celular si está enfrente.
+  // El QR del link, para que lo escanee si está enfrente. Con la caja armada
+  // no se muestra: para eso está el QR de arriba, que cobra menos.
   const qr = document.getElementById("cobroMpQr");
-  try {
-    await cargarQr();
-    const codigo = window.qrcode(0, "M");
-    codigo.addData(link.url);
-    codigo.make();
-    qr.src = codigo.createDataURL(4, 0);
-    qr.hidden = false;
-  } catch {
-    qr.hidden = true;
+  qr.hidden = true;
+  if (!negocio.mercado_pago?.qr_caja) {
+    try {
+      await cargarQr();
+      const codigo = window.qrcode(0, "M");
+      codigo.addData(link.url);
+      codigo.make();
+      qr.src = codigo.createDataURL(4, 0);
+      qr.hidden = false;
+    } catch {
+      qr.hidden = true;
+    }
   }
   btnCobroMpLink.hidden = true;
   cobroMpListo.hidden = false;
@@ -5391,10 +5558,7 @@ document.getElementById("btnCobroMpRevisar").addEventListener("click", async (e)
     boton.disabled = false;
   }
   if (r.cobrados > 0) {
-    await refrescar([cargarVentas(), cargarCaja(), cargarClientes(), recargar("cuentasCorrientes")]);
-    modalCobrarVenta.hidden = true;
-    avisar(r.cobrados === 1 ? "Entró el pago de Mercado Pago." : `Entraron ${r.cobrados} pagos de Mercado Pago.`, "ok");
-    document.dispatchEvent(new CustomEvent("cobro-registrado", { detail: { ventaId: ventaACobrarId } }));
+    await cobroMpEntro(r.cobrados);
   } else if (r.sin_asignar > 0) {
     avisar("Llegó un pago que no se pudo cobrar solo. Miralo en Configuración → Mercado Pago.", "atencion");
   } else {
@@ -6239,6 +6403,9 @@ async function abrirModalCompra(compra = null) {
   } else {
     agregarFilaItemCompra(compraItemsEl, productos);
   }
+  costosDeListaDe = null;
+  costosDeLista = new Map();
+  cargarCostosDeLista(form.proveedor.value);
   actualizarTotalCompra();
   modalCompra.hidden = false;
 }
@@ -6341,6 +6508,7 @@ document.getElementById("formCompra").proveedor.addEventListener("change", (e) =
     sincronizarVencimiento("compraCondicionPago", "compraVencimientoWrap");
   }
   if (!compraLetraTocada) proponerLetraCompra(e.target.value);
+  cargarCostosDeLista(e.target.value);
 });
 document.getElementById("compraLetra").addEventListener("change", () => {
   compraLetraTocada = true;
@@ -7459,6 +7627,8 @@ async function abrirFichaProveedor(id) {
           .join("");
 
   mostrarVista("proveedor-detalle", { titulo: proveedor.nombre });
+  // Su lista de precios (dominios/lista-proveedor.js): son costos, del admin.
+  if (esAdmin()) invocar("lista-proveedor:pintar", proveedor);
 }
 
 const modalProveedor = document.getElementById("modalProveedor");
