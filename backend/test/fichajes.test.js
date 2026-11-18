@@ -1,6 +1,8 @@
 // Horarios y fichaje (hist. §196): cada persona ficha su entrada y su salida,
 // el admin carga el horario por día de la semana, corrige un fichaje olvidado
-// y ve el informe con horas, llegadas tarde, faltas y turnos de caja.
+// y ve el informe con horas, llegadas tarde, faltas y turnos de caja. Desde
+// hist. §199 son de los empleados: la cajera es un empleado con su cuenta, y
+// el repositor uno sin cuenta (fichará en la caja vinculada).
 import test, { before, after } from 'node:test';
 import assert from 'node:assert/strict';
 
@@ -19,10 +21,12 @@ before(async () => {
   servidor = await levantarServidor();
   admin = await registrarEmpresa(servidor, { empresa: 'Almacén Horarios', usuario: 'almacenhorarios' });
   empleado = await crearEmpleado(servidor, admin, { usuario: 'cajerahorarios', nombre: 'Cajera' });
-  await crearEmpleado(servidor, admin, { usuario: 'repositor', nombre: 'Repositor' });
   const usuarios = (await admin.get('/api/usuarios')).json;
-  empleadoId = usuarios.find((u) => u.nombre === 'Cajera').id;
-  otroId = usuarios.find((u) => u.nombre === 'Repositor').id;
+  const cuenta = usuarios.find((u) => u.nombre === 'Cajera').id;
+  const cajera = await admin.post('/api/empleados', { nombre: 'Cajera', usuario_id: cuenta });
+  assert.equal(cajera.status, 201, cajera.texto);
+  empleadoId = cajera.json.id;
+  otroId = (await admin.post('/api/empleados', { nombre: 'Repositor' })).json.id;
 });
 
 after(async () => {
@@ -89,8 +93,16 @@ test('el admin corrige el fichaje y el informe cuenta horas, llegadas tarde y fa
   assert.equal(cajera.minutos_tarde, 29);
   assert.equal(cajera.faltas, 0);
   assert.equal(cajera.dias[0].fichajes[0].corregido, true);
+  // Por turno (hist. §199): la primera franja la empezó tarde y de la segunda
+  // se fue antes.
+  assert.deepEqual(cajera.dias[0].turnos.map((t) => t.estado), ['incompleto', 'incompleto']);
+  assert.equal(cajera.turnos.cumplidos, 0);
+  assert.equal(cajera.turnos.incompletos, 2);
   const repositor = informe.json.personas.find((p) => p.id === otroId);
   assert.equal(repositor.faltas, 1, 'tenía horario hoy y no fichó');
+  assert.equal(repositor.turnos.faltados, 1);
+  // Fichar desde la cuenta no duplica al empleado que ya era esa cuenta.
+  assert.equal((await admin.get('/api/empleados')).json.filter((e) => e.nombre.startsWith('Cajera')).length, 1);
   // Un período al revés o muy largo, no.
   assert.equal((await admin.get('/api/fichajes/informe?desde=2026-02-01&hasta=2026-01-01')).status, 400);
   assert.equal((await admin.get('/api/fichajes/informe?desde=2026-01-01&hasta=2026-06-01')).status, 400);

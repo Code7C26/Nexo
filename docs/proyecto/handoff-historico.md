@@ -14769,3 +14769,108 @@ Pedidos del usuario, de una sola vez:
 - **`npm run regresion` no anda**: el login del admin sembrado da 401, también
   corriéndolo desde el commit anterior sin estos cambios. Es del script, no de
   esta etapa; queda para arreglar.
+
+## §199 — 18 de noviembre de 2026: la compu de la caja, los empleados con PIN y los turnos cumplidos
+
+Punto 5 del plan, rehecho sobre la decisión del usuario del 17 de noviembre
+("una cuenta por caja, como Praxia"; ver "Decisiones vigentes" en
+`handoff.md`).
+
+- **Esquema.** Lo nuevo es todo aditivo, salvo dos tablas que se rearman:
+  - Tabla nueva `empleados`: nombre, PIN con scrypt como las contraseñas,
+    `usuario_id` (la cuenta, opcional), `sucursal_id`, `encargado` y
+    `activo`. Un nombre activo no se repite en el negocio, y una cuenta es
+    un solo empleado.
+  - `horarios` y `fichajes` pasan de `usuario_id` a `empleado_id`. Se
+    rearman en `db/index.js`, y cada cuenta que tenía horario o fichajes pasa
+    a ser un empleado vinculado a ella, con los mismos id de fila. Lo prueba
+    `test/empleados-migracion.test.js`.
+  - Columnas nuevas: `usuarios.caja_id` (la cuenta de la caja),
+    `sesiones.empleado_id` (quién atiende), `auditoria.empleado_id`,
+    `ventas.empleado_id`, `cobros.empleado_id`, y en `turnos_caja`,
+    `abierto_empleado_id` y `cerrado_empleado_id`.
+  - `npm run verificar-migracion`: 24 de 24 casos.
+- **La cuenta de la caja.** El admin, en el mostrador, toca "Usar esta compu
+  como caja" (`POST /api/cajas/:id/vincular`). Eso hace dos cosas:
+  - Nace un `usuarios` con `caja_id`, sin mail y con una contraseña al azar
+    que nadie conoce. El login lo excluye.
+  - La compu queda con su propia cookie, `nexo_caja`, que dura un año y se
+    renueva una vez por día.
+
+  La cuenta de la caja **no va en `usuario_organizaciones`**: no aparece en
+  Usuarios, no cuenta para el plan ni recibe avisos, sin tocar las ~60
+  consultas que listan cuentas. El panel de la plataforma la saca con
+  `SOLO_PERSONAS`. Si alguien entra con su cuenta en esa compu, manda su
+  sesión; al salir, la compu vuelve a ser la caja. Se desvincula desde la
+  cuenta del admin (`DELETE /api/cajas/:id/vinculo`), y `GET
+  /api/cajas/compus` dice cuántas compus tiene cada caja.
+- **Qué puede la caja.** `autenticarCaja` en `server.js` controla tres cosas:
+  - Solo la lista `RUTAS_DE_CAJA`, que es el mostrador. Cualquier otra ruta
+    da 403 con `solo_caja`.
+  - Para escribir, alguien atendiendo. Si no, 403 con `caja_bloqueada`.
+  - Solo lo de su caja, con `fueraDeSuCaja`: su turno, sus ventas, su
+    catálogo y sus facturas. `GET /api/turnos-caja` y `GET /api/tesoreria`
+    también le muestran solo la suya.
+
+  La clase `caja` de `permisos.js` (`soloCaja`) es para las rutas
+  `/api/caja/*`.
+- **Empleados con PIN.**
+  - `GET /api/caja` dice quién atiende y quiénes pueden: los que tienen PIN,
+    de su sucursal o de todas.
+  - `POST /api/caja/atender` pide el PIN; tiene un tope de 5 intentos por
+    caja y empleado, y después 5 minutos de espera.
+  - `POST /api/caja/bloquear` es el relevo: el turno sigue.
+  - `POST /api/caja/fichar` ficha la entrada o la salida, aparte de atender.
+    Fichar la salida bloquea la caja.
+  - `auditar()` anota solo el empleado que atendía. El turno, la venta y los
+    cobros del mostrador lo guardan (`anotarEmpleado`).
+  - El Resumen ("quién vendió") y "Ventas del turno" muestran al empleado,
+    no a la caja.
+  - Anular en la caja: alcanza con que atienda un encargado. Si no, va el PIN
+    de un encargado (`autoriza_empleado_id` + `autoriza_pin`). Con una cuenta
+    de empleado sigue la contraseña del admin, como en hist. §194.
+- **Empleados en la pantalla.** `GET/POST/PATCH /api/empleados` (admin) y
+  `PUT /api/horarios/:empleadoId`. La vista Horarios pasa a llamarse
+  **Empleados** (la ruta sigue siendo `#/horarios`): el alta y la edición con
+  PIN, sucursal, encargado y cuenta, el horario de cada uno y la baja. Quien
+  tiene cuenta y ficha desde ella se vuelve empleado solo, la primera vez
+  (`empleadoDeCuenta`).
+- **Turnos cumplidos** (para pagar, pedido del usuario): `turnoCumplido`
+  compara cada franja del horario con lo fichado que se cruza con ella. Los
+  estados posibles son cumplido, incompleto (entró tarde o se fue antes, con 5
+  minutos de tolerancia para cada lado), faltó, en curso, sin salida y por
+  venir. El informe suma `turnos: { planificados, cumplidos, incompletos,
+  faltados, sin_salida }` y muestra cada turno con su estado. Nexo dice qué se
+  cumplió, no cuánto se paga (los sueldos siguen en §39).
+- **Modo caja en el frontend.**
+  - `sesion.js` marca `data-caja` (y `window.nexoCaja`). La caja no pasa por
+    "Sumá tu mail", y `nexoEntrarConCuenta` abre el login encima, con "Volver
+    a la caja".
+  - `app.js` solo carga el negocio.
+  - `registro.recargar` no pide nada más que el negocio.
+  - El router fuerza `pos`, y el CSS esconde el menú, la barra de abajo y el
+    asistente.
+  - En `pos.js` están "¿Quién atiende?" (el nombre, el PIN, Atender o
+    Fichar), la barra "Atiende X · Bloquear", el panel del admin "Usar esta
+    compu como caja / Desvincular" y el PIN del encargado al anular.
+- Manual: la sección de horarios ahora es "Horarios, fichaje y PIN", y hay
+  una nueva, "La compu de la caja", en castellano y en inglés.
+- **Probado.**
+  - `test/caja-vinculada.test.js` (7 casos) y `test/empleados-migracion.test.js`.
+  - `test/fichajes.test.js` adaptado, con los turnos cumplidos.
+  - En el navegador, con una base sembrada: vincular, la caja bloqueada,
+    atender, abrir, vender, la venta a nombre de Ana, anular con el PIN de
+    Beto, bloquear, fichar, el celular y "Entrar con mi cuenta".
+  - Un error encontrado ahí: la caja caía en "Sumá tu mail". Ya está
+    arreglado.
+- **Queda:**
+  - Los permisos por sección (el punto 4).
+  - Que el empleado con cuenta vea sus propias estadísticas (el usuario
+    todavía no lo decidió).
+  - Biometría y foto al fichar.
+  - Que desde la caja se pueda cobrar con "Registrar cobro" de una venta de
+    otra caja: hoy no se puede (`fueraDeSuCaja`).
+- **Nota:** una prueba de la migración corrió por error contra la base local
+  `backend/db/nexo.db` (solo la de desarrollo). Antes se respaldó sola en
+  `Nexo-respaldos/nexo-20261118-181505.db`, y no tenía horarios ni fichajes:
+  quedó con las tablas nuevas.

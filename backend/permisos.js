@@ -9,10 +9,13 @@
 // `soloAdmin`, el test rompe. Es la fuente de verdad de la política, no
 // una copia que se pueda desincronizar en silencio.
 //
-// Cuatro valores posibles:
+// Cinco valores posibles:
 // - 'publico': sin sesión, declarado antes de `app.use('/api', autenticar)`.
 // - 'ambos': requiere sesión (admin o empleado), sin `soloAdmin`.
 // - 'admin': requiere sesión Y rol admin (`soloAdmin` como argumento).
+// - 'caja': requiere la sesión de una compu vinculada a una caja (`soloCaja`
+//   como argumento, hist. §199). Lo demás que puede hacer esa compu es la
+//   lista RUTAS_DE_CAJA de server.js.
 // - 'plataforma': requiere sesión de quien administra Nexo
 //   (`soloPlataforma` como argumento, hist. §111). No depende del rol en
 //   ningún negocio: lee datos de todos.
@@ -114,7 +117,20 @@ export const RUTAS_PERMISOS = {
   'PATCH /api/fichajes/:id': 'admin',
   'GET /api/fichajes/informe': 'admin',
   'GET /api/horarios': 'admin',
-  'PUT /api/horarios/:usuarioId': 'admin',
+  'PUT /api/horarios/:empleadoId': 'admin',
+  // Los empleados (hist. §199): los carga el admin, con su PIN.
+  'GET /api/empleados': 'admin',
+  'POST /api/empleados': 'admin',
+  'PATCH /api/empleados/:id': 'admin',
+  // Vincular una compu a una caja y desvincularla: el admin, desde su cuenta.
+  'GET /api/cajas/compus': 'admin',
+  'POST /api/cajas/:id/vincular': 'admin',
+  'DELETE /api/cajas/:id/vinculo': 'admin',
+  // La compu vinculada: quién atiende y fichar con el PIN.
+  'GET /api/caja': 'caja',
+  'POST /api/caja/atender': 'caja',
+  'POST /api/caja/bloquear': 'caja',
+  'POST /api/caja/fichar': 'caja',
   // Sucursales (hist. §193): verlas es de los dos (el punto de venta dice de
   // qué sucursal es cada caja); armarlas es configuración del negocio.
   'GET /api/sucursales': 'ambos',

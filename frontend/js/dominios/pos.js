@@ -6,7 +6,7 @@
  * venta común con sus cobros, colgada del turno abierto de la caja.
  */
 
-import { camposFicha, cantidad, esAdmin, esFraccionable, esc, fechaHoraAR, hoyISO, money, numero } from "../core/formato.js";
+import { camposFicha, cantidad, enCaja, esAdmin, esFraccionable, esc, fechaHoraAR, hoyISO, money, numero } from "../core/formato.js";
 import { avisar, confirmar, filaVacia } from "../core/ui.js";
 import { api, refrescar } from "../core/api.js";
 import { icono } from "../core/iconos.js";
@@ -53,6 +53,10 @@ let cajas = []; // las de tipo efectivo: un turno es de una de ellas
 let medios = [];
 let cajaId = null;
 let turno = null; // resumen del turno abierto de la caja elegida
+// En la compu vinculada a una caja (hist. §199): la caja, quién atiende y
+// quiénes pueden atender (GET /api/caja). null en una cuenta de persona.
+let cajaVinculada = null;
+let elegido = null; // el empleado que va a poner su PIN
 // Los accesos rápidos de la caja (hist. §195): claves del catálogo, en orden.
 let accesos = [];
 let armando = false;
@@ -178,12 +182,14 @@ async function cargarTodo() {
   fijarClientes(listaClientes);
 
   // La caja se recuerda por dispositivo: la PC del mostrador opera siempre la
-  // misma. Si no hay recuerdo, la que ya tiene un turno abierto.
+  // misma. Si no hay recuerdo, la que ya tiene un turno abierto. La compu
+  // vinculada (hist. §199) es siempre la suya.
   const ids = cajas.map((c) => c.id);
-  const recordada = Number(leerGuardado(localStorage, CLAVE_CAJA));
+  const recordada = enCaja() ? window.nexoCaja.id : Number(leerGuardado(localStorage, CLAVE_CAJA));
   cajaId = ids.includes(recordada)
     ? recordada
     : (abiertos.find((t) => ids.includes(t.cuenta_tesoreria_id))?.cuenta_tesoreria_id ?? ids[0] ?? null);
+  if (enCaja()) cajaVinculada = await api("/api/caja", { error: "No se pudo cargar la caja." });
   turno = abiertos.find((t) => t.cuenta_tesoreria_id === cajaId) ?? null;
   try {
     accesos = JSON.parse(cuentas.find((c) => c.id === cajaId)?.accesos_rapidos ?? "[]");
@@ -227,14 +233,20 @@ function fijarCatalogo(items) {
 function render() {
   document.getElementById("posSinCajas").hidden = cajas.length > 0;
   const elegir = document.getElementById("posElegirCaja");
-  elegir.hidden = cajas.length < 2;
+  elegir.hidden = enCaja() || cajas.length < 2;
   document.getElementById("posCaja").innerHTML = cajas
     .map((c) => `<option value="${c.id}" ${c.id === cajaId ? "selected" : ""}>${esc(c.nombre)}${c.sucursal ? ` · ${esc(c.sucursal)}` : ""}</option>`)
     .join("");
 
-  posApertura.hidden = !cajaId || !!turno;
-  posMostrador.hidden = !turno;
-  if (!cajaId) return;
+  // La compu de la caja, sin nadie atendiendo: solo "¿Quién atiende?".
+  const bloqueada = enCaja() && !cajaVinculada?.atiende;
+  document.getElementById("posQuien").hidden = !bloqueada;
+  document.getElementById("posAtiende").hidden = !enCaja() || bloqueada;
+  posApertura.hidden = bloqueada || !cajaId || !!turno;
+  posMostrador.hidden = bloqueada || !turno;
+  if (enCaja()) renderQuien();
+  else refrescar([renderCompu()]);
+  if (!cajaId || bloqueada) return;
   if (turno) {
     renderTurno();
     renderCatalogo();
@@ -2010,7 +2022,7 @@ async function pintarDetalleTurno() {
     const quien = v.cliente === CONSUMIDOR_FINAL ? "" : ` · ${esc(v.cliente)}`;
     return `
       <li class="${anulada ? "fila-anulada" : ""}">
-        <span class="pos-turno-quien">Venta #${v.id}${quien}<small>${esc([horaDe(v.creada), notaDeVenta(v)].filter(Boolean).join(" · "))}</small></span>
+        <span class="pos-turno-quien">Venta #${v.id}${quien}<small>${esc([horaDe(v.creada), v.atendio, notaDeVenta(v)].filter(Boolean).join(" · "))}</small></span>
         <strong class="mono">${money(v.total)}</strong>
         <button type="button" class="btn btn-secundario btn-chico" data-reimprimir="${v.id}">Reimprimir</button>
         ${anulada || v.facturada ? "" : `<button type="button" class="btn btn-secundario btn-chico" data-anular="${v.id}">Anular</button>`}
@@ -2044,7 +2056,17 @@ document.getElementById("posTurnoDetalle").addEventListener("click", (e) => {
       anulando.cobrado > CENTAVO
         ? `Vuelve el stock y sale de la caja lo cobrado: ${money(anulando.cobrado)}. Devolvéselo al cliente.`
         : "Vuelve el stock y la venta queda en la papelera.";
-    document.getElementById("posAnularAutoriza").hidden = esAdmin();
+    // En la caja vinculada (hist. §199) autoriza un encargado con su PIN; con
+    // una cuenta de empleado, un admin con su contraseña.
+    const conPin = enCaja() && !cajaVinculada?.atiende?.encargado;
+    document.getElementById("posAnularAutoriza").hidden = enCaja() || esAdmin();
+    document.getElementById("posAnularPin").hidden = !conPin;
+    if (conPin) {
+      const encargados = cajaVinculada.empleados.filter((x) => x.encargado);
+      formAnular.autoriza_empleado_id.innerHTML = encargados.length
+        ? encargados.map((x) => `<option value="${x.id}">${esc(x.nombre)}</option>`).join("")
+        : `<option value="">No hay encargados con PIN</option>`;
+    }
     formAnular.hidden = false;
     formAnular.motivo.focus();
   }
@@ -2061,7 +2083,12 @@ formAnular.addEventListener("submit", async (e) => {
     avisar("Escribí por qué se anula.", "atencion");
     return;
   }
-  if (!esAdmin()) {
+  if (enCaja()) {
+    if (!cajaVinculada.atiende?.encargado) {
+      body.autoriza_empleado_id = Number(formAnular.autoriza_empleado_id.value) || null;
+      body.autoriza_pin = formAnular.autoriza_pin.value;
+    }
+  } else if (!esAdmin()) {
     body.autoriza_email = formAnular.autoriza_email.value.trim();
     body.autoriza_password = formAnular.autoriza_password.value;
   }
@@ -2170,6 +2197,175 @@ formGasto.addEventListener("submit", async (e) => {
   avisar(`Gasto anotado: ${money(importe)} salieron de la caja.`, "ok");
   refrescar([recargar("gastos")]);
   await refrescarTurno();
+});
+
+/* ---------- La caja vinculada (hist. §199) ---------- */
+//
+// Decidido por el usuario el 17 de noviembre, como Praxia: la compu del
+// mostrador tiene su cuenta, no el empleado. El admin la vincula desde acá
+// ("Usar esta compu como Caja 1"); después, sin su cuenta, la compu arranca
+// en el mostrador, bloqueada: cada empleado toca su nombre y pone su PIN para
+// atender (las ventas quedan a su nombre), y fichar es otro botón, así el
+// relevo del almuerzo no ensucia los horarios.
+
+const posQuienLista = document.getElementById("posQuienLista");
+const formPosPin = document.getElementById("formPosPin");
+
+function renderQuien() {
+  const caja = cajaVinculada;
+  if (!caja) return;
+  document.getElementById("posQuienCaja").textContent = [caja.nombre, caja.sucursal, caja.negocio].filter(Boolean).join(" · ");
+  document.getElementById("posAtiendeNombre").textContent = caja.atiende?.nombre ?? "";
+  if (elegido && !caja.empleados.some((e) => e.id === elegido.id)) elegido = null;
+  posQuienLista.innerHTML = caja.empleados.length
+    ? caja.empleados
+        .map(
+          (e) => `
+          <button type="button" class="pos-quien-persona${elegido?.id === e.id ? " es-elegido" : ""}" data-empleado="${e.id}" aria-pressed="${elegido?.id === e.id}">
+            <span>${esc(e.nombre)}</span>
+            <small>${e.adentro ? "Adentro" : "Sin fichar"}${e.encargado ? " · encargado" : ""}</small>
+          </button>`
+        )
+        .join("")
+    : `<p class="pos-vacio">Todavía no hay empleados con PIN. El dueño los carga desde su cuenta, en Empleados.</p>`;
+  formPosPin.hidden = !elegido;
+  if (elegido) {
+    document.getElementById("posPinEtiqueta").textContent = `PIN de ${elegido.nombre}`;
+    document.getElementById("btnPosFichar").textContent = elegido.adentro ? "Fichar la salida" : "Fichar la entrada";
+  }
+}
+
+posQuienLista.addEventListener("click", (e) => {
+  const boton = e.target.closest("[data-empleado]");
+  if (!boton) return;
+  elegido = cajaVinculada.empleados.find((x) => x.id === Number(boton.dataset.empleado));
+  formPosPin.reset();
+  renderQuien();
+  document.getElementById("posPin").focus();
+});
+
+function leerPin() {
+  const pin = formPosPin.pin.value.trim();
+  if (!/^\d{4,6}$/.test(pin)) {
+    avisar("El PIN va de 4 a 6 números.", "atencion");
+    return null;
+  }
+  return pin;
+}
+
+formPosPin.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const pin = leerPin();
+  if (!pin) return;
+  const boton = formPosPin.querySelector('[type="submit"]');
+  try {
+    cajaVinculada = await enviando(boton, () =>
+      api("/api/caja/atender", { method: "POST", body: { empleado_id: elegido.id, pin }, error: "No se pudo empezar a atender." })
+    );
+  } finally {
+    formPosPin.reset();
+  }
+  avisar(`Atiende ${cajaVinculada.atiende.nombre}.`, "ok");
+  elegido = null;
+  await entrarAlPos();
+});
+
+document.getElementById("btnPosFichar").addEventListener("click", async (e) => {
+  const pin = leerPin();
+  if (!pin) return;
+  const tipo = elegido.adentro ? "salida" : "entrada";
+  let r;
+  try {
+    r = await enviando(e.currentTarget, () =>
+      api("/api/caja/fichar", { method: "POST", body: { empleado_id: elegido.id, pin, tipo }, error: "No se pudo fichar." })
+    );
+  } finally {
+    formPosPin.reset();
+  }
+  avisar(
+    tipo === "entrada"
+      ? `${elegido.nombre} fichó la entrada a las ${r.fichaje.hora_entrada}.`
+      : `${elegido.nombre} fichó la salida a las ${r.fichaje.hora_salida}.`,
+    "ok"
+  );
+  cajaVinculada = r.caja;
+  elegido = null;
+  render();
+});
+
+// Bloquear deja la caja como está (el turno sigue abierto, la venta en curso
+// también) y pide el PIN de quien sigue: el relevo del almuerzo.
+document.getElementById("btnPosBloquear").addEventListener("click", async (e) => {
+  cajaVinculada = await enviando(e.currentTarget, () => api("/api/caja/bloquear", { method: "POST", error: "No se pudo bloquear la caja." }));
+  elegido = null;
+  render();
+});
+
+// Otra pestaña, o el admin, la bloqueó (sesion.js lo avisa).
+document.addEventListener("nexo:caja-bloqueada", async () => {
+  if (!enCaja()) return;
+  cajaVinculada = await api("/api/caja", { error: "No se pudo cargar la caja." });
+  render();
+});
+
+document.getElementById("btnPosEntrarCuenta").addEventListener("click", () => window.nexoEntrarConCuenta?.());
+
+// Para el admin, con su cuenta: dejar esta compu como la caja elegida, o
+// desvincular las compus que ya lo son.
+let compus = [];
+async function renderCompu() {
+  const panel = document.getElementById("posCompu");
+  if (!esAdmin() || !cajaId) {
+    panel.hidden = true;
+    return;
+  }
+  compus = await api("/api/cajas/compus", { error: "No se pudieron cargar las compus de las cajas." });
+  const caja = compus.find((c) => c.id === cajaId);
+  if (!caja) {
+    panel.hidden = true;
+    return;
+  }
+  document.getElementById("posCompuTexto").textContent = caja.compus
+    ? `${caja.compus === 1 ? "Una compu es" : `${numero(caja.compus)} compus son`} la caja «${caja.nombre}», sin una cuenta: ahí cada uno atiende con su PIN.`
+    : `¿Esta es la compu del mostrador? Dejala como la caja «${caja.nombre}»: sin tu cuenta, solo se vende y cada uno atiende con su PIN.`;
+  document.getElementById("btnPosVincular").textContent = "Usar esta compu como caja";
+  document.getElementById("btnPosDesvincular").hidden = !caja.compus;
+  panel.hidden = false;
+}
+
+document.getElementById("btnPosVincular").addEventListener("click", async (e) => {
+  const boton = e.currentTarget;
+  const caja = compus.find((c) => c.id === cajaId);
+  const ok = await confirmar({
+    titulo: `¿Usar esta compu como la caja «${caja.nombre}»?`,
+    cuerpo:
+      "Queda vinculada a la caja: cuando salgas de tu cuenta, solo se usa el mostrador y cada empleado atiende y ficha con su PIN. Nadie vende desde su casa. La desvinculás cuando quieras, desde acá.",
+    aceptar: "Usar esta compu"
+  });
+  if (!ok) return;
+  await enviando(boton, () => api(`/api/cajas/${cajaId}/vincular`, { method: "POST", error: "No se pudo vincular la compu." }));
+  const salir = await confirmar({
+    titulo: `Listo: esta compu es la caja «${caja.nombre}»`,
+    cuerpo: "Salí de tu cuenta y queda lista para atender. Si volvés a entrar en esta compu, manda tu cuenta hasta que salgas.",
+    aceptar: "Salir de mi cuenta"
+  });
+  if (salir) window.nexoCerrarSesion?.();
+  else await renderCompu();
+});
+
+document.getElementById("btnPosDesvincular").addEventListener("click", async (e) => {
+  const boton = e.currentTarget;
+  const caja = compus.find((c) => c.id === cajaId);
+  const ok = await confirmar({
+    titulo: `¿Desvincular las compus de la caja «${caja.nombre}»?`,
+    cuerpo: "Dejan de ser la caja: para volver a usarlas, alguien entra con su cuenta.",
+    aceptar: "Desvincular",
+    destructivo: true
+  });
+  if (!ok) return;
+  await enviando(boton, () => api(`/api/cajas/${cajaId}/vinculo`, { method: "DELETE", error: "No se pudo desvincular." }));
+  avisar(`La caja «${caja.nombre}» ya no tiene compus vinculadas.`, "ok");
+  await renderCompu();
 });
 
 // Se carga al entrar en la vista (ver mostrarVista en core/router.js).

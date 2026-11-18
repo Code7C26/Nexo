@@ -97,6 +97,9 @@
       // Lo mismo si otro admin dio de baja el negocio (hist. §109): recargar
       // muestra la pantalla que lo explica.
       if (cuerpo?.codigo === "faltan_terminos" || cuerpo?.codigo === "negocio_en_baja") location.reload();
+      // La caja vinculada quedó bloqueada (hist. §199): otra pestaña o el
+      // admin la bloqueó. dominios/pos.js vuelve a "¿Quién atiende?".
+      if (cuerpo?.codigo === "caja_bloqueada") document.dispatchEvent(new Event("nexo:caja-bloqueada"));
     }
     if (res.status === 409 && res.headers.get("X-Nexo-Negocio-Cambiado")) {
       try {
@@ -218,7 +221,8 @@
   function seguirCon(usuario) {
     usuarioPendiente = usuario;
     if (usuario.debe_cambiar_password) mostrarPantalla("cambio");
-    else if (!usuario.email) mostrarPantalla("mail");
+    // La compu de la caja (hist. §199) no es una persona: no tiene mail.
+    else if (!usuario.email && !usuario.caja) mostrarPantalla("mail");
     else if (!usuario.terminos_al_dia) mostrarTerminos(usuario);
     else if (aceptarAlEntrar) aceptarYEntrar(usuario);
     else if (usuario.negocio_en_baja) mostrarNegocioEnBaja(usuario);
@@ -278,10 +282,14 @@
     document.documentElement.setAttribute("data-usuario", usuario.id);
     // Quien administra Nexo ve el panel de la plataforma (hist. §111).
     document.documentElement.toggleAttribute("data-plataforma", !!usuario.plataforma);
+    // La compu vinculada a una caja (hist. §199): solo el mostrador. Lo que
+    // sabe de la caja (cuál es, quién atiende) lo lee dominios/pos.js.
+    document.documentElement.toggleAttribute("data-caja", !!usuario.caja);
+    window.nexoCaja = usuario.caja ?? null;
     const nombreEl = document.querySelector("[data-usuario-nombre]");
     if (nombreEl) nombreEl.textContent = usuario.nombre;
     const rolEl = document.querySelector("[data-usuario-rol]");
-    if (rolEl) rolEl.textContent = usuario.rol === "admin" ? "Administrador" : "Empleado";
+    if (rolEl) rolEl.textContent = usuario.caja ? "Caja" : usuario.rol === "admin" ? "Administrador" : "Empleado";
     mostrarAvisoEjemplo(usuario.ejemplo);
   }
 
@@ -469,6 +477,20 @@
   botonIdioma.textContent = otroIdioma === "en" ? "English" : "Español";
   botonIdioma.lang = otroIdioma;
   botonIdioma.addEventListener("click", () => window.nexoIdioma?.cambiar(otroIdioma));
+
+  // Desde la compu de la caja (hist. §199), el dueño o un encargado entra con
+  // su cuenta: el login va arriba de la caja, que sigue vinculada (su cookie
+  // es otra). Al entrar manda la cuenta; al salir, vuelve la caja.
+  window.nexoEntrarConCuenta = () => {
+    document.getElementById("loginVolverCaja").hidden = false;
+    document.getElementById("irARegistro").hidden = true;
+    document.getElementById("irAProbar").hidden = true;
+    mostrarPantalla("login");
+    document.getElementById("loginUsuario").focus();
+  };
+  document.getElementById("loginVolverCaja").addEventListener("click", () => {
+    pantalla.hidden = true;
+  });
 
   window.nexoCerrarSesion = async () => {
     try {

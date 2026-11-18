@@ -3038,6 +3038,92 @@ html[data-ejemplo] #btnCompraFactura { display: none; }
 
 .pos-elegir-caja select { min-height: 36px; font-size: var(--txt-sm); }
 
+/* La compu de la caja (hist. §199): solo el mostrador. Sin menú, sin la barra
+   de abajo ni el asistente: no tienen adónde llevar. */
+:root[data-caja] .sidebar,
+:root[data-caja] .nav-toggle,
+:root[data-caja] .barra-inferior,
+:root[data-caja] .asistente-launcher { display: none; }
+@media (min-width: 861px) {
+  :root[data-caja] .app { grid-template-columns: 1fr; }
+  :root[data-caja] .main { margin-left: var(--marco); }
+  :root[data-caja] .main > .topbar,
+  :root[data-caja] .main > .view { max-width: none; }
+}
+
+/* Para el admin: dejar esta compu como la caja. */
+.pos-compu {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2) var(--sp-4);
+  margin-bottom: var(--sp-4);
+  padding: var(--sp-3) var(--sp-4);
+  border: 1px dashed var(--line);
+  border-radius: var(--r-md);
+  font-size: var(--txt-sm);
+  color: var(--ink-muted);
+}
+.pos-compu p { flex: 1 1 18rem; margin: 0; }
+.pos-compu-botones { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
+
+/* "¿Quién atiende?": cada uno toca su nombre y pone su PIN. Botones grandes,
+   que se tocan con el dedo en una tablet de mostrador. */
+.pos-quien {
+  max-width: 640px;
+  margin: var(--sp-4) auto;
+  padding: var(--sp-5);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg, var(--r-md));
+}
+.pos-quien-head { margin-bottom: var(--sp-4); }
+.pos-quien-head h2 { margin: 0; font-size: var(--txt-xl, 1.5rem); }
+.pos-quien-caja { margin: 0 0 var(--sp-1); color: var(--ink-muted); font-size: var(--txt-sm); }
+.pos-quien-lista {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(9rem, 1fr));
+  gap: var(--sp-2);
+}
+.pos-quien-persona {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  min-height: 64px;
+  padding: var(--sp-3);
+  text-align: left;
+  font: inherit;
+  font-weight: 600;
+  color: var(--ink);
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  cursor: pointer;
+}
+.pos-quien-persona small { font-weight: 400; font-size: var(--txt-2xs); color: var(--ink-muted); }
+.pos-quien-persona:hover { border-color: var(--ink-muted); }
+.pos-quien-persona.es-elegido { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.pos-quien-pin {
+  display: grid;
+  gap: var(--sp-3);
+  margin-top: var(--sp-4);
+}
+.pos-quien-pin label { display: grid; gap: var(--sp-1); font-weight: 600; font-size: var(--txt-sm); }
+.pos-quien-pin input { font-size: 1.5rem; letter-spacing: 0.3em; text-align: center; }
+.pos-quien-botones { display: grid; grid-template-columns: 1fr 1fr; gap: var(--sp-2); }
+.pos-quien-cuenta { display: block; margin: var(--sp-4) auto 0; }
+
+/* Quién atiende ahora, con el botón para el relevo. */
+.pos-atiende {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  margin-bottom: var(--sp-3);
+  font-size: var(--txt-sm);
+}
+
 .pos-apertura {
   max-width: 560px;
   margin-bottom: var(--sp-5);

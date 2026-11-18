@@ -63,6 +63,9 @@ export const esAdmin = () => document.documentElement.dataset.rol === "admin";
 // Quien administra Nexo, la plataforma (hist. §111): lo marca sesion.js desde
 // la sesión. Solo es UI; el backend responde 404 a cualquier otra cuenta.
 export const esPlataforma = () => document.documentElement.hasAttribute("data-plataforma");
+// La compu vinculada a una caja (hist. §199): solo el mostrador. Lo marca
+// sesion.js desde la sesión; el backend igual frena todo lo demás.
+export const enCaja = () => document.documentElement.hasAttribute("data-caja");
 
 // Los CSV son datos armados en JS, no DOM: `.col-admin` no les sirve. Las
 // columnas de costo/margen de un array COLUMNAS_CSV_X se marcan con
