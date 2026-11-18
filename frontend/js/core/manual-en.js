@@ -790,18 +790,40 @@ export const SECCIONES_EN = {
     ]
   },
   horarios: {
-    titulo: "Schedules and clocking in",
-    pantalla: "Schedules",
-    preguntas: ["how do i clock in", "how do i clock out", "how do i set an employee's schedule", "who arrived late", "how many hours did they work", "they forgot to clock out"],
-    palabras: ["schedule", "schedules", "clock", "in", "out", "late", "hours", "absent", "absence", "employee", "shift"],
+    titulo: "Schedules, clocking in and PIN",
+    pantalla: "Staff",
+    preguntas: ["how do i add a staff member", "how do i give them a pin", "how do i clock in", "how do i clock out", "how do i set an employee's schedule", "who arrived late", "how many hours did they work", "did they complete the shift", "they forgot to clock out"],
+    palabras: ["staff", "employee", "employees", "pin", "supervisor", "schedule", "schedules", "clock", "in", "out", "late", "hours", "absent", "absence", "shift", "shifts", "completed"],
     bloques: [
-      "Each person clocks in and out from **Schedules**, with the button at the top. They also see today's schedule there.",
+      "Staff don't need a Nexo account: you add them, with their name and a PIN, and they serve and clock in on the till computer.",
       { pasos: [
-        "The administrator sets each person's schedule in **Everyone's schedule** › **Set schedule**: per day, the start and end time (with a split shift, both blocks).",
-        "In **Who came and how long they worked** they see, for today, the week or the month, each person's hours, late arrivals, absences and the register shifts they opened.",
+        "In **Staff** › **Add staff member**, enter the name and a 4 to 6 digit PIN. If you have branches, choose where they work. Check **Is a supervisor** if they authorize voiding a sale at the till.",
+        "If that person also has a Nexo account (a supervisor, yourself), choose it in **Their Nexo account**: then they can also clock in from their phone.",
+        "Tap **Schedule** to set their days and hours (with a split shift, both blocks).",
+        "In **Who came and how long they worked** you see, for today, the week or the month, how many shifts each person completed, their hours, late arrivals and absences. Each shift says whether it was completed, whether they came in late or left early, or were absent.",
         "If someone forgot to clock in or out, tap **Fix** on that day and enter the time: it's marked as fixed and recorded in the audit log."
       ] },
-      { nota: "Arriving up to 5 minutes late doesn't count as late. Payroll isn't done in Nexo." }
+      { nota: "Arriving up to 5 minutes late, or leaving up to 5 minutes early, doesn't count. Nexo says which shifts were completed; payroll isn't done in Nexo." }
+    ]
+  },
+  "caja-vinculada": {
+    titulo: "The till computer",
+    pantalla: "Point of sale",
+    preguntas: ["how do i set the computer as a till", "how does a staff member without an account serve", "how does a staff member clock in at the till", "how do i change who is serving", "how do i unlink the computer"],
+    palabras: ["computer", "till", "link", "unlink", "pin", "serve", "serving", "lock", "handover", "clock", "staff"],
+    bloques: [
+      "The counter computer has its own account: without yours signed in, it only sells at that till. Nobody sells or changes anything from home.",
+      { pasos: [
+        "At the shop, sign in to the **Point of sale**, choose the till and tap **Use this computer as a till**. Then sign out.",
+        "The computer stays on **Who's at the till?**: each staff member taps their name, enters their PIN and taps **Serve**. Sales are recorded under their name.",
+        "For a handover, **Lock**: the shift and the sale in progress stay, and the next person serves with their PIN.",
+        "Clocking in is a separate button: with the PIN, **Clock in** or **Clock out**. Unlocking the till isn't clocking in."
+      ] },
+      { lista: [
+        "**Voiding a sale**: if the person serving isn't a supervisor, a supervisor authorizes it with their PIN.",
+        "**Sign in with my account**: from the till, the owner signs in to their account; after signing out, the computer goes back to being the till.",
+        "**Unlink**: from your account, in the same spot of the point of sale."
+      ] }
     ]
   },
   "mercado-pago": {

@@ -11,7 +11,7 @@
 
 - Al cerrar una etapa, se hacen tres cosas:
   - su relato completo se agrega al final de `docs/proyecto/handoff-historico.md` con el
-    siguiente número (hoy el último es §198);
+    siguiente número (hoy el último es §199);
   - acá se actualizan "Estado actual" y "Qué sigue";
   - si cambió alguna decisión vigente, se actualiza también esa lista.
 - Nunca apilar secciones "Última etapa" en este archivo: así fue como llegó a
@@ -21,8 +21,30 @@
 
 ## Estado actual (18 de noviembre de 2026)
 
+**18 de noviembre, hist. §199: la compu de la caja, los empleados con PIN y
+los turnos cumplidos (punto 5 rehecho, sin publicar todavía).**
+- El admin, en el mostrador, toca **Usar esta compu como caja** y sale de su
+  cuenta. Desde ahí la compu solo es el mostrador de esa caja, con su propia
+  cookie (`nexo_caja`). Si alguien entra con su cuenta en esa compu, manda su
+  cuenta; al salir, vuelve la caja.
+- La caja arranca en **¿Quién atiende?**: cada empleado toca su nombre y pone
+  su PIN. **Bloquear** es el relevo, y **Fichar** es otro botón. El turno, la
+  venta y los cobros quedan a nombre de quien atendía, y anular pide el PIN de
+  un encargado.
+- **Empleados** (antes Horarios): los empleados no tienen cuenta. Tienen
+  nombre, PIN, sucursal, si son encargados y una cuenta opcional. El informe
+  dice qué turnos cumplió cada uno, para pagar.
+- Esquema: tabla `empleados`, y `horarios` y `fichajes` se rearman con
+  `empleado_id` (cada cuenta con datos pasa a ser su empleado). Lo demás son
+  columnas nuevas. `verificar-migracion`: 24 de 24 casos.
+- Tests nuevos: `caja-vinculada` y `empleados-migracion`. Probado en el
+  navegador, en la compu y en el celular.
+- **Falta:** probarlo en el servidor con una caja real y los permisos por
+  sección (punto 4). `npm run regresion` sigue roto, como dice §198.
+
 **18 de noviembre, hist. §198: la lista de precios del proveedor, Proveedores
-en Compras, Mercado Pago fuera de los canales y el QR al cobrar una deuda.**
+en Compras, Mercado Pago fuera de los canales y el QR al cobrar una deuda
+(publicado, PR #100).**
 - En la ficha del proveedor, **Cargar lista**: el mensaje, una planilla
   pegada, el PDF, un CSV o una foto; Nexo busca cada renglón en el catálogo
   (como la factura, con lo recordado de ese proveedor) y se revisa antes de
@@ -1489,7 +1511,7 @@ con su admin (adopta la organización sembrada).
 
 Las que no están en `CLAUDE.md` y que alguien podría "arreglar" sin saberlo:
 
-**Cajas y empleados (decidido por el usuario el 17 de noviembre; a construir)**
+**Cajas y empleados (decidido por el usuario el 17 de noviembre; hecho en hist. §199 salvo los permisos por sección)**
 - **La compu de la caja tiene su cuenta, no el empleado** (como Praxia). Esa
   cuenta solo opera el mostrador de su caja: vender, cobrar, abrir y cerrar la
   caja y fichar; no entra a Configuración, precios ni reportes.
@@ -2198,9 +2220,10 @@ empleados**; después de presentar se puede mejorar mucho más. El orden es mío
    sección** de Praxia: para ver o para editar, y por sucursal (un contador,
    un socio, un encargado). Cambia el esquema: se planifica y se explica la
    migración antes de tocarlo (§27, §34).
-5. ~~**Horarios y fichaje de empleados**~~ (hecho, hist. §196). **Se rehace
-   sobre el modelo de cuenta por caja** (ver "Decisiones vigentes", Cajas y
-   empleados): es lo próximo, con el informe de turnos cumplidos para pagar. (De Praxia, pedido para la oficial el
+5. ~~**Horarios y fichaje de empleados**~~ (hecho, hist. §196, y **rehecho
+   sobre la cuenta por caja en hist. §199**, con los turnos cumplidos para
+   pagar; lo próximo del modelo son los permisos por sección del punto 4).
+   (De Praxia, pedido para la oficial el
    17 de noviembre): horario planificado, entrada y salida reales, llegadas
    tarde y horas, cruzado con los turnos de caja. El usuario lo sacó de §39
    (solo los horarios; los sueldos siguen afuera). Va después del 4: se apoya

@@ -1359,6 +1359,13 @@ reimprimir o anular (con motivo, solo con el turno abierto, y un empleado con
 la contraseña de un administrador) y accesos rápidos por caja. **Cierre de
 caja** del día y del mes (`#/cierre`): todas las cajas de todas las sucursales.
 Falta el recargo por medio de pago.
+**La compu de la caja** (hist. §199, decisión del usuario): la compu del
+mostrador tiene su cuenta (`usuarios.caja_id`, cookie `nexo_caja`), que el
+admin vincula desde el mostrador. Sin una cuenta de persona abierta, solo usa
+el mostrador de su caja. Los empleados no tienen cuenta: los carga el dueño
+(`empleados`, con PIN) y en la caja ponen su PIN para atender, el relevo es
+**Bloquear** y fichar es otro botón. Lo que se hace queda a nombre del
+empleado que atendía, y anular pide el PIN de un encargado.
 
 ---
 
@@ -1716,9 +1723,9 @@ con el equipo:
 - Sueldos y liquidación (RRHH). ~~Gestión de empleados~~: **los horarios y
   el fichaje de empleados salen de esta lista** (decisión del usuario del 17
   de noviembre de 2026, de lo que tiene Praxia) y entran antes de la
-  presentación. Ver `handoff.md`. Hechos (hist. §196): horario por día de la
-  semana, fichaje de entrada y salida, y el informe de horas, llegadas tarde
-  y faltas.
+  presentación. Ver `handoff.md`. Hechos (hist. §196, §199): horario por día de la
+  semana, fichaje de entrada y salida (también con el PIN en la caja), y el
+  informe de horas, llegadas tarde, faltas y turnos cumplidos.
 - Contabilidad de partida doble / libro mayor contable formal (Nexo lleva
   tesorería y cuentas corrientes, no reemplaza a un sistema contable).
 - Facturación internacional / multi-moneda.

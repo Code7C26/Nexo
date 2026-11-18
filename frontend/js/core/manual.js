@@ -433,20 +433,45 @@ const SECCIONES_ES = [
   {
     id: "horarios",
     grupo: "Tu cuenta y tu equipo",
-    titulo: "Horarios y fichaje",
-    pantalla: ["#/horarios", "Horarios"],
-    preguntas: ["cómo ficho la entrada", "cómo marco la salida", "cómo cargo el horario de un empleado", "quién llegó tarde", "cuántas horas trabajó", "se olvidó de fichar la salida"],
-    palabras: ["horario", "horarios", "fichar", "fichaje", "entrada", "salida", "tarde", "horas", "falta", "faltas", "empleado", "turno"],
+    titulo: "Horarios, fichaje y PIN",
+    pantalla: ["#/horarios", "Empleados"],
+    preguntas: ["cómo cargo un cajero sin cuenta", "cómo le pongo un pin al cajero", "cómo ficho la entrada", "cómo marco la salida", "cómo cargo el horario de un empleado", "quién llegó tarde", "cuántas horas trabajó", "cumplió el turno", "se olvidó de fichar la salida"],
+    palabras: ["pin", "encargado", "horario", "horarios", "fichar", "fichaje", "entrada", "salida", "tarde", "horas", "falta", "faltas", "turno", "turnos", "cumplido"],
     bloques: [
-      "Cada persona ficha su entrada y su salida desde **Horarios**, con el botón de arriba. Ahí ve también su horario de hoy.",
+      "Los empleados no necesitan una cuenta de Nexo: los cargás vos, con su nombre y un PIN, y atienden y fichan en la compu de la caja.",
       { pasos: [
-        "El administrador carga el horario de cada uno en **Los horarios de cada uno** › **Cargar horario**: por día, la hora de entrada y la de salida (con horario cortado, las dos franjas).",
-        "En **Quién vino y cuánto trabajó** ve, de hoy, la semana o el mes, las horas de cada uno, las llegadas tarde, las faltas y los turnos de caja que abrió.",
+        "En **Empleados** › **Sumar empleado**, escribí el nombre y un PIN de 4 a 6 números. Si tenés sucursales, elegí dónde trabaja. Marcá **Es encargado** si autoriza anular una venta en la caja.",
+        "Si esa persona también tiene cuenta de Nexo (un encargado, vos mismo), elegila en **Su cuenta de Nexo**: así ficha también desde su celular.",
+        "Tocá **Horario** para cargar sus días y horas (con horario cortado, las dos franjas).",
+        "En **Quién vino y cuánto trabajó** ves, de hoy, la semana o el mes, cuántos turnos cumplió cada uno, sus horas, las llegadas tarde y las faltas. Cada turno dice si lo cumplió, si entró tarde o se fue antes, o si faltó.",
         "Si alguien se olvidó de fichar, tocá **Corregir** en ese día y cargá la hora: queda marcado como corregido y en la auditoría."
       ] },
-      { nota: "Llegar hasta 5 minutos después no cuenta como tarde. Los sueldos no se liquidan en Nexo." }
+      { nota: "Llegar hasta 5 minutos después, o irse hasta 5 minutos antes, no cuenta. Nexo dice qué turnos se cumplieron; los sueldos no se liquidan en Nexo." }
     ],
-    ver: ["equipo", "turno-mostrador"]
+    ver: ["caja-vinculada", "equipo", "turno-mostrador"]
+  },
+  {
+    id: "caja-vinculada",
+    grupo: "Vender",
+    titulo: "La compu de la caja",
+    pantalla: ["#/pos", "Punto de venta"],
+    preguntas: ["cómo dejo la compu como caja", "cómo atiende un cajero sin cuenta", "cómo se ficha en la caja", "cómo cambio quién atiende", "cómo desvinculo la compu"],
+    palabras: ["compu", "caja", "vincular", "desvincular", "pin", "atender", "atiende", "bloquear", "relevo", "fichar"],
+    bloques: [
+      "La compu del mostrador tiene su propia cuenta: sin la tuya abierta, solo sirve para vender en esa caja. Nadie vende ni cambia nada desde su casa.",
+      { pasos: [
+        "En el local, entrá con tu cuenta al **Punto de venta**, elegí la caja y tocá **Usar esta compu como caja**. Después salí de tu cuenta.",
+        "La compu queda en **¿Quién atiende?**: cada empleado toca su nombre, pone su PIN y **Atender**. Las ventas quedan a su nombre.",
+        "Para el relevo, **Bloquear**: el turno y la venta en curso siguen, y atiende el próximo con su PIN.",
+        "Fichar es otro botón: con el PIN, **Fichar la entrada** o **Fichar la salida**. Desbloquear la caja no es fichar."
+      ] },
+      { lista: [
+        "**Anular una venta**: si quien atiende no es encargado, la autoriza un encargado con su PIN.",
+        "**Entrar con mi cuenta**: desde la caja, el dueño entra a su cuenta; al salir, la compu vuelve a ser la caja.",
+        "**Desvincular**: desde tu cuenta, en el mismo lugar del punto de venta."
+      ] }
+    ],
+    ver: ["horarios", "turno-mostrador", "punto-de-venta"]
   },
   {
     id: "mercado-pago",

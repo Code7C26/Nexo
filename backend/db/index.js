@@ -1461,12 +1461,15 @@ export function registrarAuditoria({
   // (ver server.js), donde no hay a quién atribuirle la empresa. NULL deja
   // esa fila invisible en GET /api/auditoria para todas las empresas, en
   // vez de mezclarla con una al azar.
-  organizacion_id = null
+  organizacion_id = null,
+  // En una caja vinculada (hist. §199), el empleado que atendía: usuario_id
+  // es entonces la cuenta de la caja.
+  empleado_id = null
 }) {
   db.prepare(
     `INSERT INTO auditoria
-       (actor, accion, entidad, entidad_id, usuario_id, valor_anterior, valor_nuevo, operacion_tipo, operacion_id, detalle, organizacion_id)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+       (actor, accion, entidad, entidad_id, usuario_id, valor_anterior, valor_nuevo, operacion_tipo, operacion_id, detalle, organizacion_id, empleado_id)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   ).run(
     actor,
     accion,
@@ -1478,7 +1481,8 @@ export function registrarAuditoria({
     operacion_tipo,
     operacion_id,
     detalle,
-    organizacion_id
+    organizacion_id,
+    empleado_id
   );
 }
 
@@ -2298,12 +2302,85 @@ for (const [tabla, columna] of [
   // (el de su venta, si fue del mostrador).
   ['cobros', 'turno_caja_id INTEGER REFERENCES turnos_caja(id)'],
   // Los accesos rápidos del mostrador de cada caja (hist. §195).
-  ['cuentas_tesoreria', 'accesos_rapidos TEXT']
+  ['cuentas_tesoreria', 'accesos_rapidos TEXT'],
+  // Cajas vinculadas y empleados con PIN (hist. §199): la cuenta de la caja,
+  // quién atiende en su sesión y quién quedó en cada operación. Las filas de
+  // antes, sin empleado (las hizo la cuenta que dice la auditoría).
+  ['usuarios', 'caja_id INTEGER REFERENCES cuentas_tesoreria(id)'],
+  ['sesiones', 'empleado_id INTEGER REFERENCES empleados(id)'],
+  ['auditoria', 'empleado_id INTEGER REFERENCES empleados(id)'],
+  ['ventas', 'empleado_id INTEGER REFERENCES empleados(id)'],
+  ['cobros', 'empleado_id INTEGER REFERENCES empleados(id)'],
+  ['turnos_caja', 'abierto_empleado_id INTEGER REFERENCES empleados(id)'],
+  ['turnos_caja', 'cerrado_empleado_id INTEGER REFERENCES empleados(id)']
 ]) {
   if (!db.prepare(`PRAGMA table_info(${tabla})`).all().some((col) => col.name === columna.split(' ')[0])) {
     db.exec(`ALTER TABLE ${tabla} ADD COLUMN ${columna}`);
   }
 }
+
+// Horarios y fichajes pasan de la cuenta al empleado (hist. §199): el cajero
+// no tiene cuenta de Nexo. Cada cuenta que ya tenía horario o fichajes en un
+// negocio pasa a ser un empleado de ese negocio, vinculado a su cuenta (sin
+// PIN: lo carga el admin), y sus filas se rearman con empleado_id, los mismos
+// id. Una vez: después de esto fichajes ya no tiene usuario_id.
+if (db.prepare('PRAGMA table_info(fichajes)').all().some((col) => col.name === 'usuario_id')) {
+  db.exec('PRAGMA foreign_keys = OFF');
+  db.exec('BEGIN');
+  try {
+    db.exec(`
+      INSERT INTO empleados (organizacion_id, nombre, usuario_id)
+      SELECT cuentas.organizacion_id, usuarios.nombre, cuentas.usuario_id
+        FROM (SELECT usuario_id, organizacion_id FROM horarios
+              UNION SELECT usuario_id, organizacion_id FROM fichajes) AS cuentas
+        JOIN usuarios ON usuarios.id = cuentas.usuario_id
+       WHERE NOT EXISTS (SELECT 1 FROM empleados e
+                          WHERE e.usuario_id = cuentas.usuario_id AND e.organizacion_id = cuentas.organizacion_id);
+      CREATE TABLE horarios_nueva (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        empleado_id INTEGER NOT NULL REFERENCES empleados(id),
+        organizacion_id INTEGER NOT NULL REFERENCES organizaciones(id),
+        dia_semana INTEGER NOT NULL CHECK (dia_semana BETWEEN 0 AND 6),
+        desde TEXT NOT NULL,
+        hasta TEXT NOT NULL,
+        CHECK (hasta > desde)
+      );
+      INSERT INTO horarios_nueva (id, empleado_id, organizacion_id, dia_semana, desde, hasta)
+      SELECT h.id, e.id, h.organizacion_id, h.dia_semana, h.desde, h.hasta
+        FROM horarios h JOIN empleados e ON e.usuario_id = h.usuario_id AND e.organizacion_id = h.organizacion_id;
+      CREATE TABLE fichajes_nueva (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        empleado_id INTEGER NOT NULL REFERENCES empleados(id),
+        organizacion_id INTEGER NOT NULL REFERENCES organizaciones(id),
+        entrada TEXT NOT NULL,
+        salida TEXT,
+        corregido_por INTEGER REFERENCES usuarios(id),
+        CHECK (salida IS NULL OR salida > entrada)
+      );
+      INSERT INTO fichajes_nueva (id, empleado_id, organizacion_id, entrada, salida, corregido_por)
+      SELECT f.id, e.id, f.organizacion_id, f.entrada, f.salida, f.corregido_por
+        FROM fichajes f JOIN empleados e ON e.usuario_id = f.usuario_id AND e.organizacion_id = f.organizacion_id;
+    `);
+    for (const tabla of ['horarios', 'fichajes']) {
+      const antes = db.prepare(`SELECT COUNT(*) AS n FROM ${tabla}`).get().n;
+      const despues = db.prepare(`SELECT COUNT(*) AS n FROM ${tabla}_nueva`).get().n;
+      if (antes !== despues) throw new Error(`${tabla}: ${antes - despues} fila(s) sin empleado`);
+      const secuencia = db.prepare('SELECT seq FROM sqlite_sequence WHERE name = ?').get(tabla);
+      db.exec(`DROP TABLE ${tabla}`);
+      db.exec(`ALTER TABLE ${tabla}_nueva RENAME TO ${tabla}`);
+      db.prepare('DELETE FROM sqlite_sequence WHERE name = ?').run(tabla);
+      if (secuencia) db.prepare('INSERT INTO sqlite_sequence (name, seq) VALUES (?, ?)').run(tabla, secuencia.seq);
+      const huerfanas = db.prepare(`PRAGMA foreign_key_check(${tabla})`).all();
+      if (huerfanas.length) throw new Error(`${tabla}: ${huerfanas.length} fila(s) con FK rota`);
+    }
+    db.exec('COMMIT');
+  } catch (err) {
+    db.exec('ROLLBACK');
+    throw err;
+  }
+  db.exec('PRAGMA foreign_keys = ON');
+}
+db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_fichajes_empleado_abierto ON fichajes(empleado_id) WHERE salida IS NULL');
 
 function ampliarCheck(tabla, viejo, nuevo, marca, hijas = []) {
   const sql = db.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?").get(tabla).sql;

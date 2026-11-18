@@ -362,6 +362,24 @@ function borrarCookieSesion(res) {
   res.clearCookie(COOKIE_SESION, { path: '/' });
 }
 
+// La compu vinculada a una caja (hist. §199) tiene su propia cookie, aparte de
+// la de la persona: si el dueño entra con su cuenta en esa compu, manda su
+// sesión; cuando sale, la compu vuelve a ser la caja. Dura un año y se renueva
+// con el uso, así la caja no se vincula de nuevo cada mañana. Se corta
+// desvinculándola desde la cuenta de un admin.
+const COOKIE_CAJA = 'nexo_caja';
+const CAJA_DIAS = 365;
+
+function ponerCookieCaja(res, token) {
+  res.cookie(COOKIE_CAJA, token, {
+    httpOnly: true,
+    sameSite: 'lax',
+    path: '/',
+    maxAge: CAJA_DIAS * 24 * 60 * 60 * 1000,
+    secure: process.env.NODE_ENV === 'production'
+  });
+}
+
 // La sesión nace en un negocio: el que se acaba de crear en el registro, o el
 // último que usó quien entra (hist. §77).
 function crearSesion(usuarioId, organizacionId) {
@@ -404,10 +422,76 @@ function sesionValida(token) {
          LEFT JOIN organizaciones negocio ON negocio.id = sesiones.organizacion_id
         WHERE sesiones.token = ?
           AND sesiones.expira > datetime('now')
+          AND usuarios.caja_id IS NULL
           AND (sesiones.organizacion_id IS NULL OR pertenencia.activo = 1)`
     )
     .get(token);
   return fila ?? null;
+}
+
+// La sesión de una compu vinculada a una caja (hist. §199): la cuenta de la
+// caja, en su negocio, mientras la caja siga siendo de efectivo. rol es
+// 'empleado' (podarSensibles le saca costos y márgenes) y empleado_id es quién
+// atiende: NULL = la caja está bloqueada. Un empleado dado de baja deja de
+// atender en el próximo pedido.
+function sesionDeCaja(token) {
+  if (!token) return null;
+  const fila = db
+    .prepare(
+      `SELECT usuarios.id, usuarios.usuario, cuenta.nombre AS nombre, 'empleado' AS rol, sesiones.organizacion_id,
+              usuarios.caja_id, cuenta.nombre AS caja_nombre, cuenta.sucursal_id, sucursales.nombre AS sucursal_nombre,
+              empleados.id AS empleado_id, empleados.nombre AS empleado_nombre, empleados.encargado AS empleado_encargado,
+              negocio.nombre AS negocio_nombre, negocio.baja_pedida, negocio.ejemplo, negocio.ejemplo_vence
+         FROM sesiones
+         JOIN usuarios ON usuarios.id = sesiones.usuario_id
+         JOIN organizaciones negocio ON negocio.id = sesiones.organizacion_id AND negocio.id = usuarios.organizacion_id
+         JOIN cuentas_tesoreria cuenta
+           ON cuenta.id = usuarios.caja_id AND cuenta.organizacion_id = negocio.id AND cuenta.tipo = 'efectivo'
+         LEFT JOIN sucursales ON sucursales.id = cuenta.sucursal_id
+         LEFT JOIN empleados ON empleados.id = sesiones.empleado_id AND empleados.activo = 1
+        WHERE sesiones.token = ?
+          AND sesiones.expira > datetime('now')`
+    )
+    .get(token);
+  return fila ?? null;
+}
+
+// Lo que el frontend sabe de una caja vinculada: la misma forma que
+// datosUsuario, más `caja`, que hace arrancar el modo caja (sesion.js).
+function datosCaja(sesion) {
+  return {
+    id: sesion.id,
+    usuario: sesion.usuario,
+    nombre: sesion.nombre,
+    rol: 'empleado',
+    debe_cambiar_password: false,
+    organizacion_id: sesion.organizacion_id,
+    email: null,
+    email_verificado: false,
+    terminos_al_dia: true,
+    edad: null,
+    negocio_en_baja: sesion.baja_pedida ? { nombre: sesion.negocio_nombre, se_borra: fechaDeBorrado(sesion.baja_pedida) } : null,
+    ejemplo: null,
+    plataforma: false,
+    caja: {
+      id: sesion.caja_id,
+      nombre: sesion.caja_nombre,
+      negocio: sesion.negocio_nombre,
+      sucursal: sesion.sucursal_nombre ?? null,
+      atiende: sesion.empleado_id
+        ? { id: sesion.empleado_id, nombre: sesion.empleado_nombre, encargado: Boolean(sesion.empleado_encargado) }
+        : null
+    }
+  };
+}
+
+// Se renueva una vez por día como mucho: la caja pide algo cada pocos
+// segundos, y no hace falta escribir la sesión en cada pedido.
+function renovarSesionCaja(token) {
+  db.prepare(
+    `UPDATE sesiones SET expira = datetime('now', '+${CAJA_DIAS} days')
+      WHERE token = ? AND expira < datetime('now', '+${CAJA_DIAS - 1} days')`
+  ).run(token);
 }
 
 // Lo que el frontend sabe del usuario de la sesión, con la misma forma en
@@ -672,8 +756,63 @@ function auditar(req, datos) {
   return registrarAuditoria({
     ...datos,
     usuario_id: req.usuario?.id ?? null,
-    organizacion_id: req.usuario?.organizacion_id ?? null
+    organizacion_id: req.usuario?.organizacion_id ?? null,
+    // En una caja vinculada, quién atendía (hist. §199).
+    empleado_id: req.usuario?.caja_id ? (req.usuario.empleado_id ?? null) : null
   });
+}
+
+// Lo que puede hacer una caja vinculada (hist. §199): el mostrador de su caja
+// y nada más (vender, cobrar, abrir y cerrar el turno, fichar). No entra a
+// Configuración, precios ni reportes, y de lo que lee y escribe solo alcanza
+// lo de su caja (ver fueraDeSuCaja). Cada ruta, con el método y el camino que
+// ve autenticar (sin /api).
+const RUTAS_DE_CAJA = [
+  ['GET', /^\/caja$/],
+  ['POST', /^\/caja\/(atender|bloquear|fichar)$/],
+  ['GET', /^\/negocio$/],
+  ['GET', /^\/tesoreria$/],
+  ['GET', /^\/turnos-caja$/],
+  ['GET', /^\/turnos-caja\/\d+(\/detalle)?$/],
+  ['POST', /^\/turnos-caja$/],
+  ['POST', /^\/turnos-caja\/\d+\/cerrar$/],
+  ['PUT', /^\/cajas\/\d+\/accesos$/],
+  ['GET', /^\/pos\/catalogo$/],
+  ['POST', /^\/pos\/(ventas|cobro-a-cuenta|gastos)$/],
+  ['POST', /^\/pos\/ventas\/\d+\/(cancelar-qr|soltar-qr|cobrar|anular)$/],
+  ['GET', /^\/clientes(\/\d+)?$/],
+  ['POST', /^\/clientes$/],
+  ['PATCH', /^\/clientes\/\d+$/],
+  ['GET', /^\/(componentes-venta|medios-cobro|ofertas|categorias-gasto)$/],
+  ['GET', /^\/ventas\/\d+$/],
+  ['POST', /^\/ventas\/\d+\/(cobros|facturar|qr|revisar-pagos)$/],
+  ['GET', /^\/facturas\/\d+$/],
+  ['POST', /^\/facturas\/\d+\/autorizar$/]
+];
+// Sin nadie atendiendo (la caja bloqueada) solo se lee y se pone el PIN.
+const RUTAS_DE_CAJA_SIN_EMPLEADO = /^\/caja(\/(atender|bloquear|fichar))?$/;
+
+// Lo que la caja pide tiene que ser de su caja: su turno, sus ventas, su
+// catálogo. Un id de otra caja da 403, aunque sea del mismo negocio.
+function fueraDeSuCaja(req) {
+  const caja = req.usuario.caja_id;
+  const turnoAjeno = (id) => !db.prepare('SELECT 1 FROM turnos_caja WHERE id = ? AND cuenta_tesoreria_id = ?').get(Number(id), caja);
+  const ventaAjena = (id) =>
+    !db
+      .prepare('SELECT 1 FROM ventas JOIN turnos_caja ON turnos_caja.id = ventas.turno_caja_id WHERE ventas.id = ? AND turnos_caja.cuenta_tesoreria_id = ?')
+      .get(Number(id), caja);
+  let m;
+  if (req.body?.turno_caja_id != null && turnoAjeno(req.body.turno_caja_id)) return true;
+  if ((m = req.path.match(/^\/turnos-caja\/(\d+)/)) && turnoAjeno(m[1])) return true;
+  if (req.method === 'POST' && req.path === '/turnos-caja' && Number(req.body?.cuenta_tesoreria_id) !== caja) return true;
+  if ((m = req.path.match(/^\/cajas\/(\d+)/)) && Number(m[1]) !== caja) return true;
+  if (req.path === '/pos/catalogo' && Number(req.query.caja) !== caja) return true;
+  if ((m = req.path.match(/^\/(?:pos\/)?ventas\/(\d+)/)) && ventaAjena(m[1])) return true;
+  if ((m = req.path.match(/^\/facturas\/(\d+)/))) {
+    const factura = db.prepare('SELECT venta_id FROM facturas WHERE id = ?').get(Number(m[1]));
+    if (!factura?.venta_id || ventaAjena(factura.venta_id)) return true;
+  }
+  return false;
 }
 
 // Lo único que puede hacer una cuenta sin mail, o sin los términos vigentes
@@ -685,11 +824,8 @@ const RUTAS_SIN_TERMINOS = new Set([...RUTAS_SIN_MAIL, '/auth/terminos']);
 function autenticar(req, res, next) {
   const token = leerCookie(req, COOKIE_SESION);
   const sesion = sesionValida(token);
-  if (!sesion) {
-    // 401 JSON, nunca HTML ni redirect: quien llama acá es siempre
-    // fetch() desde el frontend, no una navegación de browser.
-    return res.status(401).json({ error: 'Sesión no válida. Iniciá sesión de nuevo.' });
-  }
+  // Sin la sesión de una persona, la de la caja de esta compu (hist. §199).
+  if (!sesion) return autenticarCaja(req, res, next);
   req.usuario = sesion;
   renovarSesion(token);
   // La cookie tiene que seguir siendo válida (por eso no es un 401: eso lo
@@ -738,6 +874,33 @@ function autenticar(req, res, next) {
   next();
 }
 const RUTAS_EN_BAJA = new Set(['/negocio/baja/cancelar', '/negocio/exportar']);
+
+// Una compu vinculada a una caja (hist. §199). Solo el mostrador de su caja
+// (RUTAS_DE_CAJA, fueraDeSuCaja), y para escribir, alguien atendiendo: la caja
+// bloqueada solo lee y pide el PIN. codigo: 'caja_bloqueada' hace que la
+// pantalla vuelva a "¿Quién atiende?".
+function autenticarCaja(req, res, next) {
+  const token = leerCookie(req, COOKIE_CAJA);
+  const sesion = sesionDeCaja(token);
+  if (!sesion) {
+    // 401 JSON, nunca HTML ni redirect: quien llama acá es siempre
+    // fetch() desde el frontend, no una navegación de browser.
+    return res.status(401).json({ error: 'Sesión no válida. Iniciá sesión de nuevo.' });
+  }
+  req.usuario = sesion;
+  renovarSesionCaja(token);
+  if (sesion.baja_pedida) return res.status(403).json({ error: 'Este negocio se está dando de baja.', codigo: 'negocio_en_baja' });
+  if (!RUTAS_DE_CAJA.some(([metodo, ruta]) => metodo === req.method && ruta.test(req.path))) {
+    return res.status(403).json({ error: 'Desde la caja solo se usa el mostrador.', codigo: 'solo_caja' });
+  }
+  if (req.method !== 'GET' && !sesion.empleado_id && !RUTAS_DE_CAJA_SIN_EMPLEADO.test(req.path)) {
+    return res.status(403).json({ error: 'Poné tu PIN para atender.', codigo: 'caja_bloqueada' });
+  }
+  if (fueraDeSuCaja(req)) return res.status(403).json({ error: 'Eso es de otra caja.' });
+  const rechazo = rechazoPorPlan(req);
+  if (rechazo) return res.status(403).json(rechazo);
+  next();
+}
 
 // Express 4 no captura el rechazo de un handler `async`: sin esto, una
 // excepción después de un `await` (la llamada a Gemini, el INSERT) es un
@@ -895,6 +1058,13 @@ app.get('/api/auth/estado', (req, res) => {
   // google: el login ofrece "Continuar con Google" (hist. §149).
   const google = googleConfigurado();
   if (!sesion) {
+    // La compu vinculada a una caja (hist. §199) arranca en el modo caja.
+    const tokenCaja = leerCookie(req, COOKIE_CAJA);
+    const caja = sesionDeCaja(tokenCaja);
+    if (caja) {
+      renovarSesionCaja(tokenCaja);
+      return res.json({ requiere_bootstrap: false, autenticado: true, usuario: datosCaja(caja), registro_abierto: registroAbierto, ejemplos, google });
+    }
     return res.json({ requiere_bootstrap: false, autenticado: false, usuario: null, registro_abierto: registroAbierto, ejemplos, google });
   }
   renovarSesion(token);
@@ -935,7 +1105,8 @@ app.post('/api/auth/login', (req, res) => {
          FROM usuarios
          LEFT JOIN usuario_organizaciones pertenencia
            ON pertenencia.usuario_id = usuarios.id AND pertenencia.activo = 1
-        WHERE LOWER(usuarios.email) = LOWER(?1) OR LOWER(usuarios.usuario) = LOWER(?1)
+        WHERE (LOWER(usuarios.email) = LOWER(?1) OR LOWER(usuarios.usuario) = LOWER(?1))
+          AND usuarios.caja_id IS NULL
         ORDER BY COALESCE(LOWER(usuarios.email) = LOWER(?1), 0) DESC,
                  pertenencia.ultimo_acceso IS NULL, pertenencia.ultimo_acceso DESC, pertenencia.organizacion_id
         LIMIT 1`
@@ -2175,6 +2346,9 @@ const EJEMPLOS_POR_IP = 60;
 const EJEMPLO_ARMANDO = 'armando';
 const DOMINIO_CUENTA_EJEMPLO = 'nexo.invalid';
 const SIN_CUENTAS_DE_EJEMPLO = `(email IS NULL OR email NOT LIKE '%@${DOMINIO_CUENTA_EJEMPLO}')`;
+// Las cuentas de personas: sin las de ejemplo ni las de las cajas vinculadas
+// (hist. §199), que no son de nadie. Para el panel de la plataforma.
+const SOLO_PERSONAS = `${SIN_CUENTAS_DE_EJEMPLO} AND caja_id IS NULL`;
 
 function ejemplosDisponibles() {
   return process.env.NEXO_EJEMPLOS !== 'off' && !registroCerrado();
@@ -4918,26 +5092,29 @@ app.patch('/api/depositos/:id', soloAdmin, (req, res) => {
   res.json({ id: depositoId });
 });
 
-/* ---------- Horarios y fichaje (hist. §196) ---------- */
+/* ---------- Empleados, horarios y fichaje (hist. §196, §199) ---------- */
 //
 // De Praxia, pedido para la presentación (CLAUDE.md §39: los horarios sí, los
-// sueldos no). Cada persona ficha su entrada y su salida desde Nexo; el admin
-// carga el horario de cada uno por día de la semana, corrige el fichaje que
-// alguien se olvidó, y ve el informe: horas, llegadas tarde, faltas y los
-// turnos de caja que abrió. El horario se guarda en la hora del negocio; el
-// fichaje, en UTC, como la auditoría.
+// sueldos no). Desde hist. §199 son de los empleados, no de las cuentas: el
+// cajero no tiene cuenta de Nexo, lo carga el dueño con un PIN y ficha en la
+// caja vinculada. Quien tiene cuenta (y es empleado) ficha también desde ella.
+// El admin carga el horario de cada uno por día de la semana, corrige el
+// fichaje que alguien se olvidó, y ve el informe: horas, llegadas tarde,
+// faltas, si cumplió cada turno y los turnos de caja que abrió. El horario se
+// guarda en la hora del negocio; el fichaje, en UTC, como la auditoría.
 
 const ES_HORA = /^([01]\d|2[0-3]):[0-5]\d$/;
-// Llegar hasta 5 minutos después no cuenta como tarde.
+// Llegar hasta 5 minutos después, o irse hasta 5 minutos antes, no cuenta.
 const TOLERANCIA_TARDE_MIN = 5;
 const MAX_DIAS_INFORME = 62;
+// El PIN de la caja: de 4 a 6 números.
+const ES_PIN = /^\d{4,6}$/;
 const minutosDeHora = (hora) => Number(hora.slice(0, 2)) * 60 + Number(hora.slice(3, 5));
-const FICHAJE_ABIERTO = db.prepare('SELECT * FROM fichajes WHERE usuario_id = ? AND organizacion_id = ? AND salida IS NULL');
+const FICHAJE_ABIERTO = db.prepare('SELECT * FROM fichajes WHERE empleado_id = ? AND salida IS NULL');
+const ahoraUtc = () => new Date().toISOString().slice(0, 19).replace('T', ' ');
 
-function franjasDe(usuarioId, organizacionId) {
-  return db
-    .prepare('SELECT dia_semana, desde, hasta FROM horarios WHERE usuario_id = ? AND organizacion_id = ? ORDER BY dia_semana, desde')
-    .all(usuarioId, organizacionId);
+function franjasDe(empleadoId) {
+  return db.prepare('SELECT dia_semana, desde, hasta FROM horarios WHERE empleado_id = ? ORDER BY dia_semana, desde').all(empleadoId);
 }
 
 const fichajeConHora = (f) => ({
@@ -4947,67 +5124,103 @@ const fichajeConHora = (f) => ({
   hora_salida: f.salida ? horaLocalDe(f.salida) : null
 });
 
-// Lo de quien mira: si está adentro, lo fichado hoy y su horario de hoy.
-app.get('/api/fichajes/mio', (req, res) => {
-  const { id: usuarioId, organizacion_id: organizacionId } = req.usuario;
-  const hoy = fechaDeHoy();
-  const abierto = FICHAJE_ABIERTO.get(usuarioId, organizacionId);
-  const deHoy = db
-    .prepare('SELECT * FROM fichajes WHERE usuario_id = ? AND organizacion_id = ? AND fecha_local(entrada) = ? ORDER BY entrada')
-    .all(usuarioId, organizacionId, hoy);
-  res.json({
-    abierto: abierto ? fichajeConHora(abierto) : null,
-    hoy: deHoy.map(fichajeConHora),
-    horario_hoy: franjasDe(usuarioId, organizacionId).filter((f) => f.dia_semana === diaDeLaSemana(hoy))
-  });
-});
+// El empleado que es esta cuenta en el negocio. Con `crear`, nace la primera
+// vez que la persona ficha desde su cuenta: con su nombre y sin PIN. Si ya hay
+// un empleado activo con ese nombre, se le suma el mail para distinguirlos.
+function empleadoDeCuenta(usuarioId, organizacionId, { crear = false } = {}) {
+  const fila = db.prepare('SELECT * FROM empleados WHERE usuario_id = ? AND organizacion_id = ?').get(usuarioId, organizacionId);
+  if (fila || !crear) return fila ?? null;
+  const cuenta = db.prepare('SELECT nombre, email FROM usuarios WHERE id = ?').get(usuarioId);
+  const tomado = (nombre) =>
+    db.prepare('SELECT 1 FROM empleados WHERE organizacion_id = ? AND activo = 1 AND LOWER(nombre) = LOWER(?)').get(organizacionId, nombre);
+  const nombre = tomado(cuenta.nombre) ? `${cuenta.nombre} (${cuenta.email})` : cuenta.nombre;
+  const id = Number(
+    db.prepare('INSERT INTO empleados (organizacion_id, nombre, usuario_id) VALUES (?, ?, ?)').run(organizacionId, nombre, usuarioId)
+      .lastInsertRowid
+  );
+  return db.prepare('SELECT * FROM empleados WHERE id = ?').get(id);
+}
 
-app.post('/api/fichajes', (req, res) => {
-  const { id: usuarioId, organizacion_id: organizacionId } = req.usuario;
-  if (FICHAJE_ABIERTO.get(usuarioId, organizacionId)) return res.status(409).json({ error: 'Ya fichaste la entrada.' });
+function ficharEntrada(req, empleado) {
+  if (FICHAJE_ABIERTO.get(empleado.id)) return { status: 409, error: `${empleado.nombre} ya fichó la entrada.` };
   const id = withTransaction(() => {
     const nuevo = Number(
       db
-        .prepare("INSERT INTO fichajes (usuario_id, organizacion_id, entrada) VALUES (?, ?, datetime('now'))")
-        .run(usuarioId, organizacionId).lastInsertRowid
+        .prepare("INSERT INTO fichajes (empleado_id, organizacion_id, entrada) VALUES (?, ?, datetime('now'))")
+        .run(empleado.id, empleado.organizacion_id).lastInsertRowid
     );
     auditar(req, {
       accion: 'crear',
-      entidad: 'usuario',
-      entidad_id: usuarioId,
+      entidad: 'organizacion',
+      entidad_id: empleado.organizacion_id,
       operacion_tipo: 'fichaje',
       operacion_id: nuevo,
-      detalle: 'Fichó la entrada'
+      detalle: `${empleado.nombre} fichó la entrada`
     });
     return nuevo;
   });
-  res.status(201).json(fichajeConHora(db.prepare('SELECT * FROM fichajes WHERE id = ?').get(id)));
-});
+  return { fichaje: fichajeConHora(db.prepare('SELECT * FROM fichajes WHERE id = ?').get(id)) };
+}
 
-app.post('/api/fichajes/salida', (req, res) => {
-  const { id: usuarioId, organizacion_id: organizacionId } = req.usuario;
-  const abierto = FICHAJE_ABIERTO.get(usuarioId, organizacionId);
-  if (!abierto) return res.status(409).json({ error: 'No fichaste la entrada.' });
+function ficharSalida(req, empleado) {
+  const abierto = FICHAJE_ABIERTO.get(empleado.id);
+  if (!abierto) return { status: 409, error: `${empleado.nombre} no fichó la entrada.` };
   withTransaction(() => {
     // Una salida en el mismo segundo que la entrada queda un segundo después.
     db.prepare("UPDATE fichajes SET salida = MAX(datetime('now'), datetime(entrada, '+1 second')) WHERE id = ?").run(abierto.id);
     auditar(req, {
       accion: 'cambiar_estado',
-      entidad: 'usuario',
-      entidad_id: usuarioId,
+      entidad: 'organizacion',
+      entidad_id: empleado.organizacion_id,
       operacion_tipo: 'fichaje',
       operacion_id: abierto.id,
-      detalle: 'Fichó la salida'
+      detalle: `${empleado.nombre} fichó la salida`
     });
   });
-  res.json(fichajeConHora(db.prepare('SELECT * FROM fichajes WHERE id = ?').get(abierto.id)));
+  return { fichaje: fichajeConHora(db.prepare('SELECT * FROM fichajes WHERE id = ?').get(abierto.id)) };
+}
+
+// Lo de quien mira: si está adentro, lo fichado hoy y su horario de hoy. Una
+// cuenta que todavía no es empleado no fichó nunca.
+app.get('/api/fichajes/mio', (req, res) => {
+  const empleado = empleadoDeCuenta(req.usuario.id, req.usuario.organizacion_id);
+  if (!empleado?.activo) return res.json({ abierto: null, hoy: [], horario_hoy: [] });
+  const hoy = fechaDeHoy();
+  const abierto = FICHAJE_ABIERTO.get(empleado.id);
+  const deHoy = db.prepare('SELECT * FROM fichajes WHERE empleado_id = ? AND fecha_local(entrada) = ? ORDER BY entrada').all(empleado.id, hoy);
+  res.json({
+    abierto: abierto ? fichajeConHora(abierto) : null,
+    hoy: deHoy.map(fichajeConHora),
+    horario_hoy: franjasDe(empleado.id).filter((f) => f.dia_semana === diaDeLaSemana(hoy))
+  });
+});
+
+app.post('/api/fichajes', (req, res) => {
+  const empleado = empleadoDeCuenta(req.usuario.id, req.usuario.organizacion_id, { crear: true });
+  if (!empleado.activo) return res.status(403).json({ error: 'Te dieron de baja como empleado de este negocio.' });
+  const { status, error, fichaje } = ficharEntrada(req, empleado);
+  if (error) return res.status(status).json({ error: 'Ya fichaste la entrada.' });
+  res.status(201).json(fichaje);
+});
+
+app.post('/api/fichajes/salida', (req, res) => {
+  const empleado = empleadoDeCuenta(req.usuario.id, req.usuario.organizacion_id);
+  if (!empleado?.activo) return res.status(409).json({ error: 'No fichaste la entrada.' });
+  const { status, error, fichaje } = ficharSalida(req, empleado);
+  if (error) return res.status(status).json({ error: 'No fichaste la entrada.' });
+  res.json(fichaje);
 });
 
 // El admin corrige un fichaje (se olvidó de fichar la salida, o la entrada
 // quedó mal): la hora del negocio, en el mismo día de la entrada.
 app.patch('/api/fichajes/:id', soloAdmin, (req, res) => {
   const organizacionId = req.usuario.organizacion_id;
-  const fichaje = db.prepare('SELECT * FROM fichajes WHERE id = ? AND organizacion_id = ?').get(Number(req.params.id), organizacionId);
+  const fichaje = db
+    .prepare(
+      `SELECT fichajes.*, empleados.nombre FROM fichajes JOIN empleados ON empleados.id = fichajes.empleado_id
+        WHERE fichajes.id = ? AND fichajes.organizacion_id = ?`
+    )
+    .get(Number(req.params.id), organizacionId);
   if (!fichaje) return res.status(404).json({ error: 'Fichaje no encontrado.' });
   const { entrada, salida } = req.body ?? {};
   for (const hora of [entrada, salida]) {
@@ -5017,7 +5230,9 @@ app.patch('/api/fichajes/:id', soloAdmin, (req, res) => {
   const nuevaEntrada = entrada ? utcDeLocal(fecha, entrada) : fichaje.entrada;
   const nuevaSalida = salida ? utcDeLocal(fecha, salida) : salida === '' ? null : fichaje.salida;
   if (nuevaSalida && nuevaSalida <= nuevaEntrada) return res.status(400).json({ error: 'La salida tiene que ser después de la entrada.' });
-  if (!nuevaSalida && fichaje.salida === null && FICHAJE_ABIERTO.get(fichaje.usuario_id, organizacionId)?.id !== fichaje.id) {
+  // Una sola abierta por empleado: dejar esta sin salida choca con otra abierta.
+  const abierto = FICHAJE_ABIERTO.get(fichaje.empleado_id);
+  if (!nuevaSalida && abierto && abierto.id !== fichaje.id) {
     return res.status(400).json({ error: 'Esa persona ya tiene un fichaje abierto.' });
   }
   withTransaction(() => {
@@ -5025,43 +5240,171 @@ app.patch('/api/fichajes/:id', soloAdmin, (req, res) => {
     const antes = fichajeConHora(fichaje);
     auditar(req, {
       accion: 'editar',
-      entidad: 'usuario',
-      entidad_id: fichaje.usuario_id,
+      entidad: 'organizacion',
+      entidad_id: organizacionId,
       operacion_tipo: 'fichaje',
       operacion_id: fichaje.id,
       valor_anterior: JSON.stringify({ entrada: antes.hora_entrada, salida: antes.hora_salida }),
       valor_nuevo: JSON.stringify({ entrada: horaLocalDe(nuevaEntrada), salida: nuevaSalida ? horaLocalDe(nuevaSalida) : null }),
-      detalle: `Corrigió el fichaje del ${fecha.split('-').reverse().join('/')}`
+      detalle: `Corrigió el fichaje de ${fichaje.nombre} del ${fecha.split('-').reverse().join('/')}`
     });
   });
   res.json(fichajeConHora(db.prepare('SELECT * FROM fichajes WHERE id = ?').get(fichaje.id)));
 });
 
-// El horario de cada persona del negocio, para cargarlo.
-app.get('/api/horarios', soloAdmin, (req, res) => {
-  const organizacionId = req.usuario.organizacion_id;
-  const personas = db
+// Los empleados del negocio, para cargarlos: los activos primero. Nunca viaja
+// el PIN, solo si tiene uno.
+function empleadosDelNegocio(organizacionId) {
+  return db
     .prepare(
-      `SELECT usuarios.id, usuarios.nombre, pertenencia.rol
-         FROM usuario_organizaciones pertenencia JOIN usuarios ON usuarios.id = pertenencia.usuario_id
-        WHERE pertenencia.organizacion_id = ? AND pertenencia.activo = 1
-        ORDER BY usuarios.nombre`
+      `SELECT empleados.id, empleados.nombre, empleados.usuario_id, empleados.sucursal_id, empleados.encargado,
+              empleados.activo, empleados.pin_hash IS NOT NULL AS tiene_pin,
+              sucursales.nombre AS sucursal, usuarios.nombre AS cuenta, usuarios.email AS cuenta_email,
+              EXISTS (SELECT 1 FROM fichajes WHERE fichajes.empleado_id = empleados.id AND fichajes.salida IS NULL) AS adentro
+         FROM empleados
+         LEFT JOIN sucursales ON sucursales.id = empleados.sucursal_id
+         LEFT JOIN usuarios ON usuarios.id = empleados.usuario_id
+        WHERE empleados.organizacion_id = ?
+        ORDER BY empleados.activo DESC, empleados.nombre COLLATE NOCASE`
     )
-    .all(organizacionId);
-  res.json(personas.map((p) => ({ ...p, franjas: franjasDe(p.id, organizacionId) })));
+    .all(organizacionId)
+    .map((e) => ({ ...e, encargado: Boolean(e.encargado), activo: Boolean(e.activo), tiene_pin: Boolean(e.tiene_pin), adentro: Boolean(e.adentro) }));
+}
+
+app.get('/api/empleados', soloAdmin, (req, res) => {
+  res.json(empleadosDelNegocio(req.usuario.organizacion_id));
 });
 
-// Reemplaza el horario entero de una persona: [{ dia_semana, desde, hasta }].
-app.put('/api/horarios/:usuarioId', soloAdmin, (req, res) => {
+// Valida un alta o una edición: { error } o lo que se guarda. El PIN llega
+// escrito y se guarda con scrypt, como una contraseña; null lo saca.
+function datosDeEmpleado(body, organizacionId, empleado = null) {
+  const datos = {};
+  if (!empleado || body.nombre !== undefined) {
+    const nombre = String(body.nombre ?? '').trim();
+    if (!nombre) return { error: 'Escribí el nombre.' };
+    if (nombre.length > 80) return { error: 'El nombre es muy largo.' };
+    const otro = db
+      .prepare('SELECT id FROM empleados WHERE organizacion_id = ? AND activo = 1 AND LOWER(nombre) = LOWER(?) AND id IS NOT ?')
+      .get(organizacionId, nombre, empleado?.id ?? null);
+    if (otro) return { error: `Ya hay un empleado que se llama ${nombre}: sumale el apellido.` };
+    datos.nombre = nombre;
+  }
+  if (body.pin !== undefined) {
+    if (body.pin === null || body.pin === '') {
+      datos.pin_hash = null;
+      datos.pin_salt = null;
+    } else {
+      if (!ES_PIN.test(String(body.pin))) return { error: 'El PIN va de 4 a 6 números.' };
+      const { hash, salt } = hashPassword(String(body.pin));
+      datos.pin_hash = hash;
+      datos.pin_salt = salt;
+    }
+  }
+  if (body.sucursal_id !== undefined) {
+    if (body.sucursal_id === null || body.sucursal_id === '') datos.sucursal_id = null;
+    else {
+      const sucursal = db.prepare('SELECT id FROM sucursales WHERE id = ? AND organizacion_id = ?').get(Number(body.sucursal_id), organizacionId);
+      if (!sucursal) return { error: 'La sucursal no existe.' };
+      datos.sucursal_id = sucursal.id;
+    }
+  }
+  if (body.usuario_id !== undefined) {
+    if (body.usuario_id === null || body.usuario_id === '') datos.usuario_id = null;
+    else {
+      const usuarioId = Number(body.usuario_id);
+      const trabaja = db
+        .prepare('SELECT 1 FROM usuario_organizaciones WHERE usuario_id = ? AND organizacion_id = ? AND activo = 1')
+        .get(usuarioId, organizacionId);
+      if (!trabaja) return { error: 'Esa cuenta no trabaja en este negocio.' };
+      const yaEs = db
+        .prepare('SELECT nombre FROM empleados WHERE organizacion_id = ? AND usuario_id = ? AND id IS NOT ?')
+        .get(organizacionId, usuarioId, empleado?.id ?? null);
+      if (yaEs) return { error: `Esa cuenta ya es de ${yaEs.nombre}.` };
+      datos.usuario_id = usuarioId;
+    }
+  }
+  if (body.encargado !== undefined) datos.encargado = body.encargado ? 1 : 0;
+  if (body.activo !== undefined) {
+    datos.activo = body.activo ? 1 : 0;
+    // Volver a darlo de alta no puede dejar dos activos con el mismo nombre.
+    if (datos.activo && empleado && !empleado.activo && datos.nombre === undefined) {
+      const otro = db
+        .prepare('SELECT 1 FROM empleados WHERE organizacion_id = ? AND activo = 1 AND LOWER(nombre) = LOWER(?) AND id != ?')
+        .get(organizacionId, empleado.nombre, empleado.id);
+      if (otro) return { error: `Ya hay un empleado activo que se llama ${empleado.nombre}.` };
+    }
+  }
+  return { datos };
+}
+
+app.post('/api/empleados', soloAdmin, (req, res) => {
   const organizacionId = req.usuario.organizacion_id;
-  const usuarioId = Number(req.params.usuarioId);
-  const persona = db
-    .prepare(
-      `SELECT usuarios.nombre FROM usuario_organizaciones pertenencia JOIN usuarios ON usuarios.id = pertenencia.usuario_id
-        WHERE pertenencia.usuario_id = ? AND pertenencia.organizacion_id = ? AND pertenencia.activo = 1`
-    )
-    .get(usuarioId, organizacionId);
-  if (!persona) return res.status(404).json({ error: 'Esa persona no trabaja en este negocio.' });
+  const { error, datos } = datosDeEmpleado(req.body ?? {}, organizacionId);
+  if (error) return res.status(400).json({ error });
+  const id = withTransaction(() => {
+    const columnas = ['organizacion_id', ...Object.keys(datos)];
+    const nuevo = Number(
+      db
+        .prepare(`INSERT INTO empleados (${columnas.join(', ')}) VALUES (${columnas.map(() => '?').join(', ')})`)
+        .run(organizacionId, ...Object.values(datos)).lastInsertRowid
+    );
+    auditar(req, {
+      accion: 'crear',
+      entidad: 'organizacion',
+      entidad_id: organizacionId,
+      operacion_tipo: 'empleado',
+      operacion_id: nuevo,
+      detalle: `Empleado "${datos.nombre}" dado de alta${datos.pin_hash ? ', con PIN' : ''}`
+    });
+    return nuevo;
+  });
+  res.status(201).json(empleadosDelNegocio(organizacionId).find((e) => e.id === id));
+});
+
+app.patch('/api/empleados/:id', soloAdmin, (req, res) => {
+  const organizacionId = req.usuario.organizacion_id;
+  const empleado = db.prepare('SELECT * FROM empleados WHERE id = ? AND organizacion_id = ?').get(Number(req.params.id), organizacionId);
+  if (!empleado) return res.status(404).json({ error: 'Empleado no encontrado.' });
+  const { error, datos } = datosDeEmpleado(req.body ?? {}, organizacionId, empleado);
+  if (error) return res.status(400).json({ error });
+  if (!Object.keys(datos).length) return res.json(empleadosDelNegocio(organizacionId).find((e) => e.id === empleado.id));
+  const cambios = diffCampos(empleado, datos, ['nombre', 'sucursal_id', 'usuario_id', 'encargado', 'activo']);
+  withTransaction(() => {
+    db.prepare(`UPDATE empleados SET ${Object.keys(datos).map((c) => `${c} = ?`).join(', ')} WHERE id = ?`).run(...Object.values(datos), empleado.id);
+    // Sin PIN o dado de baja deja de atender en las cajas donde estaba.
+    if (datos.activo === 0 || ('pin_hash' in datos && datos.pin_hash === null)) {
+      db.prepare('UPDATE sesiones SET empleado_id = NULL WHERE empleado_id = ?').run(empleado.id);
+    }
+    const pin = 'pin_hash' in datos ? (datos.pin_hash ? 'le cambió el PIN' : 'le sacó el PIN') : null;
+    auditar(req, {
+      accion: datos.activo === 0 ? 'anular' : 'editar',
+      entidad: 'organizacion',
+      entidad_id: organizacionId,
+      operacion_tipo: 'empleado',
+      operacion_id: empleado.id,
+      valor_anterior: cambios?.anterior ?? null,
+      valor_nuevo: cambios?.nuevo ?? null,
+      detalle: `Empleado "${datos.nombre ?? empleado.nombre}" ${datos.activo === 0 ? 'dado de baja' : 'editado'}${pin ? ` (${pin})` : ''}`
+    });
+  });
+  res.json(empleadosDelNegocio(organizacionId).find((e) => e.id === empleado.id));
+});
+
+// El horario de cada empleado activo, para cargarlo.
+app.get('/api/horarios', soloAdmin, (req, res) => {
+  const empleados = db
+    .prepare('SELECT id, nombre FROM empleados WHERE organizacion_id = ? AND activo = 1 ORDER BY nombre COLLATE NOCASE')
+    .all(req.usuario.organizacion_id);
+  res.json(empleados.map((e) => ({ ...e, franjas: franjasDe(e.id) })));
+});
+
+// Reemplaza el horario entero de un empleado: [{ dia_semana, desde, hasta }].
+app.put('/api/horarios/:empleadoId', soloAdmin, (req, res) => {
+  const organizacionId = req.usuario.organizacion_id;
+  const empleado = db
+    .prepare('SELECT id, nombre FROM empleados WHERE id = ? AND organizacion_id = ? AND activo = 1')
+    .get(Number(req.params.empleadoId), organizacionId);
+  if (!empleado) return res.status(404).json({ error: 'Esa persona no trabaja en este negocio.' });
   const franjas = req.body?.franjas;
   if (!Array.isArray(franjas) || franjas.length > 28) return res.status(400).json({ error: 'El horario no es válido.' });
   for (const f of franjas) {
@@ -5076,28 +5419,59 @@ app.put('/api/horarios/:usuarioId', soloAdmin, (req, res) => {
       return res.status(400).json({ error: 'Dos franjas del mismo día se pisan.' });
     }
   }
-  const antes = franjasDe(usuarioId, organizacionId);
+  const antes = franjasDe(empleado.id);
   withTransaction(() => {
-    db.prepare('DELETE FROM horarios WHERE usuario_id = ? AND organizacion_id = ?').run(usuarioId, organizacionId);
-    const insertar = db.prepare('INSERT INTO horarios (usuario_id, organizacion_id, dia_semana, desde, hasta) VALUES (?, ?, ?, ?, ?)');
-    for (const f of franjas) insertar.run(usuarioId, organizacionId, f.dia_semana, f.desde, f.hasta);
+    db.prepare('DELETE FROM horarios WHERE empleado_id = ?').run(empleado.id);
+    const insertar = db.prepare('INSERT INTO horarios (empleado_id, organizacion_id, dia_semana, desde, hasta) VALUES (?, ?, ?, ?, ?)');
+    for (const f of franjas) insertar.run(empleado.id, organizacionId, f.dia_semana, f.desde, f.hasta);
     auditar(req, {
       accion: 'editar',
-      entidad: 'usuario',
-      entidad_id: usuarioId,
+      entidad: 'organizacion',
+      entidad_id: organizacionId,
       operacion_tipo: 'horario',
+      operacion_id: empleado.id,
       valor_anterior: JSON.stringify(antes),
       valor_nuevo: JSON.stringify(franjas.map(({ dia_semana, desde, hasta }) => ({ dia_semana, desde, hasta }))),
-      detalle: `Cambió el horario de ${persona.nombre}`
+      detalle: `Cambió el horario de ${empleado.nombre}`
     });
   });
-  res.json({ franjas: franjasDe(usuarioId, organizacionId) });
+  res.json({ franjas: franjasDe(empleado.id) });
 });
 
-// El informe del período: por persona y por día, lo planificado contra lo
-// fichado. Llegó tarde si la primera entrada del día pasó la primera franja
-// por más de la tolerancia; faltó si tenía horario, el día ya pasó (u hoy, sin
-// fichar) y no fichó. Suma los turnos de caja que abrió ese día.
+// Si cumplió un turno (una franja del horario), pensado para pagar: los
+// sueldos suelen ser fijos por turno (hist. §199). Contra lo fichado que se
+// cruza con la franja: tarde si entró después del comienzo, antes si se fue
+// antes del final, con TOLERANCIA_TARDE_MIN de margen para los dos.
+// estado: 'cumplido' | 'incompleto' (tarde, se fue antes o las dos) |
+// 'falto' | 'en_curso' (hoy, todavía adentro) | 'sin_salida' (no fichó la
+// salida: hay que corregirlo) | 'por_venir'.
+function turnoCumplido(franja, fichajes, fecha, hoy, ahora) {
+  const desde = minutosDeHora(franja.desde);
+  const hasta = minutosDeHora(franja.hasta);
+  const ahoraMin = fecha === hoy ? minutosDeHora(ahora) : fecha < hoy ? Infinity : -Infinity;
+  const cruzan = fichajes.filter((f) => {
+    const entra = minutosDeHora(f.hora_entrada);
+    const sale = f.hora_salida ? minutosDeHora(f.hora_salida) : Infinity;
+    return entra < hasta && sale > desde;
+  });
+  const base = { desde: franja.desde, hasta: franja.hasta, entrada: null, salida: null, tarde_min: 0, antes_min: 0 };
+  if (!cruzan.length) return { ...base, estado: ahoraMin > desde + TOLERANCIA_TARDE_MIN ? 'falto' : 'por_venir' };
+  const primero = cruzan[0];
+  const ultimo = cruzan[cruzan.length - 1];
+  const tarde = Math.max(0, minutosDeHora(primero.hora_entrada) - desde);
+  const conTurno = { ...base, entrada: primero.hora_entrada, salida: ultimo.hora_salida, tarde_min: tarde > TOLERANCIA_TARDE_MIN ? tarde : 0 };
+  if (!ultimo.hora_salida) return { ...conTurno, estado: ahoraMin < hasta ? 'en_curso' : 'sin_salida' };
+  const antes = Math.max(0, hasta - minutosDeHora(ultimo.hora_salida));
+  const antesMin = antes > TOLERANCIA_TARDE_MIN ? antes : 0;
+  return { ...conTurno, antes_min: antesMin, estado: conTurno.tarde_min || antesMin ? 'incompleto' : 'cumplido' };
+}
+
+// El informe del período: por empleado y por día, lo planificado contra lo
+// fichado. Llegó tarde si entró en una franja después de su comienzo, con la
+// tolerancia; faltó si tenía horario, el día ya empezó y no fichó. Cada franja
+// dice si se cumplió (turnoCumplido). Suma los turnos de caja que abrió ese día
+// (en la caja vinculada, o con su cuenta). Entran los empleados activos y los
+// dados de baja que ficharon en el período.
 app.get('/api/fichajes/informe', soloAdmin, (req, res) => {
   const organizacionId = req.usuario.organizacion_id;
   const hoy = fechaDeHoy();
@@ -5108,73 +5482,267 @@ app.get('/api/fichajes/informe', soloAdmin, (req, res) => {
   for (let f = desde; f <= hasta && fechas.length <= MAX_DIAS_INFORME; f = sumarDias(f, 1)) fechas.push(f);
   if (fechas.length > MAX_DIAS_INFORME) return res.status(400).json({ error: `El informe es de hasta ${MAX_DIAS_INFORME} días.` });
 
-  const personas = db
-    .prepare(
-      `SELECT usuarios.id, usuarios.nombre FROM usuario_organizaciones pertenencia JOIN usuarios ON usuarios.id = pertenencia.usuario_id
-        WHERE pertenencia.organizacion_id = ? AND pertenencia.activo = 1 ORDER BY usuarios.nombre`
-    )
-    .all(organizacionId);
   const fichajes = db
     .prepare('SELECT * FROM fichajes WHERE organizacion_id = ? AND fecha_local(entrada) BETWEEN ? AND ? ORDER BY entrada')
     .all(organizacionId, desde, hasta)
     .map(fichajeConHora);
+  const personas = db
+    .prepare('SELECT id, nombre, usuario_id, activo FROM empleados WHERE organizacion_id = ? ORDER BY nombre COLLATE NOCASE')
+    .all(organizacionId)
+    .filter((p) => p.activo || fichajes.some((f) => f.empleado_id === p.id));
   const turnos = db
     .prepare(
-      `SELECT abierto_por, fecha_local(abierto_en) AS fecha, COUNT(*) AS cantidad FROM turnos_caja
-        WHERE organizacion_id = ? AND fecha_local(abierto_en) BETWEEN ? AND ? GROUP BY abierto_por, 2`
+      `SELECT abierto_por, abierto_empleado_id, fecha_local(abierto_en) AS fecha, COUNT(*) AS cantidad FROM turnos_caja
+        WHERE organizacion_id = ? AND fecha_local(abierto_en) BETWEEN ? AND ? GROUP BY abierto_por, abierto_empleado_id, 3`
     )
     .all(organizacionId, desde, hasta);
-  const ahora = horaLocalDe(new Date().toISOString().slice(0, 19).replace('T', ' '));
+  const ahora = horaLocalDe(ahoraUtc());
 
   const resultado = personas.map((p) => {
-    const franjas = franjasDe(p.id, organizacionId);
+    const franjas = franjasDe(p.id);
     const dias = fechas.map((fecha) => {
       const plan = franjas.filter((f) => f.dia_semana === diaDeLaSemana(fecha));
-      const suyos = fichajes.filter((f) => f.usuario_id === p.id && f.fecha === fecha);
+      const suyos = fichajes.filter((f) => f.empleado_id === p.id && f.fecha === fecha);
       const planificados = plan.reduce((acc, f) => acc + minutosDeHora(f.hasta) - minutosDeHora(f.desde), 0);
       const trabajados = suyos.reduce((acc, f) => {
-        const fin = f.salida ?? new Date().toISOString().slice(0, 19).replace('T', ' ');
+        const fin = f.salida ?? ahoraUtc();
         return acc + Math.max(0, Math.round((Date.parse(`${fin.replace(' ', 'T')}Z`) - Date.parse(`${f.entrada.replace(' ', 'T')}Z`)) / 60000));
       }, 0);
-      // Cada franja contra el primer fichaje que cae en ella: con horario
-      // cortado, entrar 15:38 para la de las 16:00 no es tarde para la de las 9.
-      const tarde = plan.reduce((acc, franja) => {
-        const desde = minutosDeHora(franja.desde);
-        const hasta = minutosDeHora(franja.hasta);
-        const fichaje = suyos.find((f) => {
-          const entra = minutosDeHora(f.hora_entrada);
-          const sale = f.hora_salida ? minutosDeHora(f.hora_salida) : Infinity;
-          return entra < hasta && sale > desde;
-        });
-        const minutos = fichaje ? minutosDeHora(fichaje.hora_entrada) - desde : 0;
-        return acc + (minutos > TOLERANCIA_TARDE_MIN ? minutos : 0);
-      }, 0);
+      const turnosDelDia = plan.map((franja) => turnoCumplido(franja, suyos, fecha, hoy, ahora));
       const yaEmpezo = fecha < hoy || (fecha === hoy && plan.length && ahora > plan[0].desde);
       return {
         fecha,
         plan,
+        turnos: turnosDelDia,
         fichajes: suyos.map(({ id, hora_entrada, hora_salida, corregido_por }) => ({ id, hora_entrada, hora_salida, corregido: Boolean(corregido_por) })),
         minutos_planificados: planificados,
         minutos_trabajados: trabajados,
-        tarde_min: tarde,
+        tarde_min: turnosDelDia.reduce((acc, t) => acc + t.tarde_min, 0),
         falta: Boolean(plan.length && !suyos.length && yaEmpezo && fecha <= hoy),
-        turnos_caja: turnos.find((t) => t.abierto_por === p.id && t.fecha === fecha)?.cantidad ?? 0
+        turnos_caja: turnos
+          .filter((t) => t.fecha === fecha && (t.abierto_empleado_id === p.id || (!t.abierto_empleado_id && p.usuario_id && t.abierto_por === p.usuario_id)))
+          .reduce((acc, t) => acc + t.cantidad, 0)
       };
     });
+    const todos = dias.flatMap((d) => d.turnos);
+    const contar = (estado) => todos.filter((t) => t.estado === estado).length;
     return {
       id: p.id,
       nombre: p.nombre,
+      activo: Boolean(p.activo),
       tiene_horario: franjas.length > 0,
       minutos_planificados: dias.reduce((acc, d) => acc + (d.fecha <= hoy ? d.minutos_planificados : 0), 0),
       minutos_trabajados: dias.reduce((acc, d) => acc + d.minutos_trabajados, 0),
       llegadas_tarde: dias.filter((d) => d.tarde_min > 0).length,
       minutos_tarde: dias.reduce((acc, d) => acc + d.tarde_min, 0),
       faltas: dias.filter((d) => d.falta).length,
+      // Los turnos que ya empezaron: cuántos cumplió y cuántos no.
+      turnos: {
+        planificados: todos.filter((t) => t.estado !== 'por_venir').length,
+        cumplidos: contar('cumplido'),
+        incompletos: contar('incompleto'),
+        faltados: contar('falto'),
+        sin_salida: contar('sin_salida'),
+        en_curso: contar('en_curso')
+      },
       turnos_caja: dias.reduce((acc, d) => acc + d.turnos_caja, 0),
       dias
     };
   });
   res.json({ desde, hasta, tolerancia_min: TOLERANCIA_TARDE_MIN, personas: resultado });
+});
+
+/* ---------- La caja vinculada (hist. §199) ---------- */
+//
+// Decidido por el usuario el 17 de noviembre, como Praxia: la compu del
+// mostrador tiene su cuenta, no el empleado. El admin, en el local, entra con
+// su cuenta y toca "Usar esta compu como Caja 1": la compu queda vinculada
+// (COOKIE_CAJA) y solo opera el mostrador de esa caja (RUTAS_DE_CAJA). Así
+// nadie vende ni cambia nada desde su casa. Los empleados no tienen cuenta:
+// ponen su PIN para atender (la venta queda a su nombre) y para fichar, que es
+// otro botón: desbloquear no es fichar, o el relevo del almuerzo ensuciaría
+// los horarios.
+
+function soloCaja(req, res, next) {
+  if (!req.usuario?.caja_id) return res.status(403).json({ error: 'Esto es de la compu vinculada a una caja.' });
+  next();
+}
+
+// La cuenta de la caja: una por caja, sin mail y con una contraseña al azar
+// que nadie conoce (solo se entra con la cookie de una compu vinculada).
+function cuentaDeCaja(caja, organizacionId) {
+  const existente = db.prepare('SELECT id FROM usuarios WHERE caja_id = ? AND organizacion_id = ?').get(caja.id, organizacionId);
+  if (existente) return existente.id;
+  const { hash, salt } = hashPassword(randomBytes(32).toString('hex'));
+  return Number(
+    db
+      .prepare(
+        `INSERT INTO usuarios (organizacion_id, usuario, nombre, password_hash, password_salt, caja_id)
+         VALUES (?, ?, ?, ?, ?, ?)`
+      )
+      .run(organizacionId, `caja-${randomBytes(8).toString('hex')}`, caja.nombre, hash, salt, caja.id).lastInsertRowid
+  );
+}
+
+// Las cajas del negocio y cuántas compus tiene vinculadas cada una.
+app.get('/api/cajas/compus', soloAdmin, (req, res) => {
+  res.json(
+    db
+      .prepare(
+        `SELECT cuentas_tesoreria.id, cuentas_tesoreria.nombre, sucursales.nombre AS sucursal,
+                COUNT(sesiones.token) AS compus, MIN(sesiones.creada) AS desde
+           FROM cuentas_tesoreria
+           LEFT JOIN sucursales ON sucursales.id = cuentas_tesoreria.sucursal_id
+           LEFT JOIN usuarios ON usuarios.caja_id = cuentas_tesoreria.id AND usuarios.organizacion_id = cuentas_tesoreria.organizacion_id
+           LEFT JOIN sesiones ON sesiones.usuario_id = usuarios.id AND sesiones.expira > datetime('now')
+          WHERE cuentas_tesoreria.organizacion_id = ? AND cuentas_tesoreria.tipo = 'efectivo'
+          GROUP BY cuentas_tesoreria.id
+          ORDER BY cuentas_tesoreria.nombre`
+      )
+      .all(req.usuario.organizacion_id)
+  );
+});
+
+// "Usar esta compu como Caja 1": la vincula a la caja. La sesión del admin
+// sigue en esta compu hasta que salga; después, la compu es la caja.
+app.post('/api/cajas/:id/vincular', soloAdmin, (req, res) => {
+  const organizacionId = req.usuario.organizacion_id;
+  if (req.usuario.ejemplo) return res.status(400).json({ error: 'En un negocio de ejemplo no se vincula una caja.' });
+  const caja = db
+    .prepare("SELECT id, nombre FROM cuentas_tesoreria WHERE id = ? AND organizacion_id = ? AND tipo = 'efectivo'")
+    .get(Number(req.params.id), organizacionId);
+  if (!caja) return res.status(404).json({ error: 'Caja no encontrada.' });
+  const token = randomBytes(32).toString('hex');
+  withTransaction(() => {
+    const usuarioId = cuentaDeCaja(caja, organizacionId);
+    // Una compu es una sola caja: si ya era otra, deja de serlo.
+    const anterior = leerCookie(req, COOKIE_CAJA);
+    if (anterior) db.prepare('DELETE FROM sesiones WHERE token = ? AND usuario_id IN (SELECT id FROM usuarios WHERE caja_id IS NOT NULL)').run(anterior);
+    db.prepare(
+      `INSERT INTO sesiones (token, usuario_id, organizacion_id, expira) VALUES (?, ?, ?, datetime('now', '+${CAJA_DIAS} days'))`
+    ).run(token, usuarioId, organizacionId);
+    auditar(req, {
+      accion: 'crear',
+      entidad: 'cuenta_tesoreria',
+      entidad_id: caja.id,
+      operacion_tipo: 'caja_vinculada',
+      detalle: `Vinculó una compu a la caja "${caja.nombre}"`
+    });
+  });
+  ponerCookieCaja(res, token);
+  res.status(201).json({ caja: { id: caja.id, nombre: caja.nombre } });
+});
+
+// Desvincula todas las compus de la caja: en el próximo pedido piden entrar.
+app.delete('/api/cajas/:id/vinculo', soloAdmin, (req, res) => {
+  const organizacionId = req.usuario.organizacion_id;
+  const caja = db
+    .prepare("SELECT id, nombre FROM cuentas_tesoreria WHERE id = ? AND organizacion_id = ? AND tipo = 'efectivo'")
+    .get(Number(req.params.id), organizacionId);
+  if (!caja) return res.status(404).json({ error: 'Caja no encontrada.' });
+  const desvinculadas = withTransaction(() => {
+    const { changes } = db
+      .prepare('DELETE FROM sesiones WHERE usuario_id IN (SELECT id FROM usuarios WHERE caja_id = ? AND organizacion_id = ?)')
+      .run(caja.id, organizacionId);
+    if (changes) {
+      auditar(req, {
+        accion: 'anular',
+        entidad: 'cuenta_tesoreria',
+        entidad_id: caja.id,
+        operacion_tipo: 'caja_vinculada',
+        detalle: `Desvinculó ${changes === 1 ? 'la compu' : `las ${changes} compus`} de la caja "${caja.nombre}"`
+      });
+    }
+    return changes;
+  });
+  res.json({ desvinculadas });
+});
+
+// Quiénes pueden atender en esta caja: los empleados activos con PIN, de su
+// sucursal o de todas.
+function empleadosDeLaCaja(sesion) {
+  return db
+    .prepare(
+      `SELECT id, nombre, encargado,
+              EXISTS (SELECT 1 FROM fichajes WHERE fichajes.empleado_id = empleados.id AND fichajes.salida IS NULL) AS adentro
+         FROM empleados
+        WHERE organizacion_id = ? AND activo = 1 AND pin_hash IS NOT NULL
+          AND (sucursal_id IS NULL OR sucursal_id IS ?)
+        ORDER BY nombre COLLATE NOCASE`
+    )
+    .all(sesion.organizacion_id, sesion.sucursal_id ?? null)
+    .map((e) => ({ ...e, encargado: Boolean(e.encargado), adentro: Boolean(e.adentro) }));
+}
+
+// El PIN, con su propio tope de intentos por caja y empleado: cinco errores
+// lo traban unos minutos (es corto: no puede probarse de corrido).
+const intentosPin = new Map();
+const PIN_INTENTOS = 5;
+const PIN_TRABA_MS = 5 * 60 * 1000;
+
+// { empleado } o { status, error }. `quien` filtra a quién se le acepta el
+// PIN (por ejemplo, solo a un encargado).
+function empleadoConPin(req, empleadoId, pin, quien = () => true) {
+  const clave = `${req.usuario.caja_id}:${Number(empleadoId)}`;
+  const intento = intentosPin.get(clave);
+  if (intento?.hasta > Date.now()) return { status: 429, error: 'Demasiados intentos con ese PIN. Probá de nuevo en unos minutos.' };
+  const empleado = empleadosDeLaCaja(req.usuario).find((e) => e.id === Number(empleadoId) && quien(e));
+  if (!empleado) return { status: 404, error: 'Esa persona no puede hacerlo en esta caja.' };
+  const { pin_hash: hash, pin_salt: salt } = db.prepare('SELECT pin_hash, pin_salt FROM empleados WHERE id = ?').get(empleado.id);
+  if (typeof pin !== 'string' || !ES_PIN.test(pin) || !verificarPassword(pin, hash, salt)) {
+    const fallos = (intento?.hasta ? 0 : (intento?.fallos ?? 0)) + 1;
+    intentosPin.set(clave, { fallos, hasta: fallos >= PIN_INTENTOS ? Date.now() + PIN_TRABA_MS : 0 });
+    return { status: 403, error: 'El PIN no es correcto.' };
+  }
+  intentosPin.delete(clave);
+  return { empleado: { ...empleado, organizacion_id: req.usuario.organizacion_id } };
+}
+
+function estadoDeCaja(req) {
+  const sesion = sesionDeCaja(leerCookie(req, COOKIE_CAJA));
+  return { ...datosCaja(sesion).caja, empleados: empleadosDeLaCaja(sesion) };
+}
+
+app.get('/api/caja', soloCaja, (req, res) => {
+  res.json(estadoDeCaja(req));
+});
+
+// Atender: el empleado pone su PIN y la caja queda a su nombre hasta que la
+// bloquee o atienda otro (el relevo no cierra nada).
+app.post('/api/caja/atender', soloCaja, (req, res) => {
+  const { status, error, empleado } = empleadoConPin(req, req.body?.empleado_id, req.body?.pin);
+  if (error) return res.status(status).json({ error });
+  withTransaction(() => {
+    db.prepare('UPDATE sesiones SET empleado_id = ? WHERE token = ?').run(empleado.id, leerCookie(req, COOKIE_CAJA));
+    req.usuario.empleado_id = empleado.id;
+    auditar(req, { accion: 'login', entidad: 'usuario', entidad_id: req.usuario.id, detalle: `${empleado.nombre} empezó a atender en "${req.usuario.caja_nombre}"` });
+  });
+  res.json(estadoDeCaja(req));
+});
+
+app.post('/api/caja/bloquear', soloCaja, (req, res) => {
+  if (req.usuario.empleado_id) {
+    withTransaction(() => {
+      auditar(req, { accion: 'logout', entidad: 'usuario', entidad_id: req.usuario.id, detalle: `${req.usuario.empleado_nombre} dejó de atender en "${req.usuario.caja_nombre}"` });
+      db.prepare('UPDATE sesiones SET empleado_id = NULL WHERE token = ?').run(leerCookie(req, COOKIE_CAJA));
+    });
+  }
+  res.json(estadoDeCaja(req));
+});
+
+// Fichar en la caja: con el PIN, la entrada o la salida (tipo). Quien ficha la
+// salida mientras atendía deja la caja bloqueada.
+app.post('/api/caja/fichar', soloCaja, (req, res) => {
+  const tipo = req.body?.tipo;
+  if (tipo !== 'entrada' && tipo !== 'salida') return res.status(400).json({ error: 'Elegí si es la entrada o la salida.' });
+  const { status, error, empleado } = empleadoConPin(req, req.body?.empleado_id, req.body?.pin);
+  if (error) return res.status(status).json({ error });
+  const hecho = tipo === 'entrada' ? ficharEntrada(req, empleado) : ficharSalida(req, empleado);
+  if (hecho.error) return res.status(hecho.status).json({ error: hecho.error });
+  if (tipo === 'salida') {
+    db.prepare('UPDATE sesiones SET empleado_id = NULL WHERE empleado_id = ? AND token = ?').run(empleado.id, leerCookie(req, COOKIE_CAJA));
+  }
+  res.status(tipo === 'entrada' ? 201 : 200).json({ fichaje: hecho.fichaje, caja: estadoDeCaja(req) });
 });
 
 /* ---------- Sucursales (hist. §193) ---------- */
@@ -5416,6 +5984,8 @@ app.delete('/api/sucursales/:id', soloAdmin, (req, res) => {
   withTransaction(() => {
     db.prepare('UPDATE cuentas_tesoreria SET sucursal_id = NULL WHERE sucursal_id = ?').run(sucursal.id);
     db.prepare('DELETE FROM usuario_sucursales WHERE sucursal_id = ?').run(sucursal.id);
+    // Sus empleados pasan a trabajar en todas (hist. §199).
+    db.prepare('UPDATE empleados SET sucursal_id = NULL WHERE sucursal_id = ?').run(sucursal.id);
     db.prepare('DELETE FROM sucursales WHERE id = ?').run(sucursal.id);
     auditar(req, {
       accion: 'anular',
@@ -9081,6 +9651,7 @@ app.post('/api/ventas/:id/cobros', (req, res) => {
       organizacionId,
       medio ? { id: medio.id, cuotas: plan?.cuotas ?? null } : null
     );
+    anotarEmpleado(req, 'cobros', id);
     auditar(req, {
       accion: 'crear',
       entidad: 'cobro',
@@ -13533,7 +14104,10 @@ app.get('/api/tesoreria', (req, res) => {
     .all(req.usuario.organizacion_id);
   // Las cajas que esta persona puede abrir en el punto de venta (hist. §193).
   const suyas = sucursalesDePersona(req.usuario.id, req.usuario.organizacion_id);
-  for (const cuenta of cuentas) cuenta.habilitada = puedeUsarCaja(suyas, cuenta);
+  // La caja vinculada (hist. §199) usa solo la suya.
+  for (const cuenta of cuentas) {
+    cuenta.habilitada = req.usuario.caja_id ? cuenta.id === req.usuario.caja_id : puedeUsarCaja(suyas, cuenta);
+  }
 
   // Las transferencias se excluyen de los totales de ingresos/egresos a
   // propósito: mover plata de una cuenta propia a otra no es plata que
@@ -15564,7 +16138,8 @@ app.get('/api/reportes/stock', soloAdmin, (req, res) => {
 const SQL_TABLERO_VENTAS = db.prepare(
   `SELECT ventas.id, ventas.fecha, ventas.carga_inicial,
           SUM(venta_items.cantidad * venta_items.precio_unitario - venta_items.iva) AS total,
-          alta.fecha AS creada, alta.actor AS actor, alta.usuario_id AS usuario_id, usuarios.nombre AS vendedor
+          alta.fecha AS creada, alta.actor AS actor, alta.usuario_id AS usuario_id, usuarios.nombre AS vendedor,
+          ventas.empleado_id, empleados.nombre AS empleado
      FROM ventas
      JOIN venta_items ON venta_items.venta_id = ventas.id
      LEFT JOIN auditoria AS alta ON alta.id = (
@@ -15572,10 +16147,12 @@ const SQL_TABLERO_VENTAS = db.prepare(
              WHERE a.entidad = 'venta' AND a.accion = 'crear'
                AND a.entidad_id = ventas.id AND a.organizacion_id = ventas.organizacion_id)
      LEFT JOIN usuarios ON usuarios.id = alta.usuario_id
+     LEFT JOIN empleados ON empleados.id = ventas.empleado_id
     WHERE ventas.estado = 'activa'
       AND ventas.fecha >= ? AND ventas.fecha <= ?
       AND ventas.organizacion_id = ?
-    GROUP BY ventas.id, ventas.fecha, ventas.carga_inicial, alta.fecha, alta.actor, alta.usuario_id, usuarios.nombre`
+    GROUP BY ventas.id, ventas.fecha, ventas.carga_inicial, alta.fecha, alta.actor, alta.usuario_id, usuarios.nombre,
+             ventas.empleado_id, empleados.nombre`
 );
 
 // Dónde entró la plata: los cobros del período por cuenta (la caja, el banco,
@@ -15645,9 +16222,12 @@ app.get('/api/reportes/tablero', soloAdmin, (req, res) => {
       sinHora += 1;
     }
     // Las que entran solas (una tienda conectada, la cuota de un socio) no
-    // tienen quién las vendió.
-    const clave = v.usuario_id ? `u${v.usuario_id}` : v.actor === 'sistema' ? 'sistema' : 'sin_dato';
-    const nombre = v.usuario_id
+    // tienen quién las vendió. En una caja vinculada, el empleado que atendía
+    // (hist. §199), no la cuenta de la caja.
+    const clave = v.empleado_id ? `e${v.empleado_id}` : v.usuario_id ? `u${v.usuario_id}` : v.actor === 'sistema' ? 'sistema' : 'sin_dato';
+    const nombre = v.empleado_id
+      ? v.empleado
+      : v.usuario_id
       ? v.vendedor || '(cuenta dada de baja)'
       : v.actor === 'sistema'
         ? 'Entraron solas'
@@ -19023,13 +19603,24 @@ const SQL_ULTIMO_MOVIMIENTO_TESORERIA = db.prepare('SELECT COALESCE(MAX(id), 0) 
 const SQL_SALDO_CUENTA = db.prepare('SELECT saldo FROM saldo_tesoreria WHERE cuenta_tesoreria_id = ?');
 const SELECT_TURNO = `
   SELECT turnos_caja.*, cuentas_tesoreria.nombre AS cuenta,
-         abrio.nombre AS abierto_por_nombre, cerro.nombre AS cerrado_por_nombre,
+         COALESCE(empleado_abrio.nombre, abrio.nombre) AS abierto_por_nombre,
+         COALESCE(empleado_cerro.nombre, cerro.nombre) AS cerrado_por_nombre,
          cuentas_tesoreria.sucursal_id, sucursales.nombre AS sucursal
     FROM turnos_caja
     JOIN cuentas_tesoreria ON cuentas_tesoreria.id = turnos_caja.cuenta_tesoreria_id
     LEFT JOIN sucursales ON sucursales.id = cuentas_tesoreria.sucursal_id
     JOIN usuarios abrio ON abrio.id = turnos_caja.abierto_por
-    LEFT JOIN usuarios cerro ON cerro.id = turnos_caja.cerrado_por`;
+    LEFT JOIN usuarios cerro ON cerro.id = turnos_caja.cerrado_por
+    LEFT JOIN empleados empleado_abrio ON empleado_abrio.id = turnos_caja.abierto_empleado_id
+    LEFT JOIN empleados empleado_cerro ON empleado_cerro.id = turnos_caja.cerrado_empleado_id`;
+
+// En una caja vinculada (hist. §199), quién atendía queda en la venta y en el
+// cobro. Fuera de la caja no hace nada: la auditoría dice qué cuenta fue.
+function anotarEmpleado(req, tabla, id) {
+  if (req.usuario.caja_id && req.usuario.empleado_id) {
+    db.prepare(`UPDATE ${tabla} SET empleado_id = ? WHERE id = ?`).run(req.usuario.empleado_id, id);
+  }
+}
 
 // Deja el saldo de la cuenta en lo contado: un movimiento manual por la
 // diferencia, si la hay (medio centavo de tolerancia por redondeo).
@@ -19113,9 +19704,11 @@ app.get('/api/turnos-caja', (req, res) => {
     .prepare(
       `${SELECT_TURNO}
         WHERE turnos_caja.organizacion_id = ? AND (? IS NULL OR turnos_caja.estado = ?)
+          AND (? IS NULL OR turnos_caja.cuenta_tesoreria_id = ?)
         ORDER BY turnos_caja.id DESC LIMIT 50`
     )
-    .all(req.usuario.organizacion_id, estado, estado);
+    // La caja vinculada ve solo sus turnos (hist. §199).
+    .all(req.usuario.organizacion_id, estado, estado, req.usuario.caja_id ?? null, req.usuario.caja_id ?? null);
   res.json(turnos.map(resumenTurno));
 });
 
@@ -19151,10 +19744,10 @@ app.post('/api/turnos-caja', (req, res) => {
     const esperado = redondear2(SQL_SALDO_CUENTA.get(cuenta.id).saldo);
     const { lastInsertRowid: id } = db
       .prepare(
-        `INSERT INTO turnos_caja (cuenta_tesoreria_id, abierto_por, esperado_apertura, contado_apertura, nota, organizacion_id)
-         VALUES (?, ?, ?, ?, ?, ?)`
+        `INSERT INTO turnos_caja (cuenta_tesoreria_id, abierto_por, abierto_empleado_id, esperado_apertura, contado_apertura, nota, organizacion_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`
       )
-      .run(cuenta.id, req.usuario.id, esperado, contado, nota?.trim() || null, organizacionId);
+      .run(cuenta.id, req.usuario.id, req.usuario.caja_id ? req.usuario.empleado_id : null, esperado, contado, nota?.trim() || null, organizacionId);
     ajustarArqueo(cuenta.id, contado - esperado, `Diferencia de arqueo al abrir la caja (turno #${id})`, organizacionId);
     db.prepare('UPDATE turnos_caja SET desde_movimiento_id = ? WHERE id = ?').run(
       SQL_ULTIMO_MOVIMIENTO_TESORERIA.get().id,
@@ -19207,10 +19800,10 @@ app.post('/api/turnos-caja/:id/cerrar', (req, res) => {
     const esperado = redondear2(SQL_SALDO_CUENTA.get(turno.cuenta_tesoreria_id).saldo);
     db.prepare(
       `UPDATE turnos_caja
-          SET estado = 'cerrado', cerrado_en = datetime('now'), cerrado_por = ?, esperado_cierre = ?,
+          SET estado = 'cerrado', cerrado_en = datetime('now'), cerrado_por = ?, cerrado_empleado_id = ?, esperado_cierre = ?,
               contado_cierre = ?, hasta_movimiento_id = ?, nota = COALESCE(?, nota)
         WHERE id = ?`
-    ).run(req.usuario.id, esperado, contado, SQL_ULTIMO_MOVIMIENTO_TESORERIA.get().id, nota?.trim() || null, turno.id);
+    ).run(req.usuario.id, req.usuario.caja_id ? req.usuario.empleado_id : null, esperado, contado, SQL_ULTIMO_MOVIMIENTO_TESORERIA.get().id, nota?.trim() || null, turno.id);
     ajustarArqueo(
       turno.cuenta_tesoreria_id,
       contado - esperado,
@@ -19563,6 +20156,7 @@ app.post('/api/pos/ventas', (req, res) => {
       });
       const { cliente_id: clienteId } = db.prepare('SELECT cliente_id FROM ventas WHERE id = ?').get(id);
       db.prepare('UPDATE ventas SET turno_caja_id = ? WHERE id = ?').run(turno.id, id);
+      anotarEmpleado(req, 'ventas', id);
       auditar(req, {
         accion: 'crear',
         entidad: 'venta',
@@ -19584,6 +20178,7 @@ app.post('/api/pos/ventas', (req, res) => {
           medio ? { id: medio.id, cuotas: plan?.cuotas ?? null } : null,
           turno.id
         );
+        anotarEmpleado(req, 'cobros', cobroId);
         auditar(req, {
           accion: 'crear',
           entidad: 'cobro',
@@ -19707,6 +20302,7 @@ app.post('/api/pos/ventas/:id/cobrar', (req, res) => {
         medio ? { id: medio.id, cuotas: plan?.cuotas ?? null } : null,
         turno.id
       );
+      anotarEmpleado(req, 'cobros', cobroId);
       auditar(req, {
         accion: 'crear',
         entidad: 'cobro',
@@ -19771,6 +20367,7 @@ app.post('/api/pos/cobro-a-cuenta', (req, res) => {
           medio ? { id: medio.id, cuotas: plan?.cuotas ?? null } : null,
           turno.id
         );
+        anotarEmpleado(req, 'cobros', id);
         if (medio) registrarCostosDelMedio({ ventaId, medio, plan, importe: parte, cuentaId, organizacionId });
         auditar(req, {
           accion: 'crear',
@@ -19868,8 +20465,10 @@ app.get('/api/turnos-caja/:id/detalle', (req, res) => {
               (SELECT MIN(fecha) FROM auditoria WHERE entidad = 'venta' AND entidad_id = ventas.id AND accion = 'crear') AS creada,
               (SELECT COALESCE(SUM(cantidad * precio_unitario), 0) FROM venta_items WHERE venta_id = ventas.id) AS total,
               (SELECT COALESCE(SUM(importe), 0) FROM cobros WHERE venta_id = ventas.id) AS cobrado,
-              (SELECT 1 FROM facturas WHERE venta_id = ventas.id LIMIT 1) AS facturada
+              (SELECT 1 FROM facturas WHERE venta_id = ventas.id LIMIT 1) AS facturada,
+              empleados.nombre AS atendio
          FROM ventas JOIN clientes ON clientes.id = ventas.cliente_id
+         LEFT JOIN empleados ON empleados.id = ventas.empleado_id
         WHERE ventas.turno_caja_id = ? AND ventas.organizacion_id = ?
         ORDER BY ventas.id DESC`
     )
@@ -19934,8 +20533,19 @@ app.post('/api/pos/ventas/:id/anular', (req, res) => {
   }
 
   // Quién autoriza: el mismo, si es admin; si no, un admin con su contraseña.
+  // En la caja vinculada (hist. §199), un encargado: el que atiende, o uno con
+  // su PIN ahí mismo.
   let autorizo = req.usuario;
-  if (req.usuario.rol !== 'admin') {
+  if (req.usuario.caja_id) {
+    if (req.usuario.empleado_encargado) {
+      autorizo = { id: req.usuario.id, nombre: req.usuario.empleado_nombre };
+    } else {
+      if (!req.body?.autoriza_empleado_id) return res.status(403).json({ error: 'Para anular hace falta el PIN de un encargado.' });
+      const { status, error, empleado } = empleadoConPin(req, req.body.autoriza_empleado_id, req.body.autoriza_pin, (e) => e.encargado);
+      if (error) return res.status(status).json({ error });
+      autorizo = { id: -empleado.id, nombre: empleado.nombre };
+    }
+  } else if (req.usuario.rol !== 'admin') {
     const email = String(req.body?.autoriza_email ?? '').trim().toLowerCase();
     const password = req.body?.autoriza_password;
     if (!email || typeof password !== 'string') {
@@ -22674,7 +23284,7 @@ app.get('/api/plataforma/resumen', soloPlataforma, (req, res) => {
   // Sin los negocios de ejemplo ni sus cuentas: no son de nadie
   // ("Probar sin registrarse"). Van aparte, en `pruebas`.
   const cuentas = db
-    .prepare(`SELECT id, fecha_alta, ultimo_acceso, email_verificado, baja FROM usuarios WHERE ${SIN_CUENTAS_DE_EJEMPLO}`)
+    .prepare(`SELECT id, fecha_alta, ultimo_acceso, email_verificado, baja FROM usuarios WHERE ${SOLO_PERSONAS}`)
     .all();
   const negocios = db
     .prepare('SELECT id, plan, plan_vence, fecha_alta, baja_pedida, baja_hecha FROM organizaciones WHERE ejemplo IS NULL')
@@ -22749,7 +23359,7 @@ app.get('/api/plataforma/cuentas', soloPlataforma, (req, res) => {
   const cuentas = db
     .prepare(
       `SELECT id, nombre, email, email_verificado, fecha_alta, ultimo_acceso, edad, baja
-         FROM usuarios WHERE ${SIN_CUENTAS_DE_EJEMPLO} ORDER BY fecha_alta DESC, id DESC`
+         FROM usuarios WHERE ${SOLO_PERSONAS} ORDER BY fecha_alta DESC, id DESC`
     )
     .all();
   const pertenencias = db

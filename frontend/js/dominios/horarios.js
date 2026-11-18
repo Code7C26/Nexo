@@ -1,14 +1,17 @@
 /**
  * dominios/horarios.js
- * Horarios y fichaje (hist. §196, de Praxia): cada persona ficha su entrada y
- * su salida; el admin ve quién vino y cuánto trabajó (horas, llegadas tarde,
- * faltas y turnos de caja), corrige el fichaje que alguien se olvidó y carga
- * el horario de cada uno por día de la semana. Pantalla sobre /api/fichajes y
- * /api/horarios.
+ * Empleados, horarios y fichaje (hist. §196, §199, de Praxia). Quien tiene
+ * cuenta ficha su entrada y su salida acá; el cajero sin cuenta ficha con su
+ * PIN en la compu de la caja (dominios/pos.js). El admin carga los empleados
+ * (nombre, PIN, sucursal, si es encargado y su cuenta, si tiene), el horario
+ * de cada uno por día de la semana, ve quién vino y cuánto trabajó (horas,
+ * llegadas tarde, faltas, los turnos que cumplió y los de caja) y corrige el
+ * fichaje que alguien se olvidó. Pantalla sobre /api/fichajes, /api/horarios y
+ * /api/empleados.
  */
 
 import { api } from "../core/api.js";
-import { avisar } from "../core/ui.js";
+import { avisar, confirmar } from "../core/ui.js";
 import { esAdmin, esc, fechaAR, hoyISO, numero } from "../core/formato.js";
 import { alEntrarEnVista } from "../core/registro.js";
 
@@ -16,12 +19,15 @@ const DIAS = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "
 const DIAS_CORTOS = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"];
 const botonFichar = document.getElementById("btnFichar");
 const formHorario = document.getElementById("formHorario");
+const formEmpleado = document.getElementById("formEmpleado");
 const botonesPeriodo = document.querySelectorAll("#horariosPeriodo .segmento");
 
 let abierto = null;
 let periodo = "hoy";
-let personas = [];
+let empleados = [];
+let horarios = [];
 let editando = null;
+let editandoEmpleado = null;
 
 const franjaTexto = (f) => `${f.desde} a ${f.hasta}`;
 // "4 h 30 min", "45 min".
@@ -56,7 +62,7 @@ botonFichar.addEventListener("click", async () => {
     botonFichar.disabled = false;
   }
   await pintarFichar();
-  if (esAdmin()) await pintarInforme();
+  if (esAdmin()) await Promise.all([pintarInforme(), pintarEmpleados()]);
 });
 
 /* ---------- Informe (admin) ---------- */
@@ -72,9 +78,23 @@ function rango() {
   return { desde: hoy, hasta: hoy };
 }
 
+// Cada turno (franja del horario) con lo que pasó, para saber si se paga
+// entero (hist. §199).
+function marcaTurno(t) {
+  const franja = franjaTexto(t);
+  if (t.estado === "cumplido") return `<span class="ledger-ok">${esc(franja)}: cumplido</span>`;
+  if (t.estado === "falto") return `<span class="ledger-warn">${esc(franja)}: faltó</span>`;
+  if (t.estado === "en_curso") {
+    return `<span>${esc(franja)}: adentro${t.tarde_min ? `, entró ${esc(numero(t.tarde_min))} min tarde` : ""}</span>`;
+  }
+  if (t.estado === "sin_salida") return `<span class="ledger-warn">${esc(franja)}: no fichó la salida</span>`;
+  if (t.estado === "por_venir") return `<span>${esc(franja)}: todavía no empezó</span>`;
+  const que = [t.tarde_min ? `entró ${numero(t.tarde_min)} min tarde` : "", t.antes_min ? `se fue ${numero(t.antes_min)} min antes` : ""].filter(Boolean);
+  return `<span class="ledger-warn">${esc(franja)}: ${esc(que.join(" y "))}</span>`;
+}
+
 function filaDia(d) {
   const dia = DIAS_CORTOS[(new Date(`${d.fecha}T12:00:00Z`).getUTCDay() + 6) % 7];
-  const plan = d.plan.length ? d.plan.map(franjaTexto).join(" y ") : "Sin horario";
   const fichado = d.fichajes
     .map(
       (f) => `
@@ -83,11 +103,10 @@ function filaDia(d) {
     )
     .join(" · ");
   const marcas = [
-    d.falta ? `<span class="ledger-warn">Faltó</span>` : "",
-    d.tarde_min ? `<span class="ledger-warn">${esc(numero(d.tarde_min))} min tarde</span>` : "",
+    d.plan.length ? d.turnos.map(marcaTurno).join("") : "<span>Sin horario</span>",
     d.turnos_caja ? `<span>${esc(numero(d.turnos_caja))} ${d.turnos_caja === 1 ? "turno" : "turnos"} de caja</span>` : ""
   ].join("");
-  return `<div class="informe-dia"><strong>${esc(dia)} ${esc(fechaAR(d.fecha))}</strong><span>${esc(plan)}</span>${fichado}${marcas}</div>`;
+  return `<div class="informe-dia"><strong>${esc(dia)} ${esc(fechaAR(d.fecha))}</strong>${marcas}${fichado}</div>`;
 }
 
 async function pintarInforme() {
@@ -95,13 +114,21 @@ async function pintarInforme() {
   const informe = await api(`/api/fichajes/informe?desde=${desde}&hasta=${hasta}`, { error: "No se pudo armar el informe." });
   document.getElementById("informeHorariosNota").textContent =
     desde === hasta ? `Hoy, ${fechaAR(desde)}.` : `Del ${fechaAR(desde)} al ${fechaAR(hasta)}.`;
+  if (!informe.personas.length) {
+    document.getElementById("informeHorarios").innerHTML = `<p class="nota-plana">Todavía no hay empleados. Sumalos abajo, en Los empleados.</p>`;
+    return;
+  }
   document.getElementById("informeHorarios").innerHTML = informe.personas
     .map((p) => {
+      const t = p.turnos;
       const resumen = [
+        t.planificados ? `${numero(t.cumplidos)} de ${numero(t.planificados)} ${t.planificados === 1 ? "turno cumplido" : "turnos cumplidos"}` : "",
         `${horas(p.minutos_trabajados)} trabajadas${p.minutos_planificados ? ` de ${horas(p.minutos_planificados)}` : ""}`,
         p.llegadas_tarde ? `${numero(p.llegadas_tarde)} ${p.llegadas_tarde === 1 ? "llegada tarde" : "llegadas tarde"} (${numero(p.minutos_tarde)} min)` : "",
         p.faltas ? `${numero(p.faltas)} ${p.faltas === 1 ? "falta" : "faltas"}` : "",
-        p.tiene_horario ? "" : "sin horario cargado"
+        t.sin_salida ? `${numero(t.sin_salida)} sin fichar la salida` : "",
+        p.tiene_horario ? "" : "sin horario cargado",
+        p.activo ? "" : "dado de baja"
       ].filter(Boolean);
       const dias = p.dias.filter((d) => d.plan.length || d.fichajes.length);
       return `
@@ -145,7 +172,7 @@ document.getElementById("informeHorarios").addEventListener("click", async (e) =
   }
 });
 
-/* ---------- Horarios (admin) ---------- */
+/* ---------- Los empleados y su horario (admin) ---------- */
 
 // "Lun a Vie 09:00 a 17:00 · Sáb 09:00 a 13:00": los días seguidos con el
 // mismo horario, juntos.
@@ -169,23 +196,48 @@ function resumenHorario(franjas) {
     .join(" · ");
 }
 
-async function pintarHorarios() {
-  personas = await api("/api/horarios", { error: "No se pudieron cargar los horarios." });
-  document.getElementById("horariosPersonas").innerHTML = personas
-    .map(
-      (p) => `
+async function pintarEmpleados() {
+  [empleados, horarios] = await Promise.all([
+    api("/api/empleados", { error: "No se pudieron cargar los empleados." }),
+    api("/api/horarios", { error: "No se pudieron cargar los horarios." })
+  ]);
+  const activos = empleados.filter((e) => e.activo);
+  const lista = document.getElementById("horariosPersonas");
+  if (!activos.length) {
+    lista.innerHTML = `<li class="nota-plana">Todavía no sumaste a nadie.</li>`;
+    return;
+  }
+  lista.innerHTML = activos
+    .map((e) => {
+      const franjas = horarios.find((h) => h.id === e.id)?.franjas ?? [];
+      const datos = [
+        e.tiene_pin ? "con PIN" : "sin PIN",
+        e.encargado ? "encargado" : "",
+        e.sucursal ? `en ${e.sucursal}` : "",
+        e.cuenta_email ? `cuenta ${e.cuenta_email}` : "",
+        e.adentro ? "adentro ahora" : ""
+      ].filter(Boolean);
+      return `
       <li>
-        <span class="horario-quien">${esc(p.nombre)}<small>${esc(resumenHorario(p.franjas))}</small></span>
-        <button type="button" class="btn btn-secundario btn-chico" data-editar="${p.id}">Cargar horario</button>
-      </li>`
-    )
+        <span class="horario-quien">${esc(e.nombre)}<small>${esc(datos.join(" · "))}</small><small>${esc(resumenHorario(franjas))}</small></span>
+        <button type="button" class="btn btn-secundario btn-chico" data-horario="${e.id}">Horario</button>
+        <button type="button" class="btn btn-secundario btn-chico" data-empleado="${e.id}">Editar</button>
+      </li>`;
+    })
     .join("");
 }
 
 document.getElementById("horariosPersonas").addEventListener("click", (e) => {
-  const boton = e.target.closest("[data-editar]");
-  if (!boton) return;
-  editando = personas.find((p) => p.id === Number(boton.dataset.editar));
+  const horario = e.target.closest("[data-horario]");
+  const empleado = e.target.closest("[data-empleado]");
+  if (horario) abrirHorario(Number(horario.dataset.horario));
+  if (empleado) abrirEmpleado(empleados.find((x) => x.id === Number(empleado.dataset.empleado)));
+});
+
+function abrirHorario(id) {
+  formEmpleado.hidden = true;
+  const empleado = empleados.find((x) => x.id === id);
+  editando = { id, nombre: empleado.nombre, franjas: horarios.find((h) => h.id === id)?.franjas ?? [] };
   document.getElementById("horarioFormTitulo").textContent = `El horario de ${editando.nombre}`;
   document.getElementById("horarioDias").innerHTML = DIAS.map((nombre, dia) => {
     const [a, b] = editando.franjas.filter((f) => f.dia_semana === dia);
@@ -201,7 +253,7 @@ document.getElementById("horariosPersonas").addEventListener("click", (e) => {
   }).join("");
   formHorario.hidden = false;
   formHorario.scrollIntoView({ behavior: "smooth", block: "nearest" });
-});
+}
 
 document.getElementById("btnHorarioCancelar").addEventListener("click", () => {
   formHorario.hidden = true;
@@ -233,10 +285,105 @@ formHorario.addEventListener("submit", async (e) => {
   }
   avisar(`Horario de ${editando.nombre} guardado.`, "ok");
   formHorario.hidden = true;
-  await Promise.all([pintarHorarios(), pintarInforme()]);
+  await Promise.all([pintarEmpleados(), pintarInforme()]);
+});
+
+// El alta o la edición de un empleado. Las sucursales y las cuentas del
+// negocio se piden al abrir: cambian poco, pero cambian.
+async function abrirEmpleado(empleado = null) {
+  formHorario.hidden = true;
+  editandoEmpleado = empleado;
+  const [sucursales, usuarios] = await Promise.all([
+    api("/api/sucursales", { error: "No se pudieron cargar las sucursales." }),
+    api("/api/usuarios", { error: "No se pudieron cargar las cuentas." })
+  ]);
+  const form = formEmpleado;
+  form.reset();
+  document.getElementById("empleadoFormTitulo").textContent = empleado ? `Editar a ${empleado.nombre}` : "Sumar empleado";
+  document.getElementById("empleadoPinEtiqueta").textContent = empleado?.tiene_pin ? "PIN nuevo (vacío: sigue el de ahora)" : "PIN para la caja";
+  document.getElementById("btnEmpleadoBaja").hidden = !empleado;
+  // Sin sucursales no hay qué elegir: trabaja en todas.
+  document.getElementById("empleadoSucursalCampo").hidden = !sucursales.length;
+  form.sucursal_id.innerHTML =
+    `<option value="">En todas</option>` + sucursales.map((s) => `<option value="${s.id}">${esc(s.nombre)}</option>`).join("");
+  // Las cuentas activas que no son de otro empleado.
+  const tomadas = new Set(empleados.filter((e) => e.usuario_id && e.id !== empleado?.id).map((e) => e.usuario_id));
+  form.usuario_id.innerHTML =
+    `<option value="">Sin cuenta</option>` +
+    usuarios
+      .filter((u) => u.activo && !tomadas.has(u.id))
+      .map((u) => `<option value="${u.id}">${esc(u.nombre)}${u.email ? ` (${esc(u.email)})` : ""}</option>`)
+      .join("");
+  if (empleado) {
+    form.nombre.value = empleado.nombre;
+    form.sucursal_id.value = empleado.sucursal_id ?? "";
+    form.usuario_id.value = empleado.usuario_id ?? "";
+    form.encargado.checked = empleado.encargado;
+  }
+  form.hidden = false;
+  form.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  form.nombre.focus();
+}
+
+document.getElementById("btnEmpleadoNuevo").addEventListener("click", () => abrirEmpleado());
+document.getElementById("btnEmpleadoCancelar").addEventListener("click", () => {
+  formEmpleado.hidden = true;
+});
+
+formEmpleado.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const form = formEmpleado;
+  const nombre = form.nombre.value.trim();
+  const pin = form.pin.value.trim();
+  if (!nombre) {
+    avisar("Escribí el nombre.", "atencion");
+    return;
+  }
+  if (pin && !/^\d{4,6}$/.test(pin)) {
+    avisar("El PIN va de 4 a 6 números.", "atencion");
+    return;
+  }
+  const body = {
+    nombre,
+    sucursal_id: form.sucursal_id.value || null,
+    usuario_id: form.usuario_id.value || null,
+    encargado: form.encargado.checked,
+    // En una edición, sin PIN escrito queda el de antes.
+    ...(pin ? { pin } : {})
+  };
+  const boton = document.getElementById("formEmpleadoSubmit");
+  boton.disabled = true;
+  try {
+    await api(editandoEmpleado ? `/api/empleados/${editandoEmpleado.id}` : "/api/empleados", {
+      method: editandoEmpleado ? "PATCH" : "POST",
+      body,
+      error: "No se pudo guardar el empleado."
+    });
+  } finally {
+    boton.disabled = false;
+  }
+  avisar(editandoEmpleado ? `${nombre}: guardado.` : `${nombre} ya es parte del equipo.`, "ok");
+  form.hidden = true;
+  await Promise.all([pintarEmpleados(), pintarInforme()]);
+});
+
+document.getElementById("btnEmpleadoBaja").addEventListener("click", async () => {
+  const empleado = editandoEmpleado;
+  const ok = await confirmar({
+    titulo: `¿Dar de baja a ${empleado.nombre}?`,
+    cuerpo: "Deja de aparecer en la caja y en los horarios. Lo que hizo y lo que fichó quedan.",
+    aceptar: "Dar de baja",
+    destructivo: true
+  });
+  if (!ok) return;
+  await api(`/api/empleados/${empleado.id}`, { method: "PATCH", body: { activo: false }, error: "No se pudo dar de baja." });
+  avisar(`${empleado.nombre} quedó dado de baja.`, "ok");
+  formEmpleado.hidden = true;
+  await Promise.all([pintarEmpleados(), pintarInforme()]);
 });
 
 alEntrarEnVista("horarios", async () => {
   formHorario.hidden = true;
-  await Promise.all([pintarFichar(), ...(esAdmin() ? [pintarInforme(), pintarHorarios()] : [])]);
+  formEmpleado.hidden = true;
+  await Promise.all([pintarFichar(), ...(esAdmin() ? [pintarInforme(), pintarEmpleados()] : [])]);
 });

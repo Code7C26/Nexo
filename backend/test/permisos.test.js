@@ -16,7 +16,9 @@
 //   argumento (`app.metodo(path, soloAdmin, ...)`).
 // - 'plataforma': aparece después, con `soloPlataforma` como argumento
 //   (el panel de quien administra Nexo, hist. §111).
-// - 'ambos': aparece después, sin ninguno de los dos.
+// - 'caja': aparece después, con `soloCaja` como argumento (la compu
+//   vinculada a una caja, hist. §199).
+// - 'ambos': aparece después, sin ninguno de esos.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -48,7 +50,13 @@ function extraerRutas() {
     if (indice < indiceMount) {
       clase = 'publico';
     } else {
-      clase = linea.includes('soloPlataforma') ? 'plataforma' : linea.includes('soloAdmin') ? 'admin' : 'ambos';
+      clase = linea.includes('soloPlataforma')
+        ? 'plataforma'
+        : linea.includes('soloAdmin')
+          ? 'admin'
+          : linea.includes('soloCaja')
+            ? 'caja'
+            : 'ambos';
     }
     // Si una misma ruta+método se registrara dos veces, es un bug propio
     // (o de este test) — server.js no debería tener rutas duplicadas.

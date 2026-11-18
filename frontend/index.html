@@ -191,7 +191,7 @@
         <div class="nav-seccion">
           <p class="nav-grupo">Administración</p>
           <a href="#" class="nav-item" data-view="horarios">
-            <svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#calendar-clock"></use></svg> Horarios
+            <svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#calendar-clock"></use></svg> Empleados
           </a>
           <a href="#" class="nav-item" data-view="papelera">
             <svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#trash-2"></use></svg> Papelera
@@ -1338,6 +1338,41 @@
         <div class="pos-elegir-caja" id="posElegirCaja" hidden>
           <label for="posCaja">Caja</label>
           <select id="posCaja" class="select-inline"></select>
+        </div>
+
+        <!-- La compu de la caja (hist. §199): el admin la deja vinculada a esta
+             caja; después, sin su cuenta, la compu solo es el mostrador. -->
+        <section class="pos-compu col-admin" id="posCompu" aria-label="Esta compu" hidden>
+          <p id="posCompuTexto"></p>
+          <div class="pos-compu-botones">
+            <button type="button" class="btn btn-secundario btn-chico" id="btnPosDesvincular" hidden>Desvincular</button>
+            <button type="button" class="btn btn-primary btn-chico" id="btnPosVincular"></button>
+          </div>
+        </section>
+
+        <!-- La caja bloqueada (hist. §199): cada empleado pone su PIN para
+             atender, y fichar es otro botón. -->
+        <section class="pos-quien" id="posQuien" aria-labelledby="posQuienTitulo" hidden>
+          <header class="pos-quien-head">
+            <p class="pos-quien-caja" id="posQuienCaja"></p>
+            <h2 id="posQuienTitulo">¿Quién atiende?</h2>
+          </header>
+          <div class="pos-quien-lista" id="posQuienLista"></div>
+          <form class="pos-quien-pin" id="formPosPin" novalidate hidden>
+            <label><span id="posPinEtiqueta">Tu PIN</span>
+              <input type="password" name="pin" id="posPin" inputmode="numeric" maxlength="6" autocomplete="off" />
+            </label>
+            <div class="pos-quien-botones">
+              <button type="submit" class="btn btn-primary">Atender</button>
+              <button type="button" class="btn btn-secundario" id="btnPosFichar"></button>
+            </div>
+          </form>
+          <button type="button" class="btn-link pos-quien-cuenta" id="btnPosEntrarCuenta">Entrar con mi cuenta</button>
+        </section>
+
+        <div class="pos-atiende" id="posAtiende" hidden>
+          <span>Atiende <strong id="posAtiendeNombre"></strong></span>
+          <button type="button" class="btn btn-secundario btn-chico" id="btnPosBloquear"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#lock"></use></svg> Bloquear</button>
         </div>
 
         <div id="posApertura" hidden>
@@ -3628,9 +3663,41 @@
         </section>
 
         <section class="panel col-admin" aria-labelledby="horariosTitulo">
-          <div class="panel-head"><h2 id="horariosTitulo">Los horarios de cada uno</h2></div>
-          <p class="nota-plana">El horario de cada persona por día de la semana. Con horario cortado, cargá las dos franjas. Llegar hasta 5 minutos después no cuenta como tarde.</p>
+          <div class="panel-head">
+            <h2 id="horariosTitulo">Los empleados</h2>
+            <button type="button" class="btn btn-primary btn-chico" id="btnEmpleadoNuevo">Sumar empleado</button>
+          </div>
+          <p class="nota-plana">Quienes trabajan en el negocio, con o sin cuenta de Nexo. Con un PIN atienden y fichan en la compu de la caja. Cada uno tiene su horario por día de la semana: con horario cortado, cargá las dos franjas. Llegar 5 minutos después, o irse 5 minutos antes, no cuenta.</p>
           <ul class="horarios-personas" id="horariosPersonas"></ul>
+          <form id="formEmpleado" class="form config-tarjeta" novalidate hidden>
+            <div class="config-tarjeta-cuerpo">
+              <p class="config-tarjeta-titulo" id="empleadoFormTitulo">Sumar empleado</p>
+              <div class="form-fila">
+                <label>Nombre
+                  <input type="text" name="nombre" maxlength="80" autocomplete="off" required />
+                </label>
+                <label><span id="empleadoPinEtiqueta">PIN para la caja</span>
+                  <input type="password" name="pin" inputmode="numeric" maxlength="6" autocomplete="new-password" placeholder="4 a 6 números" />
+                </label>
+              </div>
+              <p class="campo-ayuda" id="empleadoPinAyuda">Con el PIN atiende y ficha en la compu de la caja. Sin PIN, no aparece ahí.</p>
+              <div class="form-fila">
+                <label id="empleadoSucursalCampo">Trabaja en
+                  <select name="sucursal_id"></select>
+                </label>
+                <label>Su cuenta de Nexo
+                  <select name="usuario_id"></select>
+                </label>
+              </div>
+              <p class="campo-ayuda">La cuenta es opcional: con ella también ficha desde su celular.</p>
+              <label class="form-check"><input type="checkbox" name="encargado" /> <span>Es encargado: con su PIN autoriza anular una venta en la caja.</span></label>
+            </div>
+            <div class="config-tarjeta-pie">
+              <button type="button" class="btn btn-secundario" id="btnEmpleadoBaja" hidden>Dar de baja</button>
+              <button type="button" class="btn btn-secundario" id="btnEmpleadoCancelar">Cancelar</button>
+              <button type="submit" class="btn btn-primary" id="formEmpleadoSubmit">Guardar</button>
+            </div>
+          </form>
           <form id="formHorario" class="form config-tarjeta" novalidate hidden>
             <div class="config-tarjeta-cuerpo">
               <p class="config-tarjeta-titulo" id="horarioFormTitulo"></p>
@@ -5931,6 +5998,9 @@
         <button type="button" class="btn btn-secundario btn-google" id="loginGoogle" hidden><svg class="ico ico-google" aria-hidden="true"><use href="/img/iconos.svg#google"></use></svg> Continuar con Google</button>
         <button type="button" class="btn btn-secundario sesion-probar" id="irAProbar" hidden>Probar sin registrarte</button>
         <button type="button" class="btn-link" id="irARegistro">¿Tu negocio todavía no usa Nexo? Creá una cuenta</button>
+        <!-- En la compu de una caja (hist. §199): el dueño entró a su cuenta y
+             se arrepintió. La caja sigue vinculada. -->
+        <button type="button" class="btn-link" id="loginVolverCaja" hidden>Volver a la caja</button>
       </form>
 
       <!-- "Probar sin registrarse": se elige un negocio de ejemplo y se entra
@@ -7996,6 +8066,18 @@
         <label>Por qué se anula
           <input type="text" name="motivo" maxlength="200" required placeholder="Se equivocó de producto, no pagó…" />
         </label>
+        <!-- En la compu de la caja (hist. §199): el PIN de un encargado. -->
+        <div id="posAnularPin" hidden>
+          <p class="form-note">Lo tiene que autorizar un encargado, con su PIN.</p>
+          <div class="form-fila">
+            <label>Encargado
+              <select name="autoriza_empleado_id"></select>
+            </label>
+            <label>PIN
+              <input type="password" name="autoriza_pin" inputmode="numeric" maxlength="6" autocomplete="off" />
+            </label>
+          </div>
+        </div>
         <div id="posAnularAutoriza" hidden>
           <p class="form-note">Lo tiene que autorizar un administrador, con su mail y su contraseña.</p>
           <div class="form-fila">

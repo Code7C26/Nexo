@@ -25,9 +25,12 @@ export function invocar(nombre, ...args) {
   return fn(...args);
 }
 
-// Varias recargas en paralelo; devuelve la Promise de todas.
+// Varias recargas en paralelo; devuelve la Promise de todas. En la compu de
+// la caja (hist. §199) no hay más pantallas que el mostrador: solo se recarga
+// el negocio (el membrete del ticket), y lo demás no se pide.
 export function recargar(...nombres) {
-  return Promise.all(nombres.map((nombre) => invocar(`cargar:${nombre}`)));
+  const enCaja = document.documentElement.hasAttribute("data-caja");
+  return Promise.all(nombres.filter((nombre) => !enCaja || nombre === "negocio").map((nombre) => invocar(`cargar:${nombre}`)));
 }
 
 // Código a correr cada vez que el router muestra esa vista (nav click,

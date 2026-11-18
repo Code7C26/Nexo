@@ -476,7 +476,10 @@ CREATE TABLE IF NOT EXISTS ventas (
   -- CHECK, como el origen de una consulta. La pone sola el punto de venta
   -- ('local') y cada tienda conectada; en el alta la elige quien vende. NULL
   -- = sin indicar.
-  canal TEXT
+  canal TEXT,
+  -- Quién la atendió en una caja vinculada (hist. §199): el empleado que puso
+  -- su PIN. NULL fuera de la caja (la vendió la cuenta de la auditoría).
+  empleado_id INTEGER REFERENCES empleados(id)
 );
 
 CREATE TABLE IF NOT EXISTS venta_items (
@@ -997,7 +1000,9 @@ CREATE TABLE IF NOT EXISTS cobros (
   cuotas INTEGER,
   -- El turno del mostrador en que entró (hist. §194): el de la venta, o el de
   -- un cobro a cuenta de una deuda vieja. NULL en lo cobrado fuera de la caja.
-  turno_caja_id INTEGER REFERENCES turnos_caja(id)
+  turno_caja_id INTEGER REFERENCES turnos_caja(id),
+  -- Quién lo cobró en una caja vinculada (hist. §199), como ventas.empleado_id.
+  empleado_id INTEGER REFERENCES empleados(id)
 );
 
 CREATE TABLE IF NOT EXISTS pagos (
@@ -1123,7 +1128,11 @@ CREATE TABLE IF NOT EXISTS turnos_caja (
   contado_cierre REAL,
   hasta_movimiento_id INTEGER,
   nota TEXT,
-  organizacion_id INTEGER NOT NULL REFERENCES organizaciones(id)
+  organizacion_id INTEGER NOT NULL REFERENCES organizaciones(id),
+  -- En una caja vinculada (hist. §199), el empleado que la abrió y el que la
+  -- cerró; abierto_por y cerrado_por son entonces la cuenta de la caja.
+  abierto_empleado_id INTEGER REFERENCES empleados(id),
+  cerrado_empleado_id INTEGER REFERENCES empleados(id)
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_turnos_caja_abierto
   ON turnos_caja(cuenta_tesoreria_id) WHERE estado = 'abierto';
@@ -1309,7 +1318,11 @@ CREATE TABLE IF NOT EXISTS auditoria (
   -- devuelto"): sin esto el frontend tendría que reimplementar la
   -- narración de cada uno de los ~20 casos distintos.
   detalle TEXT,
-  organizacion_id INTEGER REFERENCES organizaciones(id)
+  organizacion_id INTEGER REFERENCES organizaciones(id),
+  -- En una caja vinculada (hist. §199), el empleado que atendía cuando la
+  -- cuenta de la caja hizo el cambio (auditar() la llena sola). En una base
+  -- de antes la suma db/index.js con un ALTER, después de los rebuilds.
+  empleado_id INTEGER REFERENCES empleados(id)
 );
 
 CREATE INDEX IF NOT EXISTS idx_auditoria_fecha ON auditoria(fecha DESC, id DESC);
@@ -1437,7 +1450,14 @@ CREATE TABLE IF NOT EXISTS usuarios (
   -- Cuándo la persona dio de baja su cuenta (hist. §109). La fila no se
   -- borra (la auditoría la referencia): se le sacan el nombre, el mail y la
   -- contraseña.
-  baja TEXT
+  baja TEXT,
+  -- La cuenta de una caja (hist. §199): la compu del mostrador tiene su
+  -- cuenta, no el empleado. Nace cuando el admin vincula la primera compu a
+  -- esa caja, sin mail y con una contraseña al azar que nadie conoce: solo se
+  -- entra con la cookie de la compu vinculada (nexo_caja). No va en
+  -- usuario_organizaciones: no es una persona del negocio, no cuenta para el
+  -- plan ni aparece en Usuarios. organizacion_id es su negocio.
+  caja_id INTEGER REFERENCES cuentas_tesoreria(id)
 );
 -- SQLite compara texto case-sensitive por default: sin este índice sobre
 -- LOWER(usuario), "Admin" y "admin" podrían coexistir como dos cuentas
@@ -1508,13 +1528,40 @@ CREATE TABLE IF NOT EXISTS usuario_organizaciones (
 );
 CREATE INDEX IF NOT EXISTS idx_usuario_organizaciones_org ON usuario_organizaciones(organizacion_id);
 
+-- Los empleados (hist. §199, decisión del usuario del 17 de noviembre): la
+-- gente del negocio, con o sin cuenta de Nexo. El cajero no tiene cuenta: lo
+-- carga el dueño con su nombre y un PIN, y en la caja vinculada se identifica
+-- con él para atender, fichar y quedar en cada venta. Quien tiene cuenta (el
+-- encargado, el dueño que también atiende) lleva usuario_id y ficha también
+-- desde su cuenta. pin_hash/pin_salt con scrypt, como las contraseñas; NULL =
+-- sin PIN (no atiende en la caja). sucursal_id: dónde trabaja (NULL = en
+-- todas); la caja muestra los de su sucursal. encargado: autoriza anular en
+-- el mostrador con su PIN. Nunca se borra (la auditoría lo nombra): activo = 0.
+CREATE TABLE IF NOT EXISTS empleados (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  organizacion_id INTEGER NOT NULL REFERENCES organizaciones(id),
+  nombre TEXT NOT NULL,
+  pin_hash TEXT,
+  pin_salt TEXT,
+  usuario_id INTEGER REFERENCES usuarios(id),
+  sucursal_id INTEGER REFERENCES sucursales(id),
+  encargado INTEGER NOT NULL DEFAULT 0 CHECK (encargado IN (0, 1)),
+  activo INTEGER NOT NULL DEFAULT 1 CHECK (activo IN (0, 1)),
+  alta TEXT NOT NULL DEFAULT (datetime('now'))
+);
+-- Una cuenta es un solo empleado en cada negocio, y dos activos no se llaman
+-- igual: en la caja se elige por el nombre.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_empleados_cuenta ON empleados(organizacion_id, usuario_id) WHERE usuario_id IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_empleados_nombre ON empleados(organizacion_id, LOWER(nombre)) WHERE activo = 1;
+
 -- Horarios y fichaje (hist. §196, de Praxia): el horario planificado de cada
--- persona en el negocio, por día de la semana (0 = lunes), en la hora del
--- negocio ("09:00"); un día puede tener varias franjas (de corrido o cortado).
--- No cruza la medianoche: hasta > desde.
+-- empleado, por día de la semana (0 = lunes), en la hora del negocio
+-- ("09:00"); un día puede tener varias franjas (de corrido o cortado). No
+-- cruza la medianoche: hasta > desde. Desde hist. §199 son del empleado, no de
+-- la cuenta (el rearmado de las dos tablas está en db/index.js).
 CREATE TABLE IF NOT EXISTS horarios (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
-  usuario_id INTEGER NOT NULL REFERENCES usuarios(id),
+  empleado_id INTEGER NOT NULL REFERENCES empleados(id),
   organizacion_id INTEGER NOT NULL REFERENCES organizaciones(id),
   dia_semana INTEGER NOT NULL CHECK (dia_semana BETWEEN 0 AND 6),
   desde TEXT NOT NULL,
@@ -1523,19 +1570,18 @@ CREATE TABLE IF NOT EXISTS horarios (
 );
 
 -- La entrada y la salida reales, en UTC (datetime(now)), como la auditoría.
--- Una sola abierta (sin salida) por persona y negocio. corregido_por: el
--- admin que la cambió a mano (se olvidó de fichar), con el detalle en la
--- auditoría.
+-- Una sola abierta (sin salida) por empleado: idx_fichajes_empleado_abierto,
+-- en db/index.js (después del rearmado). corregido_por: el admin que la
+-- cambió a mano (se olvidó de fichar), con el detalle en la auditoría.
 CREATE TABLE IF NOT EXISTS fichajes (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
-  usuario_id INTEGER NOT NULL REFERENCES usuarios(id),
+  empleado_id INTEGER NOT NULL REFERENCES empleados(id),
   organizacion_id INTEGER NOT NULL REFERENCES organizaciones(id),
   entrada TEXT NOT NULL,
   salida TEXT,
   corregido_por INTEGER REFERENCES usuarios(id),
   CHECK (salida IS NULL OR salida > entrada)
 );
-CREATE UNIQUE INDEX IF NOT EXISTS idx_fichajes_abierto ON fichajes(usuario_id, organizacion_id) WHERE salida IS NULL;
 
 -- En qué sucursales trabaja cada persona (hist. §193). Sin ninguna, en todas,
 -- como antes. Con alguna, solo abre las cajas de esas sucursales.
@@ -1584,12 +1630,17 @@ CREATE INDEX IF NOT EXISTS idx_invitaciones_email ON invitaciones(email, estado)
 -- §77): de acá sale req.usuario.organizacion_id. Es nullable porque en las
 -- bases viejas la suma un ALTER; el código siempre la carga, y una sesión
 -- sin negocio no pasa el JOIN de sesionValida().
+--
+-- empleado_id (hist. §199): en la sesión de una caja vinculada, quién está
+-- atendiendo (puso su PIN). NULL = la caja está bloqueada ("¿quién
+-- atiende?"). Las sesiones de las personas no lo usan.
 CREATE TABLE IF NOT EXISTS sesiones (
   token TEXT PRIMARY KEY,
   usuario_id INTEGER NOT NULL REFERENCES usuarios(id),
   creada TEXT NOT NULL DEFAULT (datetime('now')),
   expira TEXT NOT NULL,
-  organizacion_id INTEGER REFERENCES organizaciones(id)
+  organizacion_id INTEGER REFERENCES organizaciones(id),
+  empleado_id INTEGER REFERENCES empleados(id)
 );
 CREATE INDEX IF NOT EXISTS idx_sesiones_usuario ON sesiones(usuario_id);
 

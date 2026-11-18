@@ -4,7 +4,7 @@
  * Movido tal cual desde app.js (CLAUDE.md §31, Etapa B / F2).
  */
 
-import { esAdmin, esPlataforma } from "./formato.js";
+import { enCaja, esAdmin, esPlataforma } from "./formato.js";
 import { moduloActivo, termino } from "./negocio.js";
 import { entrarEnVista } from "./registro.js";
 
@@ -82,8 +82,9 @@ const VISTAS_CONSTRUIDAS = {
   cierre: { titulo: "Cierre de caja", dominio: "Finanzas", nav: "caja" },
   "cuentas-corrientes": { titulo: "Cuentas corrientes", dominio: "Finanzas" },
   gastos: { titulo: "Gastos", dominio: "Finanzas" },
-  // Fichar es de todos; el informe y los horarios, del admin (hist. §196).
-  horarios: { titulo: "Horarios", dominio: "Administración" },
+  // Fichar es de todos; los empleados, sus horarios y el informe, del admin
+  // (hist. §196, §199).
+  horarios: { titulo: "Empleados", dominio: "Administración" },
   papelera: { titulo: "Papelera", dominio: "Papelera" },
   auditoria: { titulo: "Auditoría", dominio: "Auditoría" },
   configuracion: { titulo: "Configuración", dominio: "Administración" },
@@ -160,6 +161,8 @@ export function mostrarVista(viewId, { titulo, actualizarHash = true, subruta = 
   if (viewId === "plataforma" && !esPlataforma()) {
     viewId = "ventas";
   }
+  // La compu de la caja (hist. §199) no tiene otra pantalla.
+  if (enCaja()) viewId = "pos";
 
   document.querySelectorAll(".view").forEach((sec) => {
     sec.hidden = sec.dataset.view !== viewId;

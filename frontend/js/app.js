@@ -17,6 +17,7 @@ import {
   celdaMovil,
   columnasVisibles,
   duracion,
+  enCaja,
   esAdmin,
   esFraccionable,
   esc,
@@ -9276,15 +9277,20 @@ registrar("cargar:reporteStock", cargarReporteStock);
 // Cada ola usa refrescar(): si una carga falla, api() ya la avisó con un toast
 // y las demás siguen (la pantalla de esa carga queda vacía, no toda la app).
 // Solo un error inesperado (un bug al pintar) corta la cadena.
-refrescar([cargarClientes(), cargarProveedores(), cargarCaja(), recargar("negocio"), recargar("negocios"), cargarFacturas()])
-  .then(() => refrescar([recargar("gastos"), cargarProductos()]))
-  .then(() => refrescar([cargarVentas(), cargarCompras(), cargarStock(), cargarPresupuestos(), cargarDevoluciones()]))
-  .then(() => refrescar([cargarDevolucionesProveedor()]))
-  .then(() => refrescar([cargarPanelResumen(), recargar("cuentasCorrientes"), cargarReporteStock()]))
-  .catch((e) => {
-    avisar("No se terminaron de cargar los datos. Recargá la página para reintentar.", "atencion");
-    throw e;
-  });
+// La compu de la caja (hist. §199) solo usa el mostrador: no pide lo demás
+// (el backend se lo negaría), solo el negocio para el membrete del ticket.
+function cargarTodo() {
+  if (enCaja()) return refrescar([recargar("negocio")]);
+  return refrescar([cargarClientes(), cargarProveedores(), cargarCaja(), recargar("negocio"), recargar("negocios"), cargarFacturas()])
+    .then(() => refrescar([recargar("gastos"), cargarProductos()]))
+    .then(() => refrescar([cargarVentas(), cargarCompras(), cargarStock(), cargarPresupuestos(), cargarDevoluciones()]))
+    .then(() => refrescar([cargarDevolucionesProveedor()]))
+    .then(() => refrescar([cargarPanelResumen(), recargar("cuentasCorrientes"), cargarReporteStock()]));
+}
+cargarTodo().catch((e) => {
+  avisar("No se terminaron de cargar los datos. Recargá la página para reintentar.", "atencion");
+  throw e;
+});
 
 /* ---------- Tema claro / oscuro ---------- */
 
