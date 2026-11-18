@@ -22,7 +22,8 @@
 ## Estado actual (18 de noviembre de 2026)
 
 **18 de noviembre, hist. §198: la lista de precios del proveedor, Proveedores
-en Compras, Mercado Pago fuera de los canales y el QR al cobrar una deuda.**
+en Compras, Mercado Pago fuera de los canales y el QR al cobrar una deuda
+(publicado, PR #100).**
 - En la ficha del proveedor, **Cargar lista**: el mensaje, una planilla
   pegada, el PDF, un CSV o una foto; Nexo busca cada renglón en el catálogo
   (como la factura, con lo recordado de ese proveedor) y se revisa antes de
