@@ -13,6 +13,7 @@
     "restaurar-nube": "node --env-file-if-exists=.env scripts/restaurar-nube.mjs",
     "seed": "node scripts/seed.mjs",
     "demo": "node scripts/demo.mjs",
+    "cargar": "node scripts/cargar-negocio.mjs",
     "verificar-migracion": "node scripts/verificar-migracion.mjs",
     "regresion": "node scripts/regresion-head.mjs",
     "fuentes": "node scripts/fuentes.mjs",

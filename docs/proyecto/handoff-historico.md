@@ -14874,3 +14874,80 @@ Punto 5 del plan, rehecho sobre la decisión del usuario del 17 de noviembre
   `backend/db/nexo.db` (solo la de desarrollo). Antes se respaldó sola en
   `Nexo-respaldos/nexo-20261118-181505.db`, y no tenía horarios ni fichajes:
   quedó con las tablas nuevas.
+
+## §200 — 19 de noviembre de 2026: la grilla de clases del gimnasio
+
+Lo primero de "lo que falta" del plan (pedido del usuario el 19 de noviembre,
+para la presentación y para mostrársela al profe del gimnasio de artes
+marciales, el primer piloto). Diseño de "Para más adelante" → "Grilla de
+clases del gimnasio".
+
+**Esquema (solo tablas nuevas, sin migración de datos):** `actividades`
+(nombre, `horario` fijo/libre, `color` de una paleta de 8, `activo`), `clases`
+(un horario por día de la semana, desde/hasta en la hora del negocio,
+sucursal opcional, `detalle`, `cupo`, `activo`; un horario sacado no se
+borra porque la asistencia lo va a nombrar) y `clase_profes` (los profes son
+`empleados`, hist. §199). La descarga y el borrado del negocio las toman
+solas (`db/datos-negocio.js` arma la lista desde el esquema).
+
+**Servidor (`server.js`, "La grilla de clases"):** `GET /api/grilla` (los dos
+roles: la recepción la consulta), `POST/PATCH /api/actividades` y
+`POST/PATCH /api/clases` (admin). El alta trae `dias` (martes y jueves a las
+19 se cargan de una vez) y la edición, `dia_semana`. Reglas decididas por mí:
+dos clases pueden ser a la misma hora; un profe no puede estar en dos que se
+pisan (400 con quién y dónde); una actividad libre no tiene cupo; dar de baja
+una actividad saca sus horarios de la grilla y darla de alta los trae. Todo
+auditado con `operacion_tipo` actividad / clase.
+
+**Pantalla (`dominios/clases.js`, `#/clases`, menú Socios → Clases, módulo
+socios):** en la compu, la semana en una grilla de CSS (lunes a viernes
+siempre, el fin de semana si tiene algo), las libres en una fila arriba, las
+clases que coinciden una al lado de la otra (`acomodar`), la raya de "ahora"
+y los huecos sin clases achicados a un corte (`escala`). Cada bloque muestra
+solo las líneas que entran enteras. En el celular, los segmentos de días y
+una agenda del día con todo el detalle. El admin toca un horario para
+editarlo; las tarjetas de "Nuevo horario" y "Nueva actividad" van debajo, sin
+modal. Sumar un profe desde la grilla crea el empleado. **Imagen para
+compartir:** la semana en un PNG de 1080 de ancho (4:5 si entra), clara
+siempre, con el nombre del negocio; en el celular abre el compartir del
+sistema.
+
+**Demo:** Gimnasio Fuerza (`negocios-de-ejemplo.js`) trae 5 actividades, 4
+profes y la grilla. El negocio del dojo se arma cuando el usuario traiga sus
+datos.
+
+**Verificación:** `test/grilla.test.js` (validaciones, varios días, profe
+pisado, editar, sacar, baja y alta, aislamiento entre negocios), permisos,
+manual (sección `clases` en los dos idiomas), traducciones (97 textos) y
+`npm test` 475 de 475. Probado en el navegador: compu, celular, tema oscuro y
+claro, la validación del profe y la imagen.
+
+**Queda:** asistencia por clase y reservas con cupo (cuando el dueño diga que
+los necesita), la página pública de la grilla, y probarla con los datos reales
+del dojo.
+
+## §201 — 19 de noviembre de 2026: el cargador de un negocio real y las ideas de artes marciales
+
+**Decisión del usuario:** Gimnasio Fuerza sigue siendo la demo de la
+presentación. Para el profe del gimnasio de artes marciales (el primer
+piloto) va una cuenta real aparte, con el nombre del gimnasio: el usuario la
+crea con el alta de siempre (el mail se confirma con un código, hist. §108),
+yo le cargo los datos, se la muestra al profe y, si la quiere usar, el profe
+cambia la contraseña y se queda con la cuenta.
+
+**`scripts/cargar-negocio.mjs` (`npm run cargar`):** entra con la cuenta (la
+contraseña se pide sin mostrarla, o `NEXO_DEMO_CLAVE`), elige el negocio y
+carga desde un JSON profes (empleados), actividades, horarios de la grilla,
+planes de socios y productos con categoría y stock inicial (por
+`/api/carga-inicial/stock`, con su costo). Todo por la API, con validaciones
+y auditoría. Lo que ya está se saltea (por nombre; cada horario por
+actividad, día y hora), así que se puede correr de nuevo con datos
+corregidos o sumados. Probado contra un servidor de prueba: la primera
+corrida carga todo y la segunda no duplica nada.
+
+**Ideas de artes marciales** (del usuario, charladas con Gemini): perfil
+competitivo del alumno con medallas que aprueba el profe y enlace a
+Smoothcomp, cinturones con el contador de clases y el aviso de ascenso, y
+niveles por horario. Documentadas al final de
+`docs/investigaciones/investigacion-gymdesk.md`, con cómo encajan; no se
+hacen todavía. Prioridad del usuario: primero las comodidades del dueño.

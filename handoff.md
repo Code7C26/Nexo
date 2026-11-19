@@ -11,7 +11,7 @@
 
 - Al cerrar una etapa, se hacen tres cosas:
   - su relato completo se agrega al final de `docs/proyecto/handoff-historico.md` con el
-    siguiente número (hoy el último es §199);
+    siguiente número (hoy el último es §201);
   - acá se actualizan "Estado actual" y "Qué sigue";
   - si cambió alguna decisión vigente, se actualiza también esa lista.
 - Nunca apilar secciones "Última etapa" en este archivo: así fue como llegó a
@@ -19,7 +19,24 @@
 - Lo que deja de ser cierto se corrige o se borra de acá. En el histórico no se
   reescribe nada.
 
-## Estado actual (18 de noviembre de 2026)
+## Estado actual (19 de noviembre de 2026)
+
+**19 de noviembre, hist. §200: la grilla de clases del gimnasio.**
+- **Clases** (menú Socios, módulo socios): las actividades (fijas o libres,
+  con color), sus horarios en la semana y los profes de cada uno. Los profes
+  son empleados. La ven todos y la arma el admin.
+- En la compu es la semana entera; en el celular, una agenda del día. **Imagen
+  para compartir** arma un PNG para Instagram o WhatsApp.
+- Esquema: tres tablas nuevas (`actividades`, `clases`, `clase_profes`), sin
+  tocar las que había. Gimnasio Fuerza (la demo) ya trae su grilla.
+- Test nuevo: `grilla`. `npm test`: 475 de 475. Probado en el navegador.
+- **Falta:** cargar la cuenta del dojo del profe (hist. §201: el usuario la
+  crea y trae los datos; yo corro `npm run cargar`).
+
+**19 de noviembre, hist. §201:** `npm run cargar` carga un negocio real desde
+un JSON (profes, actividades, horarios, planes y productos con stock), sin
+duplicar si se corre de nuevo. Las ideas de artes marciales del usuario
+quedan documentadas en `docs/investigaciones/investigacion-gymdesk.md`.
 
 **18 de noviembre, hist. §199: la compu de la caja, los empleados con PIN y
 los turnos cumplidos (punto 5 rehecho, publicado, PR #101).**
@@ -2192,6 +2209,16 @@ contador, abogado, planes y cobro) está en `docs/proyecto/plan-para-vender.md`,
 en pausa hasta después de presentar: lo que aparezca de eso se anota ahí y no
 se ejecuta. Ver CLAUDE.md §40.
 
+**Vender antes que sumar funciones** (usuario, 19 de noviembre): después de
+presentar las funciones se congelan, se pule lo que hay (sin errores, cómodo,
+con el manual completo), se prueba con negocios conocidos y se empieza a
+cobrar; lo nuevo llega en versiones. Al cerrar una tarea, proponer arreglar y
+pulir, no funciones nuevas. Detalle en `plan-para-vender.md`, punto 12.
+Además: el CUIT de Nexo es el monotributo de Santino, no una sociedad (punto
+0 del mismo documento). **Primer piloto:** el gimnasio de artes marciales
+donde entrena el usuario (19 de noviembre); él habla con el dueño y lo que
+ese gimnasio no pueda trabajar sin tener, entra.
+
 **Plan hasta la presentación oficial (principios de diciembre), acordado con
 el usuario el 16 de noviembre y ampliado el 17.** Sale de su lista de mejoras
 después del simulacro y de lo que vio en Praxia; reemplaza al "Plan hasta el
@@ -2237,6 +2264,20 @@ empleados**; después de presentar se puede mejorar mucho más. El orden es mío
    día (reimprimir, y anular con motivo y la autorización del dueño), accesos
    rápidos (una botonera con los productos de siempre) y el recargo por medio
    de pago (crédito +10 %, sobre los medios de cobro de hist. §171).
+**Lo primero de lo que falta: la grilla de clases con los profes**
+(usuario, 19 de noviembre). ~~La grilla~~ hecha (hist. §200). **Decisión del
+usuario (19 de noviembre):** la demo de la presentación sigue siendo Gimnasio
+Fuerza; para el profe del gimnasio de artes marciales (el primer piloto) va
+una **cuenta real aparte**, con el nombre del gimnasio, que el usuario crea
+con el alta de siempre y yo cargo con `npm run cargar -- --email <mail>
+--datos <json>` (`scripts/cargar-negocio.mjs`: profes, actividades,
+horarios, planes y productos con stock; se puede correr de nuevo sin
+duplicar). Se la muestra al profe y, si la quiere usar, cambia la contraseña
+y se queda con la cuenta. **Los datos los trae el usuario.** La
+asistencia por clase y los cinturones (`docs/investigaciones/investigacion-gymdesk.md`)
+quedan para cuando el dueño diga que los necesita. La seguridad del punto 12
+de `plan-para-vender.md` se hace recién si el gimnasio empieza a usarlo con
+datos reales; la demo no la necesita.
 7. **Cargar lo que ya tenías desde una planilla** (productos, clientes y stock
    desde Excel o CSV). Hoy la carga inicial (`dominios/carga-inicial.js`) es
    una grilla a mano y el CSV solo exporta.
@@ -2257,6 +2298,12 @@ para el tele y la captura del chat de WhatsApp de la 19.
 
 **Para más adelante (lista del usuario del 16 de noviembre, más lo que sumé
 yo).** Sin orden fijo; cada uno se planifica al arrancarlo:
+- **Artes marciales** (ideas del usuario del 19 de noviembre, en
+  `docs/investigaciones/investigacion-gymdesk.md`, al final): cinturones y
+  graduaciones con el contador de clases y el aviso de ascenso, niveles por
+  horario, y después el perfil propio del alumno (torneos y medallas que
+  aprueba el profe, medallero, enlace a Smoothcomp). Primero lo del dueño; el
+  perfil del alumno se charla antes de hacerlo.
 - **Grilla de clases del gimnasio** (idea del usuario, 17 de noviembre):
   - una grilla semanal con todas las actividades, que pueden ser al mismo
     tiempo (no una después de la otra);
