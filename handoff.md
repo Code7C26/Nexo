@@ -34,7 +34,8 @@ PR #102, con el cargador de hist. §201).**
 - **Falta:** cargar la cuenta del dojo del profe (hist. §201: el usuario la
   crea y trae los datos; yo corro `npm run cargar`).
 
-**19 de noviembre, hist. §202: clases compartidas y el filtro de la grilla.**
+**19 de noviembre, hist. §202: clases compartidas y el filtro de la grilla
+(publicado, PR #103).**
 Un horario puede ser de varias actividades (el sparring de Boxeo, MMA y
 Kickboxing), y la leyenda filtra por actividad. Los datos de Morro (el dojo
 del profe) están en `pilotos/morro.json`, fuera de git. **Falta cargarlos en
