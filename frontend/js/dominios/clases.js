@@ -14,6 +14,7 @@ import { api } from "../core/api.js";
 import { avisar, confirmar } from "../core/ui.js";
 import { esAdmin, esc } from "../core/formato.js";
 import { negocio } from "../core/negocio.js";
+import { temaActual } from "../core/tema.js";
 import { alEntrarEnVista } from "../core/registro.js";
 
 const DIAS = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"];
@@ -701,59 +702,78 @@ function rectRedondeado(ctx, x, y, w, h, r) {
   ctx.roundRect(x, y, w, h, Math.min(r, h / 2));
 }
 
-// La semana en un PNG de 1080 de ancho (el de Instagram), clara siempre.
-function dibujarImagen() {
+// Los colores de la imagen, según el fondo que se elige (de partida, el de la
+// apariencia de Nexo). Los bloques de las clases van en su color en los dos.
+const PALETAS = {
+  claro: { fondo: "#FFFFFF", texto: "#0A0A0A", suave: "#6B6B6B", franja: "#4A4A4A", hora: "#8A8A8A", raya: "#E5E5E5", corte: "#F4F4F5", firma: "#A3A3A3" },
+  oscuro: { fondo: "#0A0A0A", texto: "#F5F5F5", suave: "#A1A1A1", franja: "#C4C4C4", hora: "#8A8A8A", raya: "#262626", corte: "#161616", firma: "#6B6B6B" }
+};
+// Vertical: el 4:5 de Instagram (1080 × 1350). Horizontal: 1920 × 1080, con
+// las columnas más anchas para que se lean las clases que van a la misma hora.
+const FORMATOS = {
+  vertical: { ancho: 1080, alto: 1350, titulo: 56, subtitulo: 30, hora: [92, 150] },
+  horizontal: { ancho: 1920, alto: 1080, titulo: 48, subtitulo: 26, hora: [60, 140] }
+};
+
+// La semana en un PNG, con el formato y el fondo elegidos.
+function dibujarImagen({ formato = "vertical", fondo = "oscuro" } = {}) {
+  const f = FORMATOS[formato];
+  const c = PALETAS[fondo];
   const visibles = clasesVisibles();
-  const fijas = visibles.filter((c) => actividadDe(c).horario === "fijo");
-  const libres = visibles.filter((c) => actividadDe(c).horario === "libre");
+  const fijas = visibles.filter((x) => actividadDe(x).horario === "fijo");
+  const libres = visibles.filter((x) => actividadDe(x).horario === "libre");
   const dias = diasAMostrar(visibles);
-  const ANCHO = 1080;
+  const ANCHO = f.ancho;
   const MARGEN = 48;
   const COL_HORAS = 64;
-  const actividadesLibres = datos.actividades.filter((a) => a.activo && libres.some((c) => c.actividad_id === a.id));
-  const yGrilla = 210 + (actividadesLibres.length ? 24 + actividadesLibres.length * 40 : 0);
+  const yTitulo = f.titulo + 54;
+  const ySubtitulo = yTitulo + f.subtitulo + 18;
+  const yLibres = ySubtitulo + 40;
+  const actividadesLibres = datos.actividades.filter((a) => a.activo && libres.some((x) => x.actividad_id === a.id));
+  const yGrilla = yLibres + (actividadesLibres.length ? 24 + actividadesLibres.length * 40 : 0);
   const y0 = yGrilla + 56;
-  // La hora tan alta como haga falta para llenar el 4:5 de Instagram (1350),
-  // entre 92 y 150 px: pocas horas no quedan flotando, muchas no se aprietan.
+  // La hora tan alta como haga falta para llenar el formato, entre un mínimo y
+  // un máximo: pocas horas no quedan flotando, muchas no se aprietan.
   const CORTE = 36;
   const horas = escala(fijas, 1, 0);
-  const HORA = Math.min(150, Math.max(92, (1350 - y0 - 90 - horas.cortes.length * CORTE) / Math.max(horas.alto, 1)));
+  const [minimo, maximo] = f.hora;
+  const HORA = Math.min(maximo, Math.max(minimo, (f.alto - y0 - 80 - horas.cortes.length * CORTE) / Math.max(horas.alto, 1)));
   const linea = escala(fijas, HORA, CORTE);
-  const alto = Math.max(1350, y0 + linea.alto + 90);
+  const alto = Math.max(f.alto, y0 + linea.alto + 80);
 
   const canvas = document.createElement("canvas");
   canvas.width = ANCHO;
   canvas.height = alto;
   const ctx = canvas.getContext("2d");
   const fuente = (peso, tam) => `${peso} ${tam}px Inter, "Segoe UI", system-ui, sans-serif`;
-  ctx.fillStyle = "#FFFFFF";
+  ctx.fillStyle = c.fondo;
   ctx.fillRect(0, 0, ANCHO, alto);
 
-  // El encabezado: el negocio y la sucursal.
-  ctx.fillStyle = "#0A0A0A";
-  ctx.font = fuente(800, 56);
-  ctx.fillText(recortar(ctx, negocio.nombre || "Grilla de clases", ANCHO - MARGEN * 2), MARGEN, 110);
-  const nombreSucursal = sucursales.find((s) => String(s.id) === sucursal)?.nombre;
-  ctx.fillStyle = "#6B6B6B";
-  ctx.font = fuente(500, 30);
+  // El encabezado: el negocio, y de qué es la grilla.
+  ctx.fillStyle = c.texto;
+  ctx.font = fuente(800, f.titulo);
+  ctx.fillText(recortar(ctx, negocio.nombre || "Grilla de clases", ANCHO - MARGEN * 2), MARGEN, yTitulo);
+  const nombreSucursal = sucursales.find((x) => String(x.id) === sucursal)?.nombre;
+  ctx.fillStyle = c.suave;
+  ctx.font = fuente(500, f.subtitulo);
   // Filtrada, es la grilla de esa actividad ("Grilla de BJJ").
   const nombreFiltro = datos.actividades.find((a) => a.id === filtro)?.nombre;
   const subtitulo = [nombreFiltro ? `Grilla de ${nombreFiltro}` : "Grilla de clases", nombreSucursal].filter(Boolean).join(" · ");
-  ctx.fillText(subtitulo, MARGEN, 158);
+  ctx.fillText(subtitulo, MARGEN, ySubtitulo);
 
   // Las de horario libre, con su franja.
-  let y = 210;
+  let y = yLibres;
   for (const a of actividadesLibres) {
     ctx.fillStyle = COLORES[a.color];
     rectRedondeado(ctx, MARGEN, y + 6, 18, 18, 5);
     ctx.fill();
-    ctx.fillStyle = "#0A0A0A";
+    ctx.fillStyle = c.texto;
     ctx.font = fuente(700, 26);
     ctx.fillText(a.nombre, MARGEN + 30, y + 24);
     const ancho = ctx.measureText(a.nombre).width;
-    ctx.fillStyle = "#4A4A4A";
+    ctx.fillStyle = c.franja;
     ctx.font = fuente(500, 24);
-    const franjas = resumenFranjas(libres.filter((c) => c.actividad_id === a.id));
+    const franjas = resumenFranjas(libres.filter((x) => x.actividad_id === a.id));
     ctx.fillText(recortar(ctx, franjas, ANCHO - MARGEN * 2 - ancho - 48), MARGEN + 46 + ancho, y + 24);
     y += 40;
   }
@@ -762,27 +782,27 @@ function dibujarImagen() {
   const anchoDia = (ANCHO - MARGEN * 2 - COL_HORAS) / dias.length;
   const xDia = (i) => MARGEN + COL_HORAS + i * anchoDia;
   ctx.font = fuente(700, 24);
-  ctx.fillStyle = "#0A0A0A";
+  ctx.fillStyle = c.texto;
   ctx.textAlign = "center";
-  dias.forEach((dia, i) => ctx.fillText(DIAS_CORTOS[dia].toUpperCase(), xDia(i) + anchoDia / 2, yGrilla + 30));
+  dias.forEach((dia, i) => ctx.fillText((formato === "horizontal" ? DIAS[dia] : DIAS_CORTOS[dia]).toUpperCase(), xDia(i) + anchoDia / 2, yGrilla + 30));
   ctx.textAlign = "left";
 
   // Las horas, con su raya, y los huecos sin clases achicados a un corte.
   ctx.font = fuente(500, 20);
   for (const m of linea.marcas) {
-    ctx.fillStyle = "#8A8A8A";
+    ctx.fillStyle = c.hora;
     ctx.fillText(m.texto, MARGEN, y0 + m.y + 7);
-    ctx.fillStyle = "#E5E5E5";
+    ctx.fillStyle = c.raya;
     ctx.fillRect(MARGEN + COL_HORAS, y0 + m.y, ANCHO - MARGEN * 2 - COL_HORAS, 1);
   }
-  for (const c of linea.cortes) {
-    ctx.fillStyle = "#F4F4F5";
-    ctx.fillRect(MARGEN + COL_HORAS, y0 + c + 6, ANCHO - MARGEN * 2 - COL_HORAS, CORTE - 12);
+  for (const corte of linea.cortes) {
+    ctx.fillStyle = c.corte;
+    ctx.fillRect(MARGEN + COL_HORAS, y0 + corte + 6, ANCHO - MARGEN * 2 - COL_HORAS, CORTE - 12);
   }
 
   // Las clases, en su color.
   dias.forEach((dia, i) => {
-    for (const { clase, columna, columnas } of acomodar(fijas.filter((c) => c.dia_semana === dia))) {
+    for (const { clase, columna, columnas } of acomodar(fijas.filter((x) => x.dia_semana === dia))) {
       const a = actividadDe(clase);
       const nombre = nombreClase(clase);
       const w = anchoDia / columnas - 6;
@@ -805,9 +825,9 @@ function dibujarImagen() {
       ].filter(([, texto]) => texto);
       const paso = chica ? 19 : 23;
       let yy = top + (chica ? 22 : 27);
-      for (const [f, texto] of lineas) {
+      for (const [letra, texto] of lineas) {
         if (yy > top + h - 6) break;
-        ctx.font = f;
+        ctx.font = letra;
         ctx.fillText(recortar(ctx, texto, w - (chica ? 10 : 16)), x + (chica ? 6 : 8), yy);
         yy += paso;
       }
@@ -815,21 +835,61 @@ function dibujarImagen() {
     }
   });
 
-  ctx.fillStyle = "#A3A3A3";
+  ctx.fillStyle = c.firma;
   ctx.font = fuente(500, 20);
   ctx.textAlign = "right";
-  ctx.fillText("Hecha con Nexo", ANCHO - MARGEN, alto - 36);
+  ctx.fillText("Hecha con Nexo", ANCHO - MARGEN, alto - 32);
   return canvas;
 }
 
-// En el celular se comparte directo (WhatsApp, Instagram); en la compu se baja.
+// Antes de bajarla se elige el formato y el fondo, con la vista previa al lado.
+const panelImagen = document.getElementById("grillaImagen");
+const vistaImagen = document.getElementById("grillaImagenVista");
+const imagen = { formato: "vertical", fondo: "oscuro" };
+let urlVista = null;
+
+function pintarOpcionesImagen() {
+  for (const b of panelImagen.querySelectorAll("[data-formato]")) b.setAttribute("aria-pressed", String(b.dataset.formato === imagen.formato));
+  for (const b of panelImagen.querySelectorAll("[data-fondo]")) b.setAttribute("aria-pressed", String(b.dataset.fondo === imagen.fondo));
+  dibujarImagen(imagen).toBlob((blob) => {
+    if (urlVista) URL.revokeObjectURL(urlVista);
+    urlVista = URL.createObjectURL(blob);
+    vistaImagen.src = urlVista;
+  }, "image/png");
+}
+
 document.getElementById("btnGrillaImagen").addEventListener("click", async () => {
   if (!clasesVisibles().length) {
     avisar("Todavía no hay horarios para mostrar.", "atencion");
     return;
   }
+  if (!panelImagen.hidden) {
+    panelImagen.hidden = true;
+    return;
+  }
+  // De partida, el fondo de la apariencia que se está usando.
+  imagen.fondo = temaActual() === "claro" ? "claro" : "oscuro";
   await document.fonts?.ready;
-  const blob = await new Promise((resolve) => dibujarImagen().toBlob(resolve, "image/png"));
+  panelImagen.hidden = false;
+  pintarOpcionesImagen();
+  panelImagen.scrollIntoView({ behavior: "smooth", block: "nearest" });
+});
+
+panelImagen.addEventListener("click", (e) => {
+  const opcion = e.target.closest("[data-formato], [data-fondo]");
+  if (!opcion) return;
+  if (opcion.dataset.formato) imagen.formato = opcion.dataset.formato;
+  if (opcion.dataset.fondo) imagen.fondo = opcion.dataset.fondo;
+  pintarOpcionesImagen();
+});
+
+document.getElementById("btnGrillaImagenCancelar").addEventListener("click", () => {
+  panelImagen.hidden = true;
+});
+
+// En el celular se comparte directo (WhatsApp, Instagram); en la compu se baja.
+document.getElementById("btnGrillaImagenBajar").addEventListener("click", async () => {
+  const blob = await new Promise((resolve) => dibujarImagen(imagen).toBlob(resolve, "image/png"));
   const archivo = new File([blob], "grilla-de-clases.png", { type: "image/png" });
   if (matchMedia("(pointer: coarse)").matches && navigator.canShare?.({ files: [archivo] })) {
     try {
@@ -848,6 +908,7 @@ document.getElementById("btnGrillaImagen").addEventListener("click", async () =>
 });
 
 alEntrarEnVista("clases", async () => {
+  panelImagen.hidden = true;
   formClase.hidden = true;
   formActividad.hidden = true;
   await cargar();

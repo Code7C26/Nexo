@@ -1709,15 +1709,24 @@ CREATE TABLE IF NOT EXISTS descuentos_socio (
   porcentaje REAL NOT NULL,
   aplica TEXT NOT NULL,
   minimo_planes INTEGER,
+  -- Un combo con precio fijo por mes (hist. §203): el total de sus planes que
+  -- bajan, sea cual sea su precio de lista. NULL = baja `porcentaje`. Con
+  -- precio, porcentaje guarda el de cuando se cargó (para mostrarlo); el que
+  -- se aplica lo calcula server.js con los precios de hoy.
+  precio_combo REAL,
   activo INTEGER NOT NULL DEFAULT 1,
   organizacion_id INTEGER NOT NULL REFERENCES organizaciones(id),
   UNIQUE (organizacion_id, nombre)
 );
 
--- Los planes de un combo. Hija de descuentos_socio.
+-- Los planes de un combo. Hija de descuentos_socio. rol (hist. §203): 'baja'
+-- = el socio tiene que tenerlo y le baja el precio; 'alguno' = alcanza con
+-- tener uno de estos y no bajan ("el funcional a mitad de precio si hacés
+-- alguna marcial": Funcional baja, las marciales son 'alguno').
 CREATE TABLE IF NOT EXISTS descuento_socio_planes (
   descuento_id INTEGER NOT NULL REFERENCES descuentos_socio(id),
   plan_id INTEGER NOT NULL REFERENCES planes_socio(id),
+  rol TEXT NOT NULL DEFAULT 'baja' CHECK (rol IN ('baja', 'alguno')),
   PRIMARY KEY (descuento_id, plan_id)
 );
 

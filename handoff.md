@@ -11,7 +11,7 @@
 
 - Al cerrar una etapa, se hacen tres cosas:
   - su relato completo se agrega al final de `docs/proyecto/handoff-historico.md` con el
-    siguiente número (hoy el último es §202);
+    siguiente número (hoy el último es §203);
   - acá se actualizan "Estado actual" y "Qué sigue";
   - si cambió alguna decisión vigente, se actualiza también esa lista.
 - Nunca apilar secciones "Última etapa" en este archivo: así fue como llegó a
@@ -33,6 +33,13 @@ PR #102, con el cargador de hist. §201).**
 - Test nuevo: `grilla`. `npm test`: 475 de 475. Probado en el navegador.
 - **Falta:** cargar la cuenta del dojo del profe (hist. §201: el usuario la
   crea y trae los datos; yo corro `npm run cargar`).
+
+**19 de noviembre, hist. §203: combos de verdad, la imagen a elegir y "No
+vienen".** Un combo puede tener precio fijo por mes y bajar solo algunos de
+sus planes; la imagen de la grilla se elige vertical u horizontal y con
+fondo oscuro o claro; Socios suma el filtro "No vienen" y el alta, la última
+vez que vino. Morro tiene sus promos como combos y 21 socios. **Falta en
+Morro:** los profes y los productos reales.
 
 **19 de noviembre, hist. §202: clases compartidas y el filtro de la grilla
 (publicado, PR #103).**

@@ -20791,16 +20791,41 @@ function sincronizarPrecioPlan(planId, productoId, organizacionId) {
 
 /* Descuentos */
 
+// Lo que sale por mes cada plan: su duración más corta, llevada a un mes. Es
+// la base del precio fijo de un combo (hist. §203).
+function precioMensualDePlanes(organizacionId) {
+  const filas = db
+    .prepare(
+      `SELECT planes_socio_opciones.plan_id, planes_socio_opciones.precio, planes_socio_opciones.meses
+         FROM planes_socio_opciones
+         JOIN planes_socio ON planes_socio.id = planes_socio_opciones.plan_id
+        WHERE planes_socio.organizacion_id = ? AND planes_socio_opciones.activo = 1
+        ORDER BY planes_socio_opciones.meses`
+    )
+    .all(organizacionId);
+  const mensual = new Map();
+  for (const f of filas) if (!mensual.has(f.plan_id)) mensual.set(f.plan_id, f.precio / f.meses);
+  return mensual;
+}
+
+// El porcentaje que hace que los planes que bajan sumen el precio del combo,
+// con los precios de hoy (sin redondear: así las cuotas suman el precio justo).
+function porcentajeDelCombo(precioCombo, planes, mensual) {
+  const lista = planes.filter((p) => p.rol === 'baja').reduce((acc, p) => acc + (mensual.get(p.id) ?? 0), 0);
+  if (!(lista > 0) || precioCombo >= lista) return 0;
+  return (1 - precioCombo / lista) * 100;
+}
+
 function descuentosDeLaEmpresa(organizacionId) {
   const descuentos = db
     .prepare(
-      `SELECT id, nombre, porcentaje, aplica, minimo_planes, activo FROM descuentos_socio
+      `SELECT id, nombre, porcentaje, aplica, minimo_planes, precio_combo, activo FROM descuentos_socio
         WHERE organizacion_id = ? ORDER BY activo DESC, nombre`
     )
     .all(organizacionId);
   const planes = db
     .prepare(
-      `SELECT descuento_socio_planes.descuento_id, planes_socio.id, productos.nombre
+      `SELECT descuento_socio_planes.descuento_id, descuento_socio_planes.rol, planes_socio.id, productos.nombre
          FROM descuento_socio_planes
          JOIN planes_socio ON planes_socio.id = descuento_socio_planes.plan_id
          JOIN productos ON productos.id = planes_socio.producto_id
@@ -20808,11 +20833,17 @@ function descuentosDeLaEmpresa(organizacionId) {
         ORDER BY productos.nombre`
     )
     .all(organizacionId);
-  return descuentos.map((d) => ({
-    ...d,
-    activo: Boolean(d.activo),
-    planes: planes.filter((p) => p.descuento_id === d.id).map(({ id, nombre }) => ({ id, nombre }))
-  }));
+  const mensual = descuentos.some((d) => d.precio_combo != null) ? precioMensualDePlanes(organizacionId) : null;
+  return descuentos.map((d) => {
+    const suyos = planes.filter((p) => p.descuento_id === d.id).map(({ id, nombre, rol }) => ({ id, nombre, rol }));
+    return {
+      ...d,
+      activo: Boolean(d.activo),
+      planes: suyos,
+      // Con precio fijo, el porcentaje es el de hoy.
+      porcentaje: d.precio_combo != null ? porcentajeDelCombo(d.precio_combo, suyos, mensual) : d.porcentaje
+    };
+  });
 }
 
 // El descuento que le toca a un plan, según los planes que el socio tiene
@@ -20824,16 +20855,36 @@ function mejorDescuento(planId, planesActivos, descuentoManualId, descuentos) {
     const seAplica =
       (d.aplica === 'manual' && d.id === descuentoManualId) ||
       (d.aplica === 'cantidad' && planesActivos.size >= d.minimo_planes) ||
-      (d.aplica === 'combo' && d.planes.some((p) => p.id === planId) && d.planes.every((p) => planesActivos.has(p.id)));
+      (d.aplica === 'combo' && comboSeAplica(d, planId, planesActivos));
     if (seAplica && (!mejor || d.porcentaje > mejor.porcentaje)) mejor = d;
   }
   return mejor;
 }
 
+// Un combo baja un plan si es de los que bajan, el socio los tiene todos y,
+// si el combo pide "alguno de estos", tiene al menos uno (hist. §203).
+function comboSeAplica(d, planId, planesActivos) {
+  const bajan = d.planes.filter((p) => p.rol !== 'alguno');
+  const alguno = d.planes.filter((p) => p.rol === 'alguno');
+  return (
+    bajan.some((p) => p.id === planId) &&
+    bajan.every((p) => planesActivos.has(p.id)) &&
+    (alguno.length === 0 || alguno.some((p) => planesActivos.has(p.id)))
+  );
+}
+
 const conDescuento = (precio, porcentaje) => redondear2(precio * (1 - porcentaje / 100));
 const resumenDescuento = (d) => (d ? { id: d.id, nombre: d.nombre, porcentaje: d.porcentaje } : null);
 function textoAplica(d) {
-  if (d.aplica === 'combo') return `combo de ${d.planes.map((p) => p.nombre).join(' + ')}`;
+  if (d.aplica === 'combo') {
+    const bajan = d.planes.filter((p) => p.rol !== 'alguno').map((p) => p.nombre);
+    const alguno = d.planes.filter((p) => p.rol === 'alguno').map((p) => p.nombre);
+    return (
+      `combo de ${bajan.join(' + ')}` +
+      (alguno.length ? ` con ${alguno.join(' o ')}` : '') +
+      (d.precio_combo != null ? ` a $${d.precio_combo} por mes` : '')
+    );
+  }
   if (d.aplica === 'cantidad') return `desde ${d.minimo_planes} planes`;
   return 'a mano';
 }
@@ -20842,21 +20893,40 @@ function validarDescuento(cuerpo, organizacionId) {
   const nombre = typeof cuerpo?.nombre === 'string' ? cuerpo.nombre.trim() : '';
   if (!nombre) return { error: 'El descuento necesita un nombre.' };
   if (nombre.length > 80) return { error: 'El nombre del descuento no puede pasar de 80 caracteres.' };
-  if (!esNumeroValido(cuerpo.porcentaje) || !(cuerpo.porcentaje > 0) || cuerpo.porcentaje > 100) {
+  if (!APLICA_DESCUENTO.includes(cuerpo.aplica)) return { error: 'Elegí cuándo se aplica el descuento.' };
+  // Un combo puede tener precio fijo por mes en vez de porcentaje (hist. §203).
+  const conPrecio = cuerpo.aplica === 'combo' && cuerpo.precio_combo != null && cuerpo.precio_combo !== '';
+  if (conPrecio) {
+    if (!esNumeroValido(cuerpo.precio_combo) || !(cuerpo.precio_combo > 0)) return { error: 'El precio del combo tiene que ser un número de más de 0.' };
+  } else if (!esNumeroValido(cuerpo.porcentaje) || !(cuerpo.porcentaje > 0) || cuerpo.porcentaje > 100) {
     return { error: 'El porcentaje tiene que ser un número de más de 0 y hasta 100.' };
   }
-  if (!APLICA_DESCUENTO.includes(cuerpo.aplica)) return { error: 'Elegí cuándo se aplica el descuento.' };
-  const datos = { nombre, porcentaje: redondear2(cuerpo.porcentaje), aplica: cuerpo.aplica, minimo_planes: null, planes: [] };
+  const datos = {
+    nombre,
+    porcentaje: conPrecio ? 0 : redondear2(cuerpo.porcentaje),
+    aplica: cuerpo.aplica,
+    minimo_planes: null,
+    precio_combo: conPrecio ? redondear2(cuerpo.precio_combo) : null,
+    planes: []
+  };
   if (cuerpo.aplica === 'combo') {
+    // planes: los que bajan; alguno: los que pide sin bajarlos (alcanza con uno).
     const ids = cuerpo.planes;
-    if (!Array.isArray(ids) || new Set(ids).size !== ids.length || ids.length < 2 || ids.length > MAX_PLANES_SOCIO) {
-      return { error: 'Un combo necesita al menos dos planes distintos.' };
+    const alguno = cuerpo.alguno ?? [];
+    const todos = Array.isArray(ids) && Array.isArray(alguno) ? [...ids, ...alguno] : null;
+    if (!todos || !ids.length || new Set(todos).size !== todos.length || todos.length < 2 || todos.length > MAX_PLANES_SOCIO) {
+      return { error: 'Un combo necesita al menos dos planes distintos, y al menos uno que baje de precio.' };
     }
     const planes = planesDeLaEmpresa(organizacionId);
-    for (const id of ids) {
+    for (const [id, rol] of [...ids.map((id) => [id, 'baja']), ...alguno.map((id) => [id, 'alguno'])]) {
       const plan = planes.find((p) => p.id === id);
       if (!plan) return { error: 'Uno de los planes del combo no existe.' };
-      datos.planes.push({ id: plan.id, nombre: plan.nombre });
+      datos.planes.push({ id: plan.id, nombre: plan.nombre, rol });
+    }
+    if (conPrecio) {
+      const porcentaje = porcentajeDelCombo(datos.precio_combo, datos.planes, precioMensualDePlanes(organizacionId));
+      if (!(porcentaje > 0)) return { error: 'El precio del combo tiene que ser menor que lo que suman sus planes por mes.' };
+      datos.porcentaje = redondear2(porcentaje);
     }
   }
   if (cuerpo.aplica === 'cantidad') {
@@ -20979,7 +21049,7 @@ function generarCuotasDe(inscripcionId, hoy) {
       operacion_id: socio.id,
       detalle:
         `Cuota del socio N° ${socio.numero}, ${planYDuracion(plan.plan, plan.meses)}, del ${fechaLegible(desde)} al ${fechaLegible(hasta)}` +
-        (porcentaje ? `, con ${porcentaje}% de descuento (${descuento.nombre})` : ''),
+        (porcentaje ? `, con ${redondear2(porcentaje)}% de descuento (${descuento.nombre})` : ''),
       organizacion_id: socio.organizacion_id
     });
   }
@@ -21334,8 +21404,8 @@ app.get('/api/descuentos-socio', (req, res) => {
 // Los planes de un combo se reemplazan enteros. Va DENTRO de una transacción.
 function guardarPlanesDelDescuento(descuentoId, planes) {
   db.prepare('DELETE FROM descuento_socio_planes WHERE descuento_id = ?').run(descuentoId);
-  const insertar = db.prepare('INSERT INTO descuento_socio_planes (descuento_id, plan_id) VALUES (?, ?)');
-  for (const plan of planes) insertar.run(descuentoId, plan.id);
+  const insertar = db.prepare('INSERT INTO descuento_socio_planes (descuento_id, plan_id, rol) VALUES (?, ?, ?)');
+  for (const plan of planes) insertar.run(descuentoId, plan.id, plan.rol ?? 'baja');
 }
 
 // Los descuentos son configuración del negocio: se auditan como entidad
@@ -21351,10 +21421,10 @@ app.post('/api/descuentos-socio', soloAdmin, (req, res) => {
     const nuevoId = Number(
       db
         .prepare(
-          `INSERT INTO descuentos_socio (nombre, porcentaje, aplica, minimo_planes, organizacion_id)
-           VALUES (?, ?, ?, ?, ?)`
+          `INSERT INTO descuentos_socio (nombre, porcentaje, aplica, minimo_planes, precio_combo, organizacion_id)
+           VALUES (?, ?, ?, ?, ?, ?)`
         )
-        .run(datos.nombre, datos.porcentaje, datos.aplica, datos.minimo_planes, organizacionId).lastInsertRowid
+        .run(datos.nombre, datos.porcentaje, datos.aplica, datos.minimo_planes, datos.precio_combo, organizacionId).lastInsertRowid
     );
     guardarPlanesDelDescuento(nuevoId, datos.planes);
     auditar(req, {
@@ -21363,7 +21433,7 @@ app.post('/api/descuentos-socio', soloAdmin, (req, res) => {
       entidad_id: organizacionId,
       operacion_tipo: 'descuento_socio',
       operacion_id: nuevoId,
-      detalle: `Descuento de socios "${datos.nombre}" creado: ${datos.porcentaje}%, ${textoAplica(datos)}`
+      detalle: `Descuento de socios "${datos.nombre}" creado: ${datos.precio_combo != null ? 'precio fijo' : `${datos.porcentaje}%`}, ${textoAplica(datos)}`
     });
     return nuevoId;
   });
@@ -21402,11 +21472,12 @@ app.patch('/api/descuentos-socio/:id', soloAdmin, (req, res) => {
     let detalle = `Descuento de socios "${datos.nombre}" editado`;
     if (soloEstado) detalle = `Descuento de socios "${datos.nombre}" ${datos.activo ? 'activado' : 'pausado'}`;
     withTransaction(() => {
-      db.prepare('UPDATE descuentos_socio SET nombre = ?, porcentaje = ?, aplica = ?, minimo_planes = ?, activo = ? WHERE id = ?').run(
+      db.prepare('UPDATE descuentos_socio SET nombre = ?, porcentaje = ?, aplica = ?, minimo_planes = ?, precio_combo = ?, activo = ? WHERE id = ?').run(
         datos.nombre,
         datos.porcentaje,
         datos.aplica,
         datos.minimo_planes,
+        datos.precio_combo ?? null,
         datos.activo ? 1 : 0,
         descuento.id
       );
@@ -21705,13 +21776,20 @@ app.post('/api/socios/cotizacion', (req, res) => {
 // descuento a mano. Las primeras cuotas se generan en la misma transacción.
 app.post('/api/socios', (req, res) => {
   const organizacionId = req.usuario.organizacion_id;
-  const { cliente_id, cliente, planes, fecha_alta, descuento_id } = req.body ?? {};
+  const { cliente_id, cliente, planes, fecha_alta, descuento_id, ultima_vez } = req.body ?? {};
   const hoy = fechaDeHoy();
 
   const { error: errorPlanes, opciones } = opcionesPedidas(planes, organizacionId);
   if (errorPlanes) return res.status(400).json({ error: errorPlanes });
   const { error: errorFecha, fecha: alta } = fechaDeAlta(fecha_alta, hoy);
   if (errorFecha) return res.status(400).json({ error: errorFecha });
+  // De un socio que ya venía (alta hacia atrás), la última vez que vino antes
+  // de cargarlo en Nexo (hist. §203): queda como su último ingreso, y así
+  // "No vienen" lo muestra desde el primer día.
+  const ultimaVez = ultima_vez == null || ultima_vez === '' ? null : validarFecha(ultima_vez);
+  if ((ultima_vez != null && ultima_vez !== '' && !ultimaVez) || (ultimaVez && (ultimaVez > hoy || ultimaVez < alta))) {
+    return res.status(400).json({ error: 'La última vez que vino va entre la fecha de alta y hoy.' });
+  }
   const manual = descuentoManualPedido(descuento_id, organizacionId);
   if (manual.error) return res.status(400).json({ error: manual.error });
   // Desde una consulta (hist. §89): el alta del socio la gana.
@@ -21785,9 +21863,17 @@ app.post('/api/socios', (req, res) => {
       operacion_id: id,
       detalle:
         `Alta del socio N° ${numero}, ${nombre}: ${opciones.map((o) => planYDuracion(o.plan, o.meses)).join(', ')}, desde el ${fechaLegible(alta)}` +
-        (manual.id ? `, con el descuento "${manual.nombre}"` : '')
+        (manual.id ? `, con el descuento "${manual.nombre}"` : '') +
+        (ultimaVez ? `; vino por última vez el ${fechaLegible(ultimaVez)}` : '')
     });
     for (const inscripcionId of inscripciones) generarCuotasDe(inscripcionId, hoy);
+    if (ultimaVez) {
+      db.prepare('INSERT INTO ingresos_socio (socio_id, fecha, usuario_id, al_dia, deuda) VALUES (?, ?, ?, 1, 0)').run(
+        id,
+        utcDeLocal(ultimaVez, '12:00'),
+        req.usuario.id
+      );
+    }
     vincularOportunidad(req, oportunidad, { cliente_id: clienteId, socio_id: id });
     return id;
   });

@@ -246,8 +246,25 @@ const FILTROS = {
   activos: (s) => s.situacion !== "baja",
   debe: (s) => s.deuda > 0,
   al_dia: (s) => s.situacion === "al_dia",
+  no_vienen: (s) => s.situacion !== "baja" && diasSinVenir(s) >= DIAS_NO_VIENE,
   baja: (s) => s.situacion === "baja"
 };
+
+// "No vienen" (hist. §203): socios activos que hace dos semanas o más no
+// entran, contando desde su último ingreso (o desde el alta, si nunca vino).
+// Para llamarlos antes de que se den de baja.
+const DIAS_NO_VIENE = 15;
+function diasSinVenir(s) {
+  const desde = s.ultimo_ingreso ? s.ultimo_ingreso.slice(0, 10) : s.fecha_alta;
+  return Math.floor((new Date(`${hoyISO()}T12:00:00Z`) - new Date(`${desde}T12:00:00Z`)) / 86400000);
+}
+function textoSinVenir(s) {
+  const dias = diasSinVenir(s);
+  if (dias < DIAS_NO_VIENE) return "";
+  const meses = Math.round(dias / 30);
+  const cuanto = dias < 45 ? `${dias} días` : meses < 12 ? `${meses} meses` : "más de un año";
+  return s.ultimo_ingreso ? `Hace ${cuanto} que no viene` : `No vino desde el alta, hace ${cuanto}`;
+}
 
 function renderLista() {
   const activos = socios.filter((s) => s.situacion !== "baja");
@@ -280,6 +297,7 @@ function renderLista() {
       <td data-label="Socio" class="m-titulo">
         <span class="celda-principal">${esc(s.nombre)}</span>
         ${s.documento ? `<span class="celda-meta">DNI ${esc(s.documento)}</span>` : ""}
+        ${s.situacion !== "baja" && textoSinVenir(s) ? `<span class="celda-meta ledger-warn">${esc(textoSinVenir(s))}</span>` : ""}
       </td>
       ${celdaMovil(["N°", s.numero], nombresDePlanes(s), textoCuota(s))}
       <td data-label="Planes">${esc(nombresDePlanes(s) || "—")}<span class="celda-meta">${esc(duracionesDePlanes(s))}</span></td>
@@ -433,7 +451,20 @@ altaPlanes.addEventListener("change", () => {
   limpiarError(altaPlanes);
   pintarResumenAlta();
 });
-formAlta.fecha_alta.addEventListener("change", pintarResumenAlta);
+// La última vez que vino es de alguien que ya venía: con alta hacia atrás.
+function pintarUltimaVez() {
+  const yaVenia = Boolean(formAlta.fecha_alta.value) && formAlta.fecha_alta.value < hoyISO();
+  document.getElementById("socioAltaUltimaVezCampo").hidden = !yaVenia;
+  document.getElementById("socioAltaUltimaVezAyuda").hidden = !yaVenia;
+  formAlta.ultima_vez.min = formAlta.fecha_alta.value;
+  formAlta.ultima_vez.max = hoyISO();
+  if (!yaVenia) formAlta.ultima_vez.value = "";
+}
+
+formAlta.fecha_alta.addEventListener("change", () => {
+  pintarUltimaVez();
+  pintarResumenAlta();
+});
 altaDescuento.addEventListener("change", pintarResumenAlta);
 
 async function abrirAlta() {
@@ -444,6 +475,7 @@ async function abrirAlta() {
   quien = "nuevo";
   pintarQuien();
   formAlta.fecha_alta.value = hoyISO();
+  pintarUltimaVez();
   altaPlanes.innerHTML = `<p class="opciones-cargando">Cargando planes…</p>`;
   altaCotizacion.hidden = true;
   const [, , , clientes] = await Promise.all([
@@ -492,7 +524,8 @@ formAlta.addEventListener("submit", async (e) => {
   const cuerpo = {
     planes: elegidos.map((elegido) => ({ opcion_id: elegido.opcion.id })),
     fecha_alta: formAlta.fecha_alta.value,
-    descuento_id: valorDescuento(altaDescuento)
+    descuento_id: valorDescuento(altaDescuento),
+    ultima_vez: formAlta.ultima_vez.value || null
   };
   if (consultaDelAlta) cuerpo.crm_oportunidad_id = consultaDelAlta.crm_oportunidad_id;
   if (quien === "nuevo") {
@@ -1472,35 +1505,55 @@ const cancelarDescuento = document.getElementById("formDescuentoSocioCancelar");
 const descuentoCombo = document.getElementById("descuentoCombo");
 const descuentoCantidad = document.getElementById("descuentoCantidad");
 const descuentoPlanes = document.getElementById("descuentoPlanes");
+const descuentoAlguno = document.getElementById("descuentoAlguno");
+const descuentoConPrecio = document.getElementById("descuentoConPrecio");
 
+// Un combo (hist. §203): los planes que bajan, y si pide además "alguno de
+// estos", los que alcanza con tener uno.
 function textoCuandoSeAplica(d) {
-  if (d.aplica === "combo") return `Al combinar ${d.planes.map((p) => p.nombre).join(" + ")}`;
+  if (d.aplica === "combo") {
+    const bajan = d.planes.filter((p) => p.rol !== "alguno").map((p) => p.nombre);
+    const alguno = d.planes.filter((p) => p.rol === "alguno").map((p) => p.nombre);
+    return `Al combinar ${bajan.join(" + ")}${alguno.length ? ` con ${alguno.join(" o ")}` : ""}`;
+  }
   if (d.aplica === "cantidad") return `Desde ${plural(d.minimo_planes, "plan", "planes")}`;
   return "A mano, a quien se lo elijas";
 }
 
 const aplicaElegido = () => formDescuento.querySelector('input[name="aplica"]:checked').value;
 
+// Con precio fijo, el combo no lleva porcentaje.
 function pintarAplica() {
   const aplica = aplicaElegido();
+  const conPrecio = aplica === "combo" && descuentoConPrecio.checked;
   descuentoCombo.hidden = aplica !== "combo";
   descuentoCantidad.hidden = aplica !== "cantidad";
+  document.getElementById("descuentoPrecioCampo").hidden = !conPrecio;
+  document.getElementById("descuentoPrecioNota").hidden = !conPrecio;
+  formDescuento.porcentaje.closest("label").hidden = conPrecio;
 }
 
-function pintarPlanesCombo(marcados = []) {
-  const lista = planes.filter((p) => p.activo || marcados.includes(p.id));
-  descuentoPlanes.innerHTML =
-    lista.length < 2
-      ? `<p class="opciones-nota">Para un combo hacen falta al menos dos planes. <a class="btn-link" href="#/planes-socio">Crealos en la pestaña Planes</a>.</p>`
-      : lista
-          .map(
-            (p) => `
+function chipsDePlanes(lista, nombre, marcados) {
+  return lista
+    .map(
+      (p) => `
         <label class="chip-elegir">
-          <input type="checkbox" name="plan" value="${p.id}"${marcados.includes(p.id) ? " checked" : ""} />
+          <input type="checkbox" name="${nombre}" value="${p.id}"${marcados.includes(p.id) ? " checked" : ""} />
           <span>${esc(p.nombre)}</span>
         </label>`
-          )
-          .join("");
+    )
+    .join("");
+}
+
+function pintarPlanesCombo(marcados = [], alguno = []) {
+  const lista = planes.filter((p) => p.activo || marcados.includes(p.id) || alguno.includes(p.id));
+  if (lista.length < 2) {
+    descuentoPlanes.innerHTML = `<p class="opciones-nota">Para un combo hacen falta al menos dos planes. <a class="btn-link" href="#/planes-socio">Crealos en la pestaña Planes</a>.</p>`;
+    descuentoAlguno.innerHTML = "";
+    return;
+  }
+  descuentoPlanes.innerHTML = chipsDePlanes(lista, "plan", marcados);
+  descuentoAlguno.innerHTML = chipsDePlanes(lista, "alguno", alguno);
 }
 
 function limpiarFormDescuento() {
@@ -1526,7 +1579,7 @@ function renderDescuentos() {
     <tr class="${d.activo ? "" : "fila-pausada"}">
       <td data-label="Descuento"><span class="celda-principal">${esc(d.nombre)}</span></td>
       <td data-label="Cuándo se aplica" class="celda-wrap">${esc(textoCuandoSeAplica(d))}</td>
-      <td data-label="Porcentaje" class="align-right mono">${esc(porcentaje(d.porcentaje))}</td>
+      <td data-label="Cuánto baja" class="align-right mono">${esc(d.precio_combo != null ? `${money(d.precio_combo)} por mes` : porcentaje(d.porcentaje))}</td>
       <td data-label="Estado">${d.activo ? badge("status-cobrado", "Activo").html : badge("", "Pausado").html}</td>
       <td data-label=""><div class="fila-acciones">
         ${botonEditarFila("btn-editar-descuento", d.id, "descuento")}
@@ -1541,11 +1594,16 @@ function editarDescuento(d) {
   limpiarErrores(formDescuento);
   formDescuento.id.value = d.id;
   formDescuento.nombre.value = d.nombre;
-  formDescuento.porcentaje.value = d.porcentaje;
+  formDescuento.porcentaje.value = d.precio_combo != null ? "" : d.porcentaje;
+  descuentoConPrecio.checked = d.precio_combo != null;
+  formDescuento.precio_combo.value = d.precio_combo ?? "";
   for (const radio of formDescuento.querySelectorAll('input[name="aplica"]')) radio.checked = radio.value === d.aplica;
   formDescuento.minimo_planes.value = d.minimo_planes ?? 2;
   pintarAplica();
-  pintarPlanesCombo(d.planes.map((p) => p.id));
+  pintarPlanesCombo(
+    d.planes.filter((p) => p.rol !== "alguno").map((p) => p.id),
+    d.planes.filter((p) => p.rol === "alguno").map((p) => p.id)
+  );
   document.getElementById("formDescuentoSocioTitulo").textContent = `Editar "${d.nombre}"`;
   botonDescuento.textContent = "Guardar cambios";
   cancelarDescuento.hidden = false;
@@ -1581,6 +1639,12 @@ document.getElementById("descuentoAplica").addEventListener("change", () => {
   pintarAplica();
 });
 descuentoPlanes.addEventListener("change", () => limpiarError(descuentoPlanes));
+descuentoAlguno.addEventListener("change", () => limpiarError(descuentoPlanes));
+descuentoConPrecio.addEventListener("change", () => {
+  limpiarErrores(formDescuento);
+  pintarAplica();
+  if (descuentoConPrecio.checked) formDescuento.precio_combo.focus();
+});
 cancelarDescuento.addEventListener("click", limpiarFormDescuento);
 
 formDescuento.addEventListener("submit", async (e) => {
@@ -1594,11 +1658,17 @@ formDescuento.addEventListener("submit", async (e) => {
     (control.matches("input") ? control : control.querySelector("input"))?.focus();
   };
   if (!nombre) return error(formDescuento.nombre, "Ponele un nombre: es lo que se ve en la ficha del socio.");
-  if (!(valor > 0) || valor > 100) return error(formDescuento.porcentaje, "El porcentaje tiene que ser de más de 0 y hasta 100.");
-  const cuerpo = { nombre, porcentaje: valor, aplica };
+  const conPrecio = aplica === "combo" && descuentoConPrecio.checked;
+  const precio = Number(formDescuento.precio_combo.value);
+  if (conPrecio && !(precio > 0)) return error(formDescuento.precio_combo, "Escribí lo que cuesta el combo por mes.");
+  if (!conPrecio && (!(valor > 0) || valor > 100)) return error(formDescuento.porcentaje, "El porcentaje tiene que ser de más de 0 y hasta 100.");
+  const cuerpo = { nombre, aplica, ...(conPrecio ? { precio_combo: precio } : { porcentaje: valor }) };
   if (aplica === "combo") {
     cuerpo.planes = [...descuentoPlanes.querySelectorAll('input[name="plan"]:checked')].map((c) => Number(c.value));
-    if (cuerpo.planes.length < 2) return error(descuentoPlanes, "Elegí al menos dos planes para el combo.");
+    cuerpo.alguno = [...descuentoAlguno.querySelectorAll('input[name="alguno"]:checked')].map((c) => Number(c.value));
+    if (!cuerpo.planes.length) return error(descuentoPlanes, "Elegí qué planes bajan de precio.");
+    if (cuerpo.planes.some((id) => cuerpo.alguno.includes(id))) return error(descuentoPlanes, "Un plan va arriba o abajo, no en los dos.");
+    if (cuerpo.planes.length + cuerpo.alguno.length < 2) return error(descuentoPlanes, "Elegí al menos dos planes para el combo.");
   }
   if (aplica === "cantidad") {
     cuerpo.minimo_planes = Number(formDescuento.minimo_planes.value);

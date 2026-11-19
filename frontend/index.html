@@ -1625,6 +1625,7 @@
                 <button type="button" class="segmento" data-filtro="activos" aria-pressed="true">Activos</button>
                 <button type="button" class="segmento" data-filtro="debe" aria-pressed="false">Deben</button>
                 <button type="button" class="segmento" data-filtro="al_dia" aria-pressed="false">Al día</button>
+                <button type="button" class="segmento" data-filtro="no_vienen" aria-pressed="false" title="Activos que hace dos semanas o más no vienen">No vienen</button>
                 <button type="button" class="segmento" data-filtro="baja" aria-pressed="false">De baja</button>
               </div>
             </div>
@@ -1700,6 +1701,10 @@
                     <select name="descuento_id" id="socioAltaDescuento"></select>
                   </label>
                 </div>
+                <label id="socioAltaUltimaVezCampo" hidden>La última vez que vino (opcional)
+                  <input type="date" name="ultima_vez" />
+                </label>
+                <p class="campo-ayuda" id="socioAltaUltimaVezAyuda" hidden>Si ya venía antes de cargarlo en Nexo: así aparece en "No vienen" si hace mucho que no viene.</p>
                 <p class="opciones-nota" id="socioAltaVencimiento" aria-live="polite"></p>
                 <ul class="cotizacion" id="socioAltaCotizacion" aria-live="polite" hidden></ul>
               </div>
@@ -1780,7 +1785,7 @@
                   <tr>
                     <th scope="col">Descuento</th>
                     <th scope="col">Cuándo se aplica</th>
-                    <th scope="col" class="align-right">Porcentaje</th>
+                    <th scope="col" class="align-right">Cuánto baja</th>
                     <th scope="col">Estado</th>
                     <th scope="col"></th>
                   </tr>
@@ -1835,7 +1840,15 @@
                 </fieldset>
                 <fieldset class="opciones" id="descuentoCombo">
                   <legend>Planes del combo</legend>
+                  <p class="opciones-nota">Los que bajan de precio: el socio tiene que hacerlos todos.</p>
                   <div class="chips-elegir" id="descuentoPlanes"></div>
+                  <p class="opciones-nota">Y además, alguno de estos (opcional): alcanza con que haga uno, y no bajan. Por ejemplo, el funcional a mitad de precio si hace alguna marcial: Funcional arriba, las marciales acá.</p>
+                  <div class="chips-elegir" id="descuentoAlguno"></div>
+                  <label class="form-check"><input type="checkbox" name="con_precio" id="descuentoConPrecio" /> <span>El combo tiene un precio fijo por mes, en vez de un porcentaje</span></label>
+                  <label id="descuentoPrecioCampo" hidden>Precio del combo por mes
+                    <input type="number" name="precio_combo" min="1" step="1" inputmode="numeric" placeholder="80000" />
+                  </label>
+                  <p class="opciones-nota" id="descuentoPrecioNota" hidden>Lo que pagan por mes los planes que bajan, todos juntos. Si después cambia el precio de un plan, el combo sigue costando lo mismo.</p>
                 </fieldset>
                 <label id="descuentoCantidad" hidden>Desde cuántos planes
                   <input type="number" name="minimo_planes" min="2" max="10" step="1" value="2" inputmode="numeric" />
@@ -1867,6 +1880,25 @@
               <button type="button" class="btn btn-secundario btn-chico" id="btnGrillaImagen"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#download"></use></svg> Imagen para compartir</button>
               <button type="button" class="btn btn-primary btn-chico col-admin" id="btnClaseNueva"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#plus"></use></svg> Nuevo horario</button>
             </div>
+          </div>
+          <div class="grilla-imagen" id="grillaImagen" hidden>
+            <div class="grilla-imagen-opciones">
+              <p class="config-tarjeta-titulo">Imagen para compartir</p>
+              <div class="segmentos" role="group" aria-label="Formato">
+                <button type="button" class="segmento" data-formato="vertical" aria-pressed="true">Vertical, para Instagram</button>
+                <button type="button" class="segmento" data-formato="horizontal" aria-pressed="false">Horizontal, más grande</button>
+              </div>
+              <div class="segmentos" role="group" aria-label="Fondo">
+                <button type="button" class="segmento" data-fondo="oscuro" aria-pressed="true">Fondo oscuro</button>
+                <button type="button" class="segmento" data-fondo="claro" aria-pressed="false">Fondo claro</button>
+              </div>
+              <p class="campo-ayuda">Sale la grilla que estás mirando: si elegiste una actividad arriba, solo la de esa actividad.</p>
+              <div class="grilla-imagen-botones">
+                <button type="button" class="btn btn-secundario btn-chico" id="btnGrillaImagenCancelar">Cancelar</button>
+                <button type="button" class="btn btn-primary btn-chico" id="btnGrillaImagenBajar"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#download"></use></svg> Descargar</button>
+              </div>
+            </div>
+            <img class="grilla-imagen-vista" id="grillaImagenVista" alt="Vista previa de la imagen" />
           </div>
           <div class="segmentos grilla-dias" role="group" aria-label="Día" id="grillaDias"></div>
           <ul class="grilla-leyenda" id="grillaLeyenda" aria-label="Actividades"></ul>

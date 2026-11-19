@@ -2312,7 +2312,11 @@ for (const [tabla, columna] of [
   ['ventas', 'empleado_id INTEGER REFERENCES empleados(id)'],
   ['cobros', 'empleado_id INTEGER REFERENCES empleados(id)'],
   ['turnos_caja', 'abierto_empleado_id INTEGER REFERENCES empleados(id)'],
-  ['turnos_caja', 'cerrado_empleado_id INTEGER REFERENCES empleados(id)']
+  ['turnos_caja', 'cerrado_empleado_id INTEGER REFERENCES empleados(id)'],
+  // Combos de verdad (hist. §203): un precio fijo por mes, y planes que el
+  // combo pide sin bajarlos. Los combos de antes: porcentaje y todos bajan.
+  ['descuentos_socio', 'precio_combo REAL'],
+  ['descuento_socio_planes', "rol TEXT NOT NULL DEFAULT 'baja' CHECK (rol IN ('baja', 'alguno'))"]
 ]) {
   if (!db.prepare(`PRAGMA table_info(${tabla})`).all().some((col) => col.name === columna.split(' ')[0])) {
     db.exec(`ALTER TABLE ${tabla} ADD COLUMN ${columna}`);

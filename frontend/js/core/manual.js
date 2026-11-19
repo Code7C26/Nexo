@@ -1017,7 +1017,9 @@ const SECCIONES_ES = [
         "En **Socios**, dá de alta a la persona (nueva, o que ya es cliente) con su plan.",
         "La cuota vence desde la fecha de alta y se cobra como cualquier venta."
       ] },
-      "En **Ingreso**, la recepción busca al socio cuando llega: Nexo avisa si debe la cuota."
+      "En **Ingreso**, la recepción busca al socio cuando llega: Nexo avisa si debe la cuota.",
+      "Un **combo** baja el precio cuando el socio combina planes: con un porcentaje, o con un **precio fijo por mes** (BJJ + MMA a $80.000). También puede bajar un solo plan si el socio hace además alguno de otros: el funcional a mitad de precio si hace alguna marcial.",
+      "En **Socios**, el filtro **No vienen** muestra a los activos que hace dos semanas o más no entran, para llamarlos antes de que se den de baja. De alguien que ya venía, en el alta se carga la última vez que vino."
     ],
     ver: ["cobrar", "clases"]
   },
@@ -1040,7 +1042,7 @@ const SECCIONES_ES = [
       "Una clase de varias actividades a la vez (el sparring de Boxeo, MMA y Kickboxing) se carga una sola vez, marcando todas: aparece en la grilla de cada una.",
       "Tocá una actividad arriba de la grilla para ver solo sus clases; tocala de nuevo para ver todas. La imagen para compartir sale filtrada igual.",
       "Los profes son los empleados del negocio: si sumás uno desde la grilla, aparece también en **Empleados**.",
-      "**Imagen para compartir** arma la grilla de la semana en una imagen para Instagram o el estado de WhatsApp. En el celular se comparte directo.",
+      "**Imagen para compartir** arma la grilla de la semana en una imagen para Instagram o el estado de WhatsApp: vertical, u horizontal y más grande; con fondo oscuro o claro. En el celular se comparte directo.",
       { nota: "En el celular la grilla se ve de a un día: elegí el día arriba." }
     ],
     ver: ["socios", "horarios"]
