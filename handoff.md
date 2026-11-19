@@ -35,7 +35,7 @@ PR #102, con el cargador de hist. §201).**
   crea y trae los datos; yo corro `npm run cargar`).
 
 **19 de noviembre, hist. §204: "Parece que dejaron" y los combos dichos
-claro.** Socios que hace un mes no vienen y deben la cuota de un mes que no
+claro (publicado, PR #105).** Socios que hace un mes no vienen y deben la cuota de un mes que no
 vinieron: el dueño decide en la ficha si los da de baja borrando esa deuda
 (decisión del usuario: Nexo no lo hace solo). El formulario de combos arma
 la frase de cómo queda, y la ficha muestra el combo de precio fijo con su
