@@ -10917,7 +10917,7 @@ a.asistente-guia-whatsapp:hover { border-color: var(--line-strong); }
 .grilla-leyenda {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--sp-1) var(--sp-4);
+  gap: var(--sp-1);
   margin: 0 0 var(--sp-3);
   padding: 0;
   list-style: none;
@@ -10925,8 +10925,27 @@ a.asistente-guia-whatsapp:hover { border-color: var(--line-strong); }
   color: var(--ink-muted);
 }
 .grilla-leyenda:empty { display: none; }
-.grilla-leyenda li { display: inline-flex; align-items: center; gap: 6px; }
 .grilla-leyenda small { color: var(--ink-faint); }
+/* Cada actividad filtra la grilla (hist. §202): tocada, quedan solo sus
+   clases y las demás se apagan en la leyenda. */
+.grilla-filtro {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 30px;
+  padding: 0 var(--sp-2);
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: var(--r-full);
+  cursor: pointer;
+  transition: background-color var(--dur-1) ease, border-color var(--dur-1) ease, opacity var(--dur-1) ease;
+}
+.grilla-filtro:hover { background: var(--surface-sunk); }
+.grilla-filtro:focus-visible { outline: none; border-color: var(--accent); }
+.grilla-filtro[aria-pressed="true"] { color: var(--ink); background: var(--surface-sunk); border-color: var(--line-strong); }
+.grilla-leyenda.con-filtro .grilla-filtro[aria-pressed="false"] { opacity: 0.55; }
 
 .grilla-dias { margin-bottom: var(--sp-3); }
 .grilla-dias .segmento { position: relative; }

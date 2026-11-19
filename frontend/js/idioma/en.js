@@ -5599,5 +5599,14 @@ export default {
   "Horario nuevo: {0}": "New time slot: {0}",
   "Ese horario ya no está en la grilla.": "That time slot is no longer on the schedule.",
   "Horario sacado de la grilla: {0}": "Time slot removed from the schedule: {0}",
-  "Horario editado: {0}": "Time slot edited: {0}"
+  "Horario editado: {0}": "Time slot edited: {0}",
+
+  // Las clases compartidas y el filtro de la grilla (hist. §202)
+  "Si es una clase de varias actividades a la vez (el sparring de Boxeo, MMA y Kickboxing), marcalas todas: aparece en la grilla de cada una.": "If it's a class shared by several activities (sparring for Boxing, MMA and Kickboxing), tick them all: it shows up on each one's schedule.",
+  "Esta actividad todavía no tiene horarios.": "This activity has no times yet.",
+  "Tocala de nuevo arriba para ver todas.": "Tap it again above to see them all.",
+  "Grilla de {0}": "{0} schedule",
+  "{0} tiene clases compartidas con otras actividades: no puede ser de horario libre.": "{0} has classes shared with other activities: it can't be an open activity.",
+  "Las actividades no son válidas.": "The activities are not valid.",
+  "Una actividad de horario libre no se junta con otras en una clase.": "An open activity can't be combined with others in a class."
 };

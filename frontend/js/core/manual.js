@@ -1037,6 +1037,8 @@ const SECCIONES_ES = [
         "Para cambiar o sacar un horario, tocalo en la grilla."
       ] },
       "Dos clases pueden ser a la misma hora: van una al lado de la otra. Un profe no puede estar en dos clases a la vez; Nexo te avisa.",
+      "Una clase de varias actividades a la vez (el sparring de Boxeo, MMA y Kickboxing) se carga una sola vez, marcando todas: aparece en la grilla de cada una.",
+      "Tocá una actividad arriba de la grilla para ver solo sus clases; tocala de nuevo para ver todas. La imagen para compartir sale filtrada igual.",
       "Los profes son los empleados del negocio: si sumás uno desde la grilla, aparece también en **Empleados**.",
       "**Imagen para compartir** arma la grilla de la semana en una imagen para Instagram o el estado de WhatsApp. En el celular se comparte directo.",
       { nota: "En el celular la grilla se ve de a un día: elegí el día arriba." }

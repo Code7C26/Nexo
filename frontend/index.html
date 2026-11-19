@@ -1876,9 +1876,11 @@
           <form id="formClase" class="form config-tarjeta col-admin" novalidate hidden>
             <div class="config-tarjeta-cuerpo">
               <p class="config-tarjeta-titulo" id="claseFormTitulo">Nuevo horario</p>
-              <label>Actividad
-                <select name="actividad_id" id="claseActividad"></select>
-              </label>
+              <fieldset class="opciones">
+                <legend>Actividad</legend>
+                <div class="chips-elegir" id="claseActividades"></div>
+                <p class="campo-ayuda">Si es una clase de varias actividades a la vez (el sparring de Boxeo, MMA y Kickboxing), marcalas todas: aparece en la grilla de cada una.</p>
+              </fieldset>
               <fieldset class="opciones">
                 <legend id="claseDiasLeyenda">Días</legend>
                 <div class="chips-elegir" id="claseDias"></div>

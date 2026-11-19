@@ -122,6 +122,31 @@ test('editar un horario, sacarlo y dar de baja una actividad', async () => {
   assert.equal((await admin.patch(`/api/actividades/${musculacion}`, { color: 'verde' })).status, 200);
 });
 
+test('una clase compartida es de varias actividades a la vez (hist. §202)', async () => {
+  const boxeo = (await admin.post('/api/actividades', { nombre: 'Boxeo', color: 'amarillo' })).json.id;
+  const kick = (await admin.post('/api/actividades', { nombre: 'Kickboxing', color: 'naranja' })).json.id;
+  // Una libre no se junta con otras.
+  assert.equal((await admin.post('/api/clases', { actividades: [boxeo, musculacion], dias: [4], desde: '19:00', hasta: '20:00' })).status, 400);
+  const r = await admin.post('/api/clases', { actividades: [boxeo, kick], dias: [4], desde: '19:00', hasta: '20:00', detalle: 'Sparring', profes: [ana] });
+  assert.equal(r.status, 201, r.texto);
+  const [sparring] = r.json;
+  assert.deepEqual(sparring.actividades, [boxeo, kick]);
+  assert.equal(sparring.actividad_id, boxeo);
+  // Ana ya está en el sparring: el choque nombra las dos actividades.
+  const pisa = await admin.post('/api/clases', { actividad_id: bjj, dias: [4], desde: '19:30', hasta: '20:30', profes: [ana] });
+  assert.match(pisa.json.error, /Ana ya está en Boxeo \+ Kickboxing el viernes/);
+  // Kickboxing no puede pasar a libre mientras comparta clases.
+  assert.equal((await admin.patch(`/api/actividades/${kick}`, { horario: 'libre' })).status, 400);
+  // Sin Boxeo, la clase sigue con Kickboxing.
+  await admin.patch(`/api/actividades/${boxeo}`, { activo: false });
+  const sigue = (await admin.get('/api/grilla')).json.clases.find((c) => c.id === sparring.id);
+  assert.deepEqual(sigue.actividades, [kick]);
+  await admin.patch(`/api/actividades/${boxeo}`, { activo: true });
+  // Editarla para que sea solo de Boxeo.
+  const editada = await admin.patch(`/api/clases/${sparring.id}`, { actividades: [boxeo], dia_semana: 4, desde: '19:00', hasta: '20:00', profes: [] });
+  assert.deepEqual(editada.json.actividades, [boxeo]);
+});
+
 test('un negocio no ve ni toca la grilla de otro', async () => {
   const ajena = (await otro.get('/api/grilla')).json;
   assert.equal(ajena.clases.length, 0);

@@ -16,3 +16,6 @@ backend/*.log
 # scripts/fuentes.mjs en cada instalación.
 frontend/fonts/satoshi-*.woff2
 
+# Los datos de los negocios piloto para npm run cargar (hist. §201): son de
+# clientes reales y no van al repo.
+/pilotos/

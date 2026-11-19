@@ -22056,19 +22056,35 @@ function actividadesDe(organizacionId) {
     .map((a) => ({ ...a, activo: Boolean(a.activo) }));
 }
 
-// Los horarios vigentes de las actividades activas, con sus profes activos.
+// Los horarios vigentes, con sus actividades activas (la principal primero;
+// una clase compartida sigue mientras le quede alguna, hist. §202) y sus
+// profes activos.
 function clasesDe(organizacionId) {
-  const clases = db
+  const actividades = db
     .prepare(
-      `SELECT clases.id, clases.actividad_id, clases.dia_semana, clases.desde, clases.hasta, clases.sucursal_id,
-              clases.detalle, clases.cupo, sucursales.nombre AS sucursal
-         FROM clases
-         JOIN actividades ON actividades.id = clases.actividad_id
-         LEFT JOIN sucursales ON sucursales.id = clases.sucursal_id
+      `SELECT clase_actividades.clase_id, clase_actividades.actividad_id
+         FROM clase_actividades
+         JOIN clases ON clases.id = clase_actividades.clase_id
+         JOIN actividades ON actividades.id = clase_actividades.actividad_id
         WHERE clases.organizacion_id = ? AND clases.activo = 1 AND actividades.activo = 1
-        ORDER BY clases.dia_semana, clases.desde, clases.id`
+        ORDER BY clase_actividades.actividad_id <> clases.actividad_id, actividades.nombre COLLATE NOCASE`
     )
     .all(organizacionId);
+  const clases = db
+    .prepare(
+      `SELECT clases.id, clases.dia_semana, clases.desde, clases.hasta, clases.sucursal_id,
+              clases.detalle, clases.cupo, sucursales.nombre AS sucursal
+         FROM clases
+         LEFT JOIN sucursales ON sucursales.id = clases.sucursal_id
+        WHERE clases.organizacion_id = ? AND clases.activo = 1
+        ORDER BY clases.dia_semana, clases.desde, clases.id`
+    )
+    .all(organizacionId)
+    .map((c) => {
+      const suyas = actividades.filter((a) => a.clase_id === c.id).map((a) => a.actividad_id);
+      return { ...c, actividad_id: suyas[0], actividades: suyas };
+    })
+    .filter((c) => c.actividades.length);
   const profes = db
     .prepare(
       `SELECT clase_profes.clase_id, empleados.id, empleados.nombre
@@ -22082,6 +22098,7 @@ function clasesDe(organizacionId) {
   return clases.map((c) => ({ ...c, profes: profes.filter((p) => p.clase_id === c.id).map(({ id, nombre }) => ({ id, nombre })) }));
 }
 
+// actividad: el nombre, o los de una clase compartida unidos con " + ".
 const textoClase = (actividad, c, profes) =>
   `${actividad} el ${DIAS_GRILLA[c.dia_semana]} de ${c.desde} a ${c.hasta}${profes.length ? ` (${profes.map((p) => p.nombre).join(', ')})` : ''}`;
 
@@ -22159,6 +22176,20 @@ app.patch('/api/actividades/:id', soloAdmin, (req, res) => {
   if (!actividad) return res.status(404).json({ error: 'Actividad no encontrada.' });
   const { error, datos } = datosDeActividad(req.body ?? {}, organizacionId, actividad);
   if (error) return res.status(400).json({ error });
+  // Una clase compartida es de actividades de horario fijo: una libre no se
+  // junta con otras (hist. §202).
+  if (datos.horario === 'libre' && actividad.horario !== 'libre') {
+    const compartida = db
+      .prepare(
+        `SELECT 1 FROM clase_actividades JOIN clases ON clases.id = clase_actividades.clase_id
+          WHERE clase_actividades.actividad_id = ? AND clases.activo = 1
+            AND (SELECT COUNT(*) FROM clase_actividades otra WHERE otra.clase_id = clases.id) > 1`
+      )
+      .get(actividad.id);
+    if (compartida) {
+      return res.status(400).json({ error: `${actividad.nombre} tiene clases compartidas con otras actividades: no puede ser de horario libre.` });
+    }
+  }
   const cambios = diffCampos(actividad, datos, ['nombre', 'horario', 'color', 'activo']);
   if (cambios) {
     withTransaction(() => {
@@ -22181,13 +22212,26 @@ app.patch('/api/actividades/:id', soloAdmin, (req, res) => {
 });
 
 // Valida un horario. El alta trae `dias` (martes y jueves a las 19 se cargan
-// juntos) y la edición, `dia_semana`. Devuelve { error } o lo que se guarda,
-// con los días y los profes.
+// juntos) y la edición, `dia_semana`. `actividades` son las de la clase, la
+// principal primero (una clase compartida tiene varias, hist. §202); vale
+// también `actividad_id` solo. Devuelve { error } o lo que se guarda, con las
+// actividades, los días y los profes.
 function datosDeClase(body, organizacionId, clase = null) {
-  const actividad = db
-    .prepare('SELECT id, nombre, horario FROM actividades WHERE id = ? AND organizacion_id = ? AND activo = 1')
-    .get(Number(body.actividad_id), organizacionId);
-  if (!actividad) return { error: 'Elegí la actividad.' };
+  const pedidas = Array.isArray(body.actividades) ? body.actividades : body.actividad_id != null ? [body.actividad_id] : [];
+  if (!pedidas.length) return { error: 'Elegí la actividad.' };
+  if (pedidas.length > 6 || new Set(pedidas.map(Number)).size !== pedidas.length) return { error: 'Las actividades no son válidas.' };
+  const actividades = [];
+  for (const id of pedidas) {
+    const una = db
+      .prepare('SELECT id, nombre, horario FROM actividades WHERE id = ? AND organizacion_id = ? AND activo = 1')
+      .get(Number(id), organizacionId);
+    if (!una) return { error: 'Elegí la actividad.' };
+    actividades.push(una);
+  }
+  if (actividades.length > 1 && actividades.some((a) => a.horario === 'libre')) {
+    return { error: 'Una actividad de horario libre no se junta con otras en una clase.' };
+  }
+  const actividad = { ...actividades[0], nombre: actividades.map((a) => a.nombre).join(' + ') };
   const dias = clase ? [body.dia_semana] : body.dias;
   if (!Array.isArray(dias) || !dias.length) return { error: 'Elegí al menos un día.' };
   if (dias.some((d) => !Number.isInteger(d) || d < 0 || d > 6) || new Set(dias).size !== dias.length) {
@@ -22219,11 +22263,15 @@ function datosDeClase(body, organizacionId, clase = null) {
   }
   // Un profe no puede dar dos clases a la vez.
   const pisada = db.prepare(
-    `SELECT actividades.nombre AS actividad, clases.desde, clases.hasta
+    `SELECT (SELECT GROUP_CONCAT(actividades.nombre, ' + ') FROM clase_actividades
+               JOIN actividades ON actividades.id = clase_actividades.actividad_id
+              WHERE clase_actividades.clase_id = clases.id AND actividades.activo = 1) AS actividad,
+            clases.desde, clases.hasta
        FROM clase_profes
        JOIN clases ON clases.id = clase_profes.clase_id
-       JOIN actividades ON actividades.id = clases.actividad_id
-      WHERE clase_profes.empleado_id = ? AND clases.activo = 1 AND actividades.activo = 1
+      WHERE clase_profes.empleado_id = ? AND clases.activo = 1
+        AND EXISTS (SELECT 1 FROM clase_actividades JOIN actividades ON actividades.id = clase_actividades.actividad_id
+                     WHERE clase_actividades.clase_id = clases.id AND actividades.activo = 1)
         AND clases.dia_semana = ? AND clases.desde < ? AND clases.hasta > ? AND clases.id IS NOT ?
       LIMIT 1`
   );
@@ -22233,7 +22281,13 @@ function datosDeClase(body, organizacionId, clase = null) {
       if (otra) return { error: `${profe.nombre} ya está en ${otra.actividad} el ${DIAS_GRILLA[dia]} de ${otra.desde} a ${otra.hasta}.` };
     }
   }
-  return { actividad, dias, profes, datos: { actividad_id: actividad.id, desde, hasta, sucursal_id: sucursalId, detalle, cupo } };
+  return { actividad, actividades, dias, profes, datos: { actividad_id: actividad.id, desde, hasta, sucursal_id: sucursalId, detalle, cupo } };
+}
+
+function guardarActividades(claseId, actividades) {
+  db.prepare('DELETE FROM clase_actividades WHERE clase_id = ?').run(claseId);
+  const insertar = db.prepare('INSERT INTO clase_actividades (clase_id, actividad_id) VALUES (?, ?)');
+  for (const a of actividades) insertar.run(claseId, a.id);
 }
 
 function guardarProfes(claseId, profes) {
@@ -22244,7 +22298,7 @@ function guardarProfes(claseId, profes) {
 
 app.post('/api/clases', soloAdmin, (req, res) => {
   const organizacionId = req.usuario.organizacion_id;
-  const { error, actividad, dias, profes, datos } = datosDeClase(req.body ?? {}, organizacionId);
+  const { error, actividad, actividades, dias, profes, datos } = datosDeClase(req.body ?? {}, organizacionId);
   if (error) return res.status(400).json({ error });
   const ids = withTransaction(() =>
     dias.map((dia) => {
@@ -22256,6 +22310,7 @@ app.post('/api/clases', soloAdmin, (req, res) => {
           )
           .run(datos.actividad_id, organizacionId, dia, datos.desde, datos.hasta, datos.sucursal_id, datos.detalle, datos.cupo).lastInsertRowid
       );
+      guardarActividades(id, actividades);
       guardarProfes(id, profes);
       auditar(req, {
         accion: 'crear',
@@ -22276,7 +22331,11 @@ app.patch('/api/clases/:id', soloAdmin, (req, res) => {
   const organizacionId = req.usuario.organizacion_id;
   const clase = db
     .prepare(
-      `SELECT clases.*, actividades.nombre AS actividad FROM clases JOIN actividades ON actividades.id = clases.actividad_id
+      `SELECT clases.*,
+              (SELECT GROUP_CONCAT(actividades.nombre, ' + ') FROM clase_actividades
+                 JOIN actividades ON actividades.id = clase_actividades.actividad_id
+                WHERE clase_actividades.clase_id = clases.id) AS actividad
+         FROM clases
         WHERE clases.id = ? AND clases.organizacion_id = ? AND clases.activo = 1`
     )
     .get(Number(req.params.id), organizacionId);
@@ -22299,13 +22358,14 @@ app.patch('/api/clases/:id', soloAdmin, (req, res) => {
     });
     return res.json({ ok: true });
   }
-  const { error, actividad, dias, profes, datos } = datosDeClase(req.body ?? {}, organizacionId, clase);
+  const { error, actividad, actividades, dias, profes, datos } = datosDeClase(req.body ?? {}, organizacionId, clase);
   if (error) return res.status(400).json({ error });
   const despues = textoClase(actividad.nombre, { ...datos, dia_semana: dias[0] }, profes);
   withTransaction(() => {
     db.prepare(
       'UPDATE clases SET actividad_id = ?, dia_semana = ?, desde = ?, hasta = ?, sucursal_id = ?, detalle = ?, cupo = ? WHERE id = ?'
     ).run(datos.actividad_id, dias[0], datos.desde, datos.hasta, datos.sucursal_id, datos.detalle, datos.cupo, clase.id);
+    guardarActividades(clase.id, actividades);
     guardarProfes(clase.id, profes);
     auditar(req, {
       accion: 'editar',

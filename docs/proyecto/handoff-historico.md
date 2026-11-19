@@ -14951,3 +14951,39 @@ Smoothcomp, cinturones con el contador de clases y el aviso de ascenso, y
 niveles por horario. Documentadas al final de
 `docs/investigaciones/investigacion-gymdesk.md`, con cómo encajan; no se
 hacen todavía. Prioridad del usuario: primero las comodidades del dueño.
+
+## §202 — 19 de noviembre de 2026: clases compartidas, el filtro de la grilla y Morro
+
+Pedido del usuario al pasar los horarios del gimnasio de su profe (MORRO
+ACADEMIA, el primer piloto): hay clases de varias actividades a la vez (el
+sparring del viernes a las 19 junta Boxeo, MMA y Kickboxing; la lucha junta
+BJJ y MMA) y quiere filtrar la grilla por actividad.
+
+**Esquema (aditivo):** `clase_actividades (clase_id, actividad_id)` con todas
+las actividades de cada horario; `clases.actividad_id` queda como la
+principal (la primera, da el color). `db/index.js` copia la principal de los
+horarios de antes con `INSERT OR IGNORE` (re-ejecutable).
+`verificar-migracion`: 24 de 24.
+
+**Servidor:** `POST/PATCH /api/clases` aceptan `actividades: [ids]` (sigue
+valiendo `actividad_id`); `GET /api/grilla` devuelve `actividades` por
+horario. Una clase compartida sigue mientras le quede una actividad activa;
+una actividad libre no se junta con otras ni pasa a libre si comparte
+clases. El choque de un profe nombra todas ("Boxeo + Kickboxing").
+
+**Pantalla:** el formulario elige una o varias actividades (casillas); la
+clase se llama "MMA + Boxeo + Kickboxing". La leyenda filtra: tocar una
+actividad deja solo sus clases (las compartidas también) y la imagen sale
+"Grilla de MMA".
+
+**Morro:** el cargador acepta `actividades` en las clases y `descuentos`, y
+distingue dos horarios a la misma hora por su detalle (BJJ Kids de 9 a 11 y
+de 12 a 14). Los datos están en `pilotos/morro.json` (carpeta fuera de git:
+son de un cliente real). Decisiones mías, a revisar con el profe: todas las
+clases de una hora (lo confirmó el usuario); las promos BJJ + MMA ($80.000),
+Kickboxing + MMA ($70.000) y el funcional sumado a una marcial ($20.000) van
+como planes propios, porque un combo de Nexo baja todos sus planes por un
+porcentaje y no da esos precios exactos; los hermanos son un descuento a mano
+del 50 %; los productos son ejemplos con precios estimados. Sin profes: el
+mensaje no los nombra. Probado contra un servidor de prueba (43 horarios, 10
+planes, 10 productos; la segunda corrida no duplica) y en el navegador.

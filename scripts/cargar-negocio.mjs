@@ -19,8 +19,11 @@
 //     "profes": ["Juan Pérez"],
 //     "actividades": [{ "nombre": "BJJ", "horario": "fijo", "color": "violeta" }],
 //     "clases": [{ "actividad": "BJJ", "dias": ["lun", "mie"], "desde": "19:00", "hasta": "20:30",
-//                  "profes": ["Juan Pérez"], "detalle": "Adultos", "cupo": 20 }],
+//                  "profes": ["Juan Pérez"], "detalle": "Adultos", "cupo": 20 },
+//                { "actividades": ["Boxeo", "MMA"], "dias": ["vie"], "desde": "19:00", "hasta": "20:00",
+//                  "detalle": "Sparring" }],
 //     "planes": [{ "nombre": "BJJ 2 veces por semana", "opciones": [{ "meses": 1, "precio": 30000 }] }],
+//     "descuentos": [{ "nombre": "Hermanos", "porcentaje": 50, "aplica": "manual" }],
 //     "productos": [{ "nombre": "Kimono A2", "precio_venta": 90000, "categoria": "Indumentaria",
 //                     "stock": 3, "costo": 60000 }]
 //   }
@@ -94,25 +97,34 @@ async function cargarGrilla(api, { actividades = [], clases = [] }, profes) {
   }
   console.log(`- Actividades: ${nuevas} nuevas, ${actividades.length - nuevas} ya estaban.`);
 
-  const existe = (actividadId, dia, desde) =>
-    grilla.clases.some((c) => c.actividad_id === actividadId && c.dia_semana === dia && c.desde === desde);
+  // Un horario ya cargado: misma actividad principal, día, hora y detalle (a
+  // la misma hora puede haber dos de BJJ Kids, de edades distintas).
+  const existe = (actividadId, dia, desde, detalle) =>
+    grilla.clases.some(
+      (c) => c.actividad_id === actividadId && c.dia_semana === dia && c.desde === desde && (c.detalle ?? '') === (detalle ?? '')
+    );
   let horarios = 0;
   for (const c of clases) {
-    const actividadId = porNombre.get(sinTildes(c.actividad));
-    if (!actividadId) throw new Error(`El horario de "${c.actividad}" no tiene su actividad en "actividades".`);
-    const dias = c.dias.map(diaDe).filter((dia) => !existe(actividadId, dia, c.desde));
+    // Una clase compartida (hist. §202) trae "actividades": la primera es la principal.
+    const ids = (c.actividades ?? [c.actividad]).map((nombre) => {
+      const id = porNombre.get(sinTildes(nombre));
+      if (!id) throw new Error(`El horario de "${nombre}" no tiene su actividad en "actividades".`);
+      return id;
+    });
+    const actividadId = ids[0];
+    const dias = c.dias.map(diaDe).filter((dia) => !existe(actividadId, dia, c.desde, c.detalle));
     if (!dias.length) continue;
-    const ids = (c.profes ?? []).map((nombre) => {
+    const profesDeClase = (c.profes ?? []).map((nombre) => {
       const id = profes.get(sinTildes(nombre));
       if (!id) throw new Error(`"${nombre}" no está en "profes".`);
       return id;
     });
     const creadas = await api.post('/api/clases', {
-      actividad_id: actividadId,
+      actividades: ids,
       dias,
       desde: c.desde,
       hasta: c.hasta,
-      profes: ids,
+      profes: profesDeClase,
       detalle: c.detalle ?? '',
       cupo: c.cupo ?? ''
     });
@@ -131,6 +143,26 @@ async function cargarPlanes(api, planes) {
     nuevos += 1;
   }
   console.log(`- Planes: ${nuevos} nuevos, ${planes.length - nuevos} ya estaban.`);
+}
+
+// Los descuentos de socios: "manual" (se elige a cada socio, como el de
+// hermanos), "combo" (con "planes", por nombre) o "cantidad" (con
+// "minimo_planes").
+async function cargarDescuentos(api, descuentos) {
+  const existentes = await api.get('/api/descuentos-socio');
+  const planes = await api.get('/api/planes-socio');
+  let nuevos = 0;
+  for (const { planes: nombres = [], ...descuento } of descuentos) {
+    if (existentes.some((d) => mismo(d.nombre, descuento.nombre))) continue;
+    const ids = nombres.map((nombre) => {
+      const plan = planes.find((p) => mismo(p.nombre, nombre));
+      if (!plan) throw new Error(`El descuento "${descuento.nombre}" nombra el plan "${nombre}", que no está.`);
+      return plan.id;
+    });
+    await api.post('/api/descuentos-socio', { ...descuento, planes: ids });
+    nuevos += 1;
+  }
+  console.log(`- Descuentos: ${nuevos} nuevos, ${descuentos.length - nuevos} ya estaban.`);
 }
 
 async function cargarProductos(api, productos) {
@@ -182,6 +214,7 @@ async function principal() {
   const profes = await cargarProfes(api, datos.profes ?? []);
   await cargarGrilla(api, datos, profes);
   await cargarPlanes(api, datos.planes ?? []);
+  await cargarDescuentos(api, datos.descuentos ?? []);
   await cargarProductos(api, datos.productos ?? []);
   console.log('Listo.');
 }

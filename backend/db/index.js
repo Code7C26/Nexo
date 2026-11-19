@@ -2382,6 +2382,10 @@ if (db.prepare('PRAGMA table_info(fichajes)').all().some((col) => col.name === '
 }
 db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_fichajes_empleado_abierto ON fichajes(empleado_id) WHERE salida IS NULL');
 
+// Las clases compartidas (hist. §202): cada horario de antes es de su
+// actividad principal. Re-ejecutable: solo copia las que faltan.
+db.exec(`INSERT OR IGNORE INTO clase_actividades (clase_id, actividad_id) SELECT id, actividad_id FROM clases`);
+
 function ampliarCheck(tabla, viejo, nuevo, marca, hijas = []) {
   const sql = db.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?").get(tabla).sql;
   if (sql.includes(marca)) return;
