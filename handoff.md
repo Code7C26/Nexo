@@ -21,7 +21,8 @@
 
 ## Estado actual (19 de noviembre de 2026)
 
-**19 de noviembre, hist. §200: la grilla de clases del gimnasio.**
+**19 de noviembre, hist. §200: la grilla de clases del gimnasio (publicada,
+PR #102, con el cargador de hist. §201).**
 - **Clases** (menú Socios, módulo socios): las actividades (fijas o libres,
   con color), sus horarios en la semana y los profes de cada uno. Los profes
   son empleados. La ven todos y la arma el admin.
