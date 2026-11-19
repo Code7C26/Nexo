@@ -127,6 +127,9 @@
           <a href="#" class="nav-item" data-view="socios">
             <svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#id-card"></use></svg> Socios
           </a>
+          <a href="#" class="nav-item" data-view="clases">
+            <svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#calendar"></use></svg> Clases
+          </a>
           <a href="#" class="nav-item col-admin" data-view="planes-socio">
             <svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#calendar-clock"></use></svg> Planes
           </a>
@@ -1848,6 +1851,123 @@
             </form>
           </section>
         </div>
+      </section>
+
+      <!-- Vista: Clases (dominios/clases.js, hist. §200). La grilla de la
+           semana: la ven todos (la recepción la consulta) y la arma el admin.
+           En el celular se ve de a un día; en la compu, la semana entera.
+           Cargar un horario o una actividad es una tarjeta debajo de la
+           grilla, no un modal. -->
+      <section class="view" data-view="clases" hidden>
+        <section class="panel grilla-panel" aria-labelledby="grillaTitulo">
+          <div class="panel-head">
+            <h2 id="grillaTitulo">La semana</h2>
+            <div class="panel-acciones">
+              <select id="grillaSucursal" aria-label="Sucursal" hidden></select>
+              <button type="button" class="btn btn-secundario btn-chico" id="btnGrillaImagen"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#download"></use></svg> Imagen para compartir</button>
+              <button type="button" class="btn btn-primary btn-chico col-admin" id="btnClaseNueva"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#plus"></use></svg> Nuevo horario</button>
+            </div>
+          </div>
+          <div class="segmentos grilla-dias" role="group" aria-label="Día" id="grillaDias"></div>
+          <ul class="grilla-leyenda" id="grillaLeyenda" aria-label="Actividades"></ul>
+          <div class="grilla" id="grilla"></div>
+          <ol class="grilla-agenda" id="grillaAgenda" aria-label="Clases del día"></ol>
+
+          <form id="formClase" class="form config-tarjeta col-admin" novalidate hidden>
+            <div class="config-tarjeta-cuerpo">
+              <p class="config-tarjeta-titulo" id="claseFormTitulo">Nuevo horario</p>
+              <label>Actividad
+                <select name="actividad_id" id="claseActividad"></select>
+              </label>
+              <fieldset class="opciones">
+                <legend id="claseDiasLeyenda">Días</legend>
+                <div class="chips-elegir" id="claseDias"></div>
+              </fieldset>
+              <div class="form-fila">
+                <label><span id="claseDesdeEtiqueta">Empieza</span>
+                  <input type="time" name="desde" required />
+                </label>
+                <label><span id="claseHastaEtiqueta">Termina</span>
+                  <input type="time" name="hasta" required />
+                </label>
+              </div>
+              <fieldset class="opciones">
+                <legend>Profes</legend>
+                <div class="chips-elegir" id="claseProfes"></div>
+                <div class="clase-profe-nuevo">
+                  <input type="text" id="claseProfeNombre" maxlength="80" autocomplete="off" placeholder="Nombre de un profe nuevo" aria-label="Nombre de un profe nuevo" />
+                  <button type="button" class="btn btn-secundario btn-chico" id="btnClaseProfeSumar"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#user-plus"></use></svg> Sumar profe</button>
+                </div>
+                <p class="campo-ayuda">Los profes son los empleados del negocio: los que sumás acá aparecen también en Empleados, para cargarles el horario y el PIN.</p>
+              </fieldset>
+              <div class="form-fila">
+                <label>Detalle (opcional)
+                  <input type="text" name="detalle" maxlength="60" autocomplete="off" placeholder="Principiantes, Kids, Tatami 2…" />
+                </label>
+                <label id="claseCupoCampo">Cupo (opcional)
+                  <input type="number" name="cupo" min="1" max="1000" step="1" inputmode="numeric" placeholder="Sin tope" />
+                </label>
+              </div>
+              <label id="claseSucursalCampo" hidden>Sucursal
+                <select name="sucursal_id"></select>
+              </label>
+            </div>
+            <div class="config-tarjeta-pie">
+              <button type="button" class="btn btn-secundario" id="btnClaseSacar" hidden>Sacar de la grilla</button>
+              <button type="button" class="btn btn-secundario" id="btnClaseCancelar">Cancelar</button>
+              <button type="submit" class="btn btn-primary" id="formClaseSubmit">Guardar</button>
+            </div>
+          </form>
+        </section>
+
+        <section class="panel col-admin" aria-labelledby="actividadesTitulo">
+          <div class="panel-head">
+            <h2 id="actividadesTitulo">Actividades</h2>
+            <button type="button" class="btn btn-secundario btn-chico" id="btnActividadNueva"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#plus"></use></svg> Nueva actividad</button>
+          </div>
+          <p class="nota-plana">Lo que se hace en el gimnasio. Una actividad de horario fijo tiene clases a una hora (BJJ martes y jueves a las 19); una libre está abierta en una franja y se entra cuando se quiere (Musculación de 7 a 23).</p>
+          <ul class="actividades-lista" id="actividadesLista"></ul>
+          <form id="formActividad" class="form config-tarjeta" novalidate hidden>
+            <div class="config-tarjeta-cuerpo">
+              <p class="config-tarjeta-titulo" id="actividadFormTitulo">Nueva actividad</p>
+              <label>Nombre
+                <input type="text" name="nombre" maxlength="60" autocomplete="off" placeholder="BJJ, Muay Thai, Musculación…" required />
+              </label>
+              <fieldset class="opciones">
+                <legend>Horario</legend>
+                <div class="opciones-tarjetas">
+                  <label class="opcion-tarjeta">
+                    <input type="radio" name="horario" value="fijo" checked />
+                    <span class="opcion-tarjeta-icono"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#calendar-clock"></use></svg></span>
+                    <span class="opcion-tarjeta-texto">
+                      <span class="opcion-tarjeta-nombre">Fijo</span>
+                      <span class="opcion-tarjeta-desc">Clases a una hora, con sus profes y un cupo si querés.</span>
+                    </span>
+                    <span class="opcion-tarjeta-check"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#check"></use></svg></span>
+                  </label>
+                  <label class="opcion-tarjeta">
+                    <input type="radio" name="horario" value="libre" />
+                    <span class="opcion-tarjeta-icono"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#door-open"></use></svg></span>
+                    <span class="opcion-tarjeta-texto">
+                      <span class="opcion-tarjeta-nombre">Libre</span>
+                      <span class="opcion-tarjeta-desc">Abierta en una franja: se entra cuando se quiere.</span>
+                    </span>
+                    <span class="opcion-tarjeta-check"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#check"></use></svg></span>
+                  </label>
+                </div>
+              </fieldset>
+              <fieldset class="opciones">
+                <legend>Color en la grilla</legend>
+                <div class="colores-elegir" id="actividadColores"></div>
+              </fieldset>
+            </div>
+            <div class="config-tarjeta-pie">
+              <button type="button" class="btn btn-secundario" id="btnActividadBaja" hidden>Dar de baja</button>
+              <button type="button" class="btn btn-secundario" id="btnActividadCancelar">Cancelar</button>
+              <button type="submit" class="btn btn-primary" id="formActividadSubmit">Guardar</button>
+            </div>
+          </form>
+        </section>
       </section>
 
       <!-- Vista: ficha de un socio -->

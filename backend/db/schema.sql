@@ -1801,6 +1801,49 @@ CREATE TABLE IF NOT EXISTS ingresos_socio (
 );
 CREATE INDEX IF NOT EXISTS idx_ingresos_socio ON ingresos_socio(socio_id, fecha);
 
+-- La grilla de clases (hist. §200, idea del usuario del 17 de noviembre): lo
+-- que el gimnasio ofrece cada semana. Va con el módulo socios. Una actividad
+-- (BJJ, Musculación) es de horario fijo (clases a una hora) o libre (abierta
+-- en una franja: se entra cuando se quiere). color: el nombre de uno de los
+-- colores de la grilla (lo valida server.js). Nunca se borra: activo = 0.
+CREATE TABLE IF NOT EXISTS actividades (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  organizacion_id INTEGER NOT NULL REFERENCES organizaciones(id),
+  nombre TEXT NOT NULL,
+  horario TEXT NOT NULL DEFAULT 'fijo' CHECK (horario IN ('fijo', 'libre')),
+  color TEXT NOT NULL DEFAULT 'azul',
+  activo INTEGER NOT NULL DEFAULT 1 CHECK (activo IN (0, 1))
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_actividades_nombre ON actividades(organizacion_id, LOWER(nombre)) WHERE activo = 1;
+
+-- Cada horario de una actividad en la semana (0 = lunes), en la hora del
+-- negocio, como los horarios de los empleados. En una actividad libre es la
+-- franja en que está abierta. Varias pueden ser a la misma hora. detalle: el
+-- nivel o el lugar ("Principiantes", "Tatami 2"); cupo: NULL = sin tope. Un
+-- horario que se saca queda con activo = 0: la asistencia, cuando exista, lo va
+-- a nombrar. sucursal_id NULL = el negocio sin sucursales, o en todas.
+CREATE TABLE IF NOT EXISTS clases (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  actividad_id INTEGER NOT NULL REFERENCES actividades(id),
+  organizacion_id INTEGER NOT NULL REFERENCES organizaciones(id),
+  dia_semana INTEGER NOT NULL CHECK (dia_semana BETWEEN 0 AND 6),
+  desde TEXT NOT NULL,
+  hasta TEXT NOT NULL,
+  sucursal_id INTEGER REFERENCES sucursales(id),
+  detalle TEXT,
+  cupo INTEGER CHECK (cupo IS NULL OR cupo > 0),
+  activo INTEGER NOT NULL DEFAULT 1 CHECK (activo IN (0, 1)),
+  CHECK (hasta > desde)
+);
+
+-- Los profes de cada horario: empleados del negocio (hist. §199). Hija de
+-- clases; se reemplazan enteros al editar el horario.
+CREATE TABLE IF NOT EXISTS clase_profes (
+  clase_id INTEGER NOT NULL REFERENCES clases(id),
+  empleado_id INTEGER NOT NULL REFERENCES empleados(id),
+  PRIMARY KEY (clase_id, empleado_id)
+);
+
 -- Trabajos, u órdenes de trabajo (CLAUDE.md §29, hist. §78): lo que un negocio
 -- de servicios tiene que hacer para un cliente, con fecha, responsable y
 -- estado. El módulo `trabajos` lo puede prender cualquier negocio. No es un

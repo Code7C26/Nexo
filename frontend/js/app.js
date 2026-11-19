@@ -91,6 +91,7 @@ import "./dominios/medios-cobro.js";
 import "./dominios/sucursales.js";
 import "./dominios/cierre.js";
 import "./dominios/horarios.js";
+import "./dominios/clases.js";
 import "./dominios/ofertas.js";
 import "./dominios/venta-online.js";
 import "./dominios/lista-proveedor.js";

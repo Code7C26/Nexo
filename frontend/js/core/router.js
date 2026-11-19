@@ -32,6 +32,7 @@ const MODULO_DE_VISTA = {
   socios: "socios",
   "socio-detalle": "socios",
   "planes-socio": "socios",
+  clases: "socios",
   "venta-online": "canales"
 };
 
@@ -71,6 +72,8 @@ const VISTAS_CONSTRUIDAS = {
   entrada: { titulo: "Pantalla de entrada", dominio: "Socios", nav: "ingreso" },
   socios: { titulo: "Socios", dominio: "Socios" },
   "planes-socio": { titulo: "Planes", dominio: "Socios" },
+  // La grilla de clases (hist. §200): la ven todos, la arma el admin.
+  clases: { titulo: "Clases", dominio: "Socios" },
   compras: { titulo: "Compras", dominio: "Embudo de compra" },
   proveedores: { titulo: "Proveedores", dominio: "Embudo de compra" },
   "devoluciones-proveedor": { titulo: "Devoluciones a proveedor", dominio: "Embudo de compra" },
