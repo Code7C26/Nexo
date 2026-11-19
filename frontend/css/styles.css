@@ -10976,6 +10976,29 @@ a.asistente-guia-whatsapp:hover { border-color: var(--line-strong); }
   .grilla-imagen { grid-template-columns: minmax(0, 1fr); }
 }
 
+/* Socios (hist. §204): el aviso de "Parece que dejó" en la ficha, y la frase
+   que dice cómo queda un combo mientras se arma. */
+.socio-dejo {
+  display: grid;
+  gap: var(--sp-2);
+  margin: 0 0 var(--sp-4);
+  padding: var(--sp-3) var(--sp-4);
+  background: var(--accent-warn-bg);
+  border: 1px solid color-mix(in srgb, var(--accent-warn) 35%, transparent);
+  border-radius: var(--r-md);
+}
+.socio-dejo[hidden] { display: none; }
+.socio-dejo p { margin: 0; }
+.socio-dejo-botones { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
+.descuento-pregunta { margin-top: var(--sp-3); font-weight: 600; color: var(--ink); }
+.descuento-resumen {
+  margin: var(--sp-3) 0 0;
+  padding: var(--sp-2) var(--sp-3);
+  font-weight: 600;
+  background: var(--accent-bg);
+  border-radius: var(--r-sm);
+}
+
 .grilla-dias { margin-bottom: var(--sp-3); }
 .grilla-dias .segmento { position: relative; }
 .grilla-hoy-punto {

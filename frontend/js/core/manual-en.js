@@ -538,7 +538,8 @@ export const SECCIONES_EN = {
       ] },
       "In **Check-in**, the front desk looks up the member when they arrive: Nexo warns you if they owe the fee.",
       "A **bundle** lowers the price when a member combines plans: by a percentage, or with a **fixed monthly price** (BJJ + MMA for $80,000). It can also lower just one plan if the member also does one of several others: functional training at half price if they do a martial art.",
-      "In **Members**, the **Not coming** filter shows active members who haven't come in for two weeks or more, so you can call them before they quit. For someone who was already coming, the sign-up form takes the last time they came."
+      "In **Members**, the **Not coming** filter shows active members who haven't come in for two weeks or more, so you can call them before they quit. For someone who was already coming, the sign-up form takes the last time they came.",
+      "**Seem to have quit** groups members who haven't come in a month and haven't paid the fee for a month they didn't come: most likely they quit without telling you. Nexo doesn't deactivate them on its own: in their record you choose to deactivate them clearing that debt or keeping it. If they come back, reactivate them and they pay from that day."
     ]
   },
   clases: {

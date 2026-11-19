@@ -15025,3 +15025,28 @@ pasó el usuario (9 de BJJ + MMA, 8 de BJJ, 4 de MMA), 5 debiendo la cuota
 de este período (Gonzalo Uranga, Peludo, Lauti Gomez, Ignacio y Tomás
 Marcos) y Tomás sin venir hace dos meses. El cargador suma `socios` y
 combos con `alguno` y `precio_combo`.
+
+## §204 — 19 de noviembre de 2026: "Parece que dejaron" y los combos dichos claro
+
+**"Parece que dejaron".** Pedido del usuario: la gente deja el gimnasio sin
+avisar, y Nexo le seguía generando cuotas (deuda que nadie cobra), aunque hay
+quien falta un mes y vuelve. Se calcula en `conSituacion` (sin esquema
+nuevo): socio activo, 30 días o más sin entrar (desde el último ingreso o
+desde que empezó su ciclo) y una cuota sin nada cobrado de un período que
+empezó después → `parece_que_dejo`. **Decisión del usuario:** Nexo no lo da
+de baja solo; el dueño decide en la ficha: "Darlo de baja y borrar esa
+deuda" (solo admin: `PATCH /api/socios/:id` con `bonificar_sin_venir`, que
+anula esas ventas y las audita) o "dejar la deuda". Filtro "Parece que
+dejaron" en Socios. Al reactivar, una cuota bonificada ya no cuenta como
+período pago: el que vuelve paga desde ese día (`reactivarInscripcion`).
+Borde conocido: si la cuota borrada empezaba el mismo día en que vuelve, ese
+período queda cubierto.
+
+**Los combos, dichos claro.** El usuario no entendía el formulario ("alguno
+de estos") ni el 27,273 % que mostraba la ficha con el combo de precio fijo.
+El formulario pregunta "¿Qué planes bajan de precio?" y "¿Solo si además hace
+otro plan?", y abajo arma la frase: "Así queda: Funcional baja 50 % si el
+socio también hace BJJ, … o MMA" / "BJJ y MMA juntos cuestan $80.000 por
+mes". La ficha, la cotización y las cuotas muestran el combo de precio fijo
+con su precio, no con el porcentaje (`resumenDescuento` y las cuotas llevan
+`precio_combo`).

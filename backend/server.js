@@ -20874,7 +20874,7 @@ function comboSeAplica(d, planId, planesActivos) {
 }
 
 const conDescuento = (precio, porcentaje) => redondear2(precio * (1 - porcentaje / 100));
-const resumenDescuento = (d) => (d ? { id: d.id, nombre: d.nombre, porcentaje: d.porcentaje } : null);
+const resumenDescuento = (d) => (d ? { id: d.id, nombre: d.nombre, porcentaje: d.porcentaje, precio_combo: d.precio_combo ?? null } : null);
 function textoAplica(d) {
   if (d.aplica === 'combo') {
     const bajan = d.planes.filter((p) => p.rol !== 'alguno').map((p) => p.nombre);
@@ -21084,7 +21084,8 @@ function ponerCuotasAlDia(organizacionId, socioId = null) {
 const SELECT_CUOTAS = `
   SELECT cuotas_socio.id, inscripciones_socio.socio_id, cuotas_socio.inscripcion_id, cuotas_socio.venta_id,
          cuotas_socio.desde, cuotas_socio.hasta, cuotas_socio.meses, cuotas_socio.precio_lista,
-         cuotas_socio.descuento_pct, descuentos_socio.nombre AS descuento, productos.nombre AS plan,
+         cuotas_socio.descuento_pct, descuentos_socio.nombre AS descuento, descuentos_socio.precio_combo AS descuento_precio_combo,
+         productos.nombre AS plan,
          ventas.estado AS estado_venta,
          (SELECT COALESCE(SUM(venta_items.cantidad * venta_items.precio_unitario), 0)
             FROM venta_items WHERE venta_items.venta_id = ventas.id) - ${SUBQUERY_DEVUELTO_VENTA} AS importe,
@@ -21125,6 +21126,7 @@ const SELECT_SOCIO = `
 // - al día: hasta el primer vencimiento de los planes que cubren hoy.
 // La deuda se informa también de un socio de baja: sigue en su cuenta. Cada
 // plan lleva el precio que va a pagar en su próxima cuota, con su descuento.
+const DIAS_PARECE_QUE_DEJO = 30;
 function conSituacion(socio, inscripciones, cuotas, descuentos, hoy) {
   const planesActivos = new Set(inscripciones.filter((i) => i.estado === 'activa').map((i) => i.plan_id));
   const planes = inscripciones.map((i) => {
@@ -21155,12 +21157,35 @@ function conSituacion(socio, inscripciones, cuotas, descuentos, hoy) {
   else if (deuda > 0) situacion = 'debe';
   else if (vigentes.length === 0) situacion = 'por_empezar';
   const primera = (fechas) => fechas.filter(Boolean).sort()[0] ?? null;
+  // "Parece que dejó" (hist. §204): un socio activo que hace 30 días o más no
+  // entra (desde su último ingreso, o desde que empezó si nunca vino) y no
+  // pagó nada de la cuota de un período que empezó después: lo más común es
+  // que haya dejado sin avisar. Nexo no lo da de baja solo (decisión del
+  // usuario): lo marca, y el dueño decide si lo da de baja y si borra esa
+  // cuota (PATCH /api/socios/:id con bonificar_sin_venir).
+  let pareceQueDejo = null;
+  if (situacion !== 'baja') {
+    const base = [socio.ultimo_ingreso ? fechaLocalDe(socio.ultimo_ingreso) : null, ...activos.map((p) => p.ciclo_desde)]
+      .filter(Boolean)
+      .sort()
+      .at(-1);
+    const sinVenir = impagas.filter((c) => c.desde > base && c.cobrado === 0);
+    if (base && sumarDias(base, DIAS_PARECE_QUE_DEJO) <= hoy && sinVenir.length) {
+      pareceQueDejo = {
+        desde: base,
+        vino: Boolean(socio.ultimo_ingreso),
+        cuotas: sinVenir.map(({ id, venta_id, desde, plan, saldo }) => ({ id, venta_id, desde, plan, saldo })),
+        total: redondear2(sinVenir.reduce((acc, c) => acc + c.saldo, 0))
+      };
+    }
+  }
   return {
     ...socio,
     planes,
     cuotas,
     situacion,
     deuda,
+    parece_que_dejo: pareceQueDejo,
     cuotas_impagas: impagas.length,
     debe_desde: impagas[0]?.desde ?? null,
     al_dia_hasta: situacion === 'al_dia' ? primera(vigentes.map((p) => p.cubierto_hasta)) : null,
@@ -21271,7 +21296,14 @@ function inscribir(socioId, opcion, desde, hoy) {
 // cuándo cobra. Va DENTRO de una transacción.
 function reactivarInscripcion(inscripcionId, hoy) {
   const { ciclo_desde: cicloDesde } = db.prepare('SELECT ciclo_desde FROM inscripciones_socio WHERE id = ?').get(inscripcionId);
-  const { ultimo } = db.prepare('SELECT MAX(hasta) AS ultimo FROM cuotas_socio WHERE inscripcion_id = ?').get(inscripcionId);
+  // Una cuota bonificada (venta anulada) no deja el período pago: el que se
+  // fue sin avisar y vuelve paga desde ese día (hist. §204).
+  const { ultimo } = db
+    .prepare(
+      `SELECT MAX(cuotas_socio.hasta) AS ultimo FROM cuotas_socio JOIN ventas ON ventas.id = cuotas_socio.venta_id
+        WHERE cuotas_socio.inscripcion_id = ? AND ventas.estado = 'activa'`
+    )
+    .get(inscripcionId);
   const ciclo = maxISO(hoy, ultimo ? sumarDias(ultimo, 1) : cicloDesde);
   db.prepare(
     "UPDATE inscripciones_socio SET estado = 'activa', fecha_baja = NULL, ciclo_desde = ?, cobrar_desde = ? WHERE id = ?"
@@ -21891,9 +21923,12 @@ app.patch('/api/socios/:id', (req, res) => {
   const organizacionId = req.usuario.organizacion_id;
   const socio = socioDeLaEmpresa(Number(req.params.id), organizacionId);
   if (!socio) return res.status(404).json({ error: 'Socio no encontrado.' });
-  const { descuento_id, estado } = req.body ?? {};
+  const { descuento_id, estado, bonificar_sin_venir: bonificar } = req.body ?? {};
   if (descuento_id === undefined && estado === undefined) return res.status(400).json({ error: 'No hay nada para cambiar.' });
   if (estado !== undefined && estado !== 'activo' && estado !== 'baja') return res.status(400).json({ error: 'El estado no es válido.' });
+  // Borrar la cuota de los meses que no vino es anular ventas: del admin.
+  if (bonificar && estado !== 'baja') return res.status(400).json({ error: 'Las cuotas sin venir se borran al darlo de baja.' });
+  if (bonificar && req.usuario.rol !== 'admin') return res.status(403).json({ error: 'Necesitás ser administrador para esto.' });
   const manual = descuento_id === undefined ? null : descuentoManualPedido(descuento_id, organizacionId);
   if (manual?.error) return res.status(400).json({ error: manual.error });
 
@@ -21918,6 +21953,8 @@ app.patch('/api/socios/:id', (req, res) => {
   }
 
   ponerCuotasAlDia(organizacionId, socio.id);
+  const dejo = bonificar ? sociosConSituacion(organizacionId, socio.id)[0].parece_que_dejo : null;
+  if (bonificar && !dejo) return res.status(400).json({ error: `${socio.nombre} no tiene cuotas de meses que no vino.` });
   withTransaction(() => {
     if (manual && manual.id !== socio.descuento_id) {
       const anterior = socio.descuento_id
@@ -21945,8 +21982,22 @@ app.patch('/api/socios/:id', (req, res) => {
         entidad_id: socio.cliente_id,
         operacion_tipo: 'socio',
         operacion_id: socio.id,
-        detalle: `Baja del socio N° ${socio.numero}, ${socio.nombre}`
+        detalle: `Baja del socio N° ${socio.numero}, ${socio.nombre}` + (dejo ? `: dejó de venir (desde el ${fechaLegible(dejo.desde)})` : '')
       });
+      // Las cuotas de los meses que no vino quedan bonificadas (hist. §204).
+      for (const cuota of dejo?.cuotas ?? []) {
+        const venta = db.prepare('SELECT id, cliente_id, deposito_id, estado, carga_inicial FROM ventas WHERE id = ?').get(cuota.venta_id);
+        if (motivoParaNoAnular(venta)) continue;
+        revertirVentaAnulada(venta, organizacionId);
+        auditar(req, {
+          accion: 'anular',
+          entidad: 'venta',
+          entidad_id: venta.id,
+          operacion_tipo: 'socio',
+          operacion_id: socio.id,
+          detalle: `Cuota del socio N° ${socio.numero} del ${fechaLegible(cuota.desde)} bonificada: dejó de venir`
+        });
+      }
     }
     if (estado === 'activo') {
       const desde = aReactivar.map((i) => reactivarInscripcion(i.id, hoy)).sort()[0];
