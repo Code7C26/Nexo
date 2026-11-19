@@ -35,7 +35,7 @@ PR #102, con el cargador de hist. §201).**
   crea y trae los datos; yo corro `npm run cargar`).
 
 **19 de noviembre, hist. §203: combos de verdad, la imagen a elegir y "No
-vienen".** Un combo puede tener precio fijo por mes y bajar solo algunos de
+vienen" (publicado, PR #104).** Un combo puede tener precio fijo por mes y bajar solo algunos de
 sus planes; la imagen de la grilla se elige vertical u horizontal y con
 fondo oscuro o claro; Socios suma el filtro "No vienen" y el alta, la última
 vez que vino. Morro tiene sus promos como combos y 21 socios. **Falta en
