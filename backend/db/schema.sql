@@ -1836,6 +1836,17 @@ CREATE TABLE IF NOT EXISTS clases (
   CHECK (hasta > desde)
 );
 
+-- Una clase puede ser de varias actividades a la vez (hist. §202: el sparring
+-- del viernes junta Boxeo, MMA y Kickboxing): todas sus actividades, la
+-- principal incluida. clases.actividad_id es la principal (la primera, la que
+-- le da el color) y server.js escribe las dos cosas juntas; db/index.js copia
+-- acá la principal de los horarios de antes. Hija de clases.
+CREATE TABLE IF NOT EXISTS clase_actividades (
+  clase_id INTEGER NOT NULL REFERENCES clases(id),
+  actividad_id INTEGER NOT NULL REFERENCES actividades(id),
+  PRIMARY KEY (clase_id, actividad_id)
+);
+
 -- Los profes de cada horario: empleados del negocio (hist. §199). Hija de
 -- clases; se reemplazan enteros al editar el horario.
 CREATE TABLE IF NOT EXISTS clase_profes (

@@ -45,15 +45,30 @@ let sucursal = "";
 let diaElegido = (new Date().getDay() + 6) % 7;
 let editando = null;
 let editandoActividad = null;
+// La actividad elegida en la leyenda para ver solo sus clases, o null.
+let filtro = null;
 
 const minutos = (hora) => Number(hora.slice(0, 2)) * 60 + Number(hora.slice(3, 5));
+// La actividad principal (da el color) y el nombre de la clase: el de una
+// compartida junta los de todas, "Boxeo + MMA" (hist. §202).
 const actividadDe = (clase) => datos.actividades.find((a) => a.id === clase.actividad_id && a.activo);
+const nombreClase = (clase) =>
+  clase.actividades
+    .map((id) => datos.actividades.find((a) => a.id === id && a.activo)?.nombre)
+    .filter(Boolean)
+    .join(" + ");
 const nombresProfes = (clase) => clase.profes.map((p) => p.nombre).join(", ");
 const hoy = () => (new Date().getDay() + 6) % 7;
 
 // Las de la sucursal elegida, más las que no son de ninguna.
+// Las de la actividad elegida en la leyenda, si hay una.
 const clasesVisibles = () =>
-  datos.clases.filter((c) => actividadDe(c) && (!sucursal || c.sucursal_id === null || c.sucursal_id === Number(sucursal)));
+  datos.clases.filter(
+    (c) =>
+      actividadDe(c) &&
+      (!sucursal || c.sucursal_id === null || c.sucursal_id === Number(sucursal)) &&
+      (!filtro || c.actividades.includes(filtro))
+  );
 
 // De lunes a viernes siempre; el fin de semana, solo si tiene algo.
 function diasAMostrar(clases) {
@@ -141,12 +156,30 @@ function acomodar(clases) {
 
 /* ---------- La grilla ---------- */
 
+// La leyenda filtra: tocar una actividad deja solo sus clases (las
+// compartidas también); tocarla de nuevo, todas.
 function pintarLeyenda() {
-  document.getElementById("grillaLeyenda").innerHTML = datos.actividades
+  if (filtro && !datos.actividades.some((a) => a.id === filtro && a.activo)) filtro = null;
+  const leyenda = document.getElementById("grillaLeyenda");
+  leyenda.classList.toggle("con-filtro", Boolean(filtro));
+  leyenda.innerHTML = datos.actividades
     .filter((a) => a.activo)
-    .map((a) => `<li><span class="grilla-punto color-${esc(a.color)}" aria-hidden="true"></span>${esc(a.nombre)}${a.horario === "libre" ? " <small>libre</small>" : ""}</li>`)
+    .map(
+      (a) => `
+      <li><button type="button" class="grilla-filtro" data-filtro="${a.id}" aria-pressed="${a.id === filtro}">
+        <span class="grilla-punto color-${esc(a.color)}" aria-hidden="true"></span>${esc(a.nombre)}${a.horario === "libre" ? " <small>libre</small>" : ""}
+      </button></li>`
+    )
     .join("");
 }
+
+document.getElementById("grillaLeyenda").addEventListener("click", (e) => {
+  const boton = e.target.closest("[data-filtro]");
+  if (!boton) return;
+  const id = Number(boton.dataset.filtro);
+  filtro = filtro === id ? null : id;
+  pintarGrilla();
+});
 
 function pintarDias(dias) {
   if (!dias.includes(diaElegido)) diaElegido = dias[0];
@@ -179,15 +212,16 @@ function vacio() {
 // Un horario en la línea del día. El admin lo toca para editarlo.
 function bloque({ clase, columna, columnas }, y) {
   const actividad = actividadDe(clase);
+  const nombre = nombreClase(clase);
   const top = y(minutos(clase.desde));
   const alto = Math.max(y(minutos(clase.hasta)) - top - 3, 22);
   const extra = [clase.detalle, clase.cupo ? `cupo ${clase.cupo}` : "", sucursal ? "" : clase.sucursal].filter(Boolean).join(" · ");
-  const titulo = [actividad.nombre, `${clase.desde} a ${clase.hasta}`, nombresProfes(clase), extra].filter(Boolean).join(" · ");
+  const titulo = [nombre, `${clase.desde} a ${clase.hasta}`, nombresProfes(clase), extra].filter(Boolean).join(" · ");
   const etiqueta = esAdmin() ? "button" : "div";
   // Solo las líneas que entran enteras (de a unos 16 px): primero qué es y a
   // qué hora, después quién la da y el detalle. El resto está en el title.
   const lineas = [
-    `<strong>${esc(actividad.nombre)}</strong>`,
+    `<strong>${esc(nombre)}</strong>`,
     `<span class="grilla-clase-hora">${esc(clase.desde)}–${esc(clase.hasta)}</span>`,
     clase.profes.length ? `<span>${esc(nombresProfes(clase))}</span>` : "",
     extra ? `<span class="grilla-clase-extra">${esc(extra)}</span>` : ""
@@ -218,13 +252,14 @@ function pintarAgenda(fijas) {
     ? delDia
         .map((c) => {
           const a = actividadDe(c);
+          const nombre = nombreClase(c);
           const extra = [c.detalle, c.cupo ? `cupo ${c.cupo}` : "", sucursal ? "" : c.sucursal].filter(Boolean).join(" · ");
           return `
             <li>
               <${etiqueta} ${etiqueta === "button" ? 'type="button" ' : ""}class="grilla-agenda-clase color-${esc(a.color)}" data-clase="${c.id}">
                 <span class="grilla-agenda-hora"><strong>${esc(c.desde)}</strong>${esc(c.hasta)}</span>
                 <span class="grilla-agenda-que">
-                  <strong>${esc(a.nombre)}</strong>
+                  <strong>${esc(nombre)}</strong>
                   ${c.profes.length ? `<span>${esc(nombresProfes(c))}</span>` : ""}
                   ${extra ? `<span>${esc(extra)}</span>` : ""}
                 </span>
@@ -247,6 +282,10 @@ function pintarGrilla() {
   document.getElementById("grillaDias").hidden = !visibles.length;
   document.getElementById("grillaAgenda").hidden = !visibles.length;
   grilla.classList.toggle("sin-libres", !visibles.some((c) => actividadDe(c).horario === "libre"));
+  if (!visibles.length && filtro) {
+    grilla.innerHTML = `<div class="grilla-vacia"><p><strong>Esta actividad todavía no tiene horarios.</strong></p><p>Tocala de nuevo arriba para ver todas.</p></div>`;
+    return;
+  }
   if (!visibles.length) {
     grilla.innerHTML = vacio();
     return;
@@ -351,9 +390,26 @@ function pintarProfes(elegidos) {
 
 const profesElegidos = () => new Set([...document.querySelectorAll("#claseProfes input:checked")].map((i) => Number(i.value)));
 
+// Las actividades marcadas, en el orden de la lista: la primera es la
+// principal (le da el color a la clase).
+const actividadesElegidas = () => [...document.querySelectorAll("#claseActividades input:checked")].map((i) => Number(i.value));
+
+function pintarActividadesDeClase(elegidas) {
+  document.getElementById("claseActividades").innerHTML = datos.actividades
+    .filter((a) => a.activo)
+    .map(
+      (a) => `
+      <label class="chip-elegir">
+        <input type="checkbox" value="${a.id}" ${elegidas.includes(a.id) ? "checked" : ""} />
+        <span class="grilla-punto color-${esc(a.color)}" aria-hidden="true"></span>${esc(a.nombre)}${a.horario === "libre" ? " (libre)" : ""}
+      </label>`
+    )
+    .join("");
+}
+
 // Una actividad libre no tiene clases sino una franja abierta, y sin cupo.
 function segunActividad() {
-  const actividad = datos.actividades.find((a) => a.id === Number(formClase.actividad_id.value));
+  const actividad = datos.actividades.find((a) => a.id === actividadesElegidas()[0]);
   const esLibre = actividad?.horario === "libre";
   document.getElementById("claseDiasLeyenda").textContent = esLibre ? "Días que está abierta" : editando ? "Día" : "Días";
   document.getElementById("claseDesdeEtiqueta").textContent = esLibre ? "Abre" : "Empieza";
@@ -373,9 +429,10 @@ function abrirClase(clase = null) {
   const form = formClase;
   form.reset();
   document.getElementById("claseFormTitulo").textContent = clase
-    ? `${actividadDe(clase).nombre}, el ${DIAS[clase.dia_semana].toLowerCase()} a las ${clase.desde}`
+    ? `${nombreClase(clase)}, el ${DIAS[clase.dia_semana].toLowerCase()} a las ${clase.desde}`
     : "Nuevo horario";
-  form.actividad_id.innerHTML = activas.map((a) => `<option value="${a.id}">${esc(a.nombre)}${a.horario === "libre" ? " (libre)" : ""}</option>`).join("");
+  // Al cargar, la actividad que se está mirando en la leyenda, si hay una.
+  pintarActividadesDeClase(clase?.actividades ?? (filtro ? [filtro] : activas.length === 1 ? [activas[0].id] : []));
   // Al cargar, varios días de una vez; al editar, el día de ese horario.
   const tipo = clase ? "radio" : "checkbox";
   document.getElementById("claseDias").innerHTML = DIAS_CORTOS.map(
@@ -389,7 +446,6 @@ function abrirClase(clase = null) {
   document.getElementById("claseSucursalCampo").hidden = sucursales.length < 2;
   form.sucursal_id.innerHTML = `<option value="">Todas</option>` + sucursales.map((s) => `<option value="${s.id}">${esc(s.nombre)}</option>`).join("");
   if (clase) {
-    form.actividad_id.value = clase.actividad_id;
     form.desde.value = clase.desde;
     form.hasta.value = clase.hasta;
     form.detalle.value = clase.detalle ?? "";
@@ -402,11 +458,11 @@ function abrirClase(clase = null) {
   segunActividad();
   form.hidden = false;
   form.scrollIntoView({ behavior: "smooth", block: "nearest" });
-  form.actividad_id.focus({ preventScroll: true });
+  document.querySelector("#claseActividades input")?.focus({ preventScroll: true });
 }
 
 document.getElementById("btnClaseNueva").addEventListener("click", () => abrirClase());
-document.getElementById("claseActividad").addEventListener("change", segunActividad);
+document.getElementById("claseActividades").addEventListener("change", segunActividad);
 document.getElementById("btnClaseCancelar").addEventListener("click", () => {
   formClase.hidden = true;
 });
@@ -445,6 +501,11 @@ document.getElementById("claseProfeNombre").addEventListener("keydown", (e) => {
 formClase.addEventListener("submit", async (e) => {
   e.preventDefault();
   const form = formClase;
+  const actividades = actividadesElegidas();
+  if (!actividades.length) {
+    avisar("Elegí la actividad.", "atencion");
+    return;
+  }
   const dias = [...form.querySelectorAll("#claseDias input:checked")].map((i) => Number(i.value));
   if (!dias.length) {
     avisar("Elegí el día.", "atencion");
@@ -459,7 +520,7 @@ formClase.addEventListener("submit", async (e) => {
     return;
   }
   const body = {
-    actividad_id: Number(form.actividad_id.value),
+    actividades,
     ...(editando ? { dia_semana: dias[0] } : { dias }),
     desde: form.desde.value,
     hasta: form.hasta.value,
@@ -489,7 +550,7 @@ document.getElementById("btnClaseSacar").addEventListener("click", async () => {
   const clase = editando;
   const ok = await confirmar({
     titulo: "¿Sacar este horario de la grilla?",
-    cuerpo: `${actividadDe(clase).nombre}, el ${DIAS[clase.dia_semana].toLowerCase()} de ${clase.desde} a ${clase.hasta}. Los otros días de esa actividad quedan.`,
+    cuerpo: `${nombreClase(clase)}, el ${DIAS[clase.dia_semana].toLowerCase()} de ${clase.desde} a ${clase.hasta}. Los otros días de esa actividad quedan.`,
     aceptar: "Sacar",
     destructivo: true
   });
@@ -510,7 +571,7 @@ function pintarActividades() {
   }
   lista.innerHTML = datos.actividades
     .map((a) => {
-      const suyas = datos.clases.filter((c) => c.actividad_id === a.id);
+      const suyas = datos.clases.filter((c) => c.actividades.includes(a.id));
       const cuando =
         a.horario === "libre"
           ? suyas.length
@@ -602,7 +663,7 @@ formActividad.addEventListener("submit", async (e) => {
   if (nueva) {
     // Lo que sigue es cargarle los horarios: el formulario ya la trae elegida.
     abrirClase();
-    formClase.actividad_id.value = guardada.id;
+    pintarActividadesDeClase([guardada.id]);
     segunActividad();
     avisar(`${guardada.nombre} creada. Ahora cargale los horarios.`, "ok");
   } else {
@@ -675,7 +736,10 @@ function dibujarImagen() {
   const nombreSucursal = sucursales.find((s) => String(s.id) === sucursal)?.nombre;
   ctx.fillStyle = "#6B6B6B";
   ctx.font = fuente(500, 30);
-  ctx.fillText(nombreSucursal ? `Grilla de clases · ${nombreSucursal}` : "Grilla de clases", MARGEN, 158);
+  // Filtrada, es la grilla de esa actividad ("Grilla de BJJ").
+  const nombreFiltro = datos.actividades.find((a) => a.id === filtro)?.nombre;
+  const subtitulo = [nombreFiltro ? `Grilla de ${nombreFiltro}` : "Grilla de clases", nombreSucursal].filter(Boolean).join(" · ");
+  ctx.fillText(subtitulo, MARGEN, 158);
 
   // Las de horario libre, con su franja.
   let y = 210;
@@ -720,6 +784,7 @@ function dibujarImagen() {
   dias.forEach((dia, i) => {
     for (const { clase, columna, columnas } of acomodar(fijas.filter((c) => c.dia_semana === dia))) {
       const a = actividadDe(clase);
+      const nombre = nombreClase(clase);
       const w = anchoDia / columnas - 6;
       const x = xDia(i) + (anchoDia / columnas) * columna + 3;
       const top = y0 + linea.y(minutos(clase.desde)) + 2;
@@ -733,7 +798,7 @@ function dibujarImagen() {
       ctx.clip();
       ctx.fillStyle = "#FFFFFF";
       const lineas = [
-        [fuente(800, chica ? 18 : 22), a.nombre],
+        [fuente(800, chica ? 18 : 22), nombre],
         [fuente(600, chica ? 15 : 19), `${clase.desde}–${clase.hasta}`],
         [fuente(500, chica ? 15 : 18), nombresProfes(clase)],
         [fuente(500, chica ? 14 : 17), clase.detalle ?? ""]

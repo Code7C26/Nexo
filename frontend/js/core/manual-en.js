@@ -552,6 +552,8 @@ export const SECCIONES_EN = {
         "To change or remove a time slot, tap it on the schedule."
       ] },
       "Two classes can be at the same time: they go side by side. An instructor can't be in two classes at once; Nexo warns you.",
+      "A class shared by several activities (sparring for Boxing, MMA and Kickboxing) is added once, ticking them all: it shows up on each one's schedule.",
+      "Tap an activity above the schedule to see only its classes; tap it again to see them all. The image to share comes out filtered the same way.",
       "Instructors are the business's employees: if you add one from the schedule, they also show up in **Employees**.",
       "**Image to share** turns the week's schedule into an image for Instagram or your WhatsApp status. On a phone it's shared directly.",
       { nota: "On a phone the schedule shows one day at a time: choose the day at the top." }

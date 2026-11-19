@@ -11,7 +11,7 @@
 
 - Al cerrar una etapa, se hacen tres cosas:
   - su relato completo se agrega al final de `docs/proyecto/handoff-historico.md` con el
-    siguiente número (hoy el último es §201);
+    siguiente número (hoy el último es §202);
   - acá se actualizan "Estado actual" y "Qué sigue";
   - si cambió alguna decisión vigente, se actualiza también esa lista.
 - Nunca apilar secciones "Última etapa" en este archivo: así fue como llegó a
@@ -21,7 +21,8 @@
 
 ## Estado actual (19 de noviembre de 2026)
 
-**19 de noviembre, hist. §200: la grilla de clases del gimnasio.**
+**19 de noviembre, hist. §200: la grilla de clases del gimnasio (publicada,
+PR #102, con el cargador de hist. §201).**
 - **Clases** (menú Socios, módulo socios): las actividades (fijas o libres,
   con color), sus horarios en la semana y los profes de cada uno. Los profes
   son empleados. La ven todos y la arma el admin.
@@ -32,6 +33,17 @@
 - Test nuevo: `grilla`. `npm test`: 475 de 475. Probado en el navegador.
 - **Falta:** cargar la cuenta del dojo del profe (hist. §201: el usuario la
   crea y trae los datos; yo corro `npm run cargar`).
+
+**19 de noviembre, hist. §202: clases compartidas y el filtro de la grilla.**
+Un horario puede ser de varias actividades (el sparring de Boxeo, MMA y
+Kickboxing), y la leyenda filtra por actividad. Los datos de Morro (el dojo
+del profe) están en `pilotos/morro.json`, fuera de git. **Falta cargarlos en
+la cuenta real** (`vrader.parfum@gmail.com`, negocio "morro BJJ", creada con
+Google): el usuario le pone una contraseña con "Olvidé mi contraseña", le
+pone el plan Emprendedor desde Plataforma → Cuentas, prende Socios en
+Funciones si no está, y corre `npm run cargar -- --email
+vrader.parfum@gmail.com --negocio "morro BJJ" --datos pilotos/morro.json`.
+Después, los socios que ya existen (los pasa el usuario) y los profes.
 
 **19 de noviembre, hist. §201:** `npm run cargar` carga un negocio real desde
 un JSON (profes, actividades, horarios, planes y productos con stock), sin
