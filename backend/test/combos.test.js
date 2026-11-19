@@ -95,3 +95,36 @@ test('el alta de un socio que ya venía guarda la última vez que vino', async (
   const socio = (await admin.get('/api/socios')).json.find((s) => s.id === r.json.id);
   assert.equal(socio.ultimo_ingreso.slice(0, 10), dias(-60));
 });
+
+// "Parece que dejó" (hist. §204): 30 días sin venir y la cuota de un mes que
+// no vino, sin pagar. Nexo no lo da de baja solo; el dueño lo da de baja y
+// decide si borra esa cuota.
+test('parece que dejó: el dueño lo da de baja y borra la cuota del mes que no vino', async () => {
+  const hoy = new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Argentina/Buenos_Aires' });
+  const dias = (n) => {
+    const d = new Date(`${hoy}T12:00:00Z`);
+    d.setUTCDate(d.getUTCDate() + n);
+    return d.toISOString().slice(0, 10);
+  };
+  const alta = (nombre, ultima) =>
+    admin.post('/api/socios', { cliente: { nombre }, planes: [mensual(planes.Kickboxing)], fecha_alta: dias(-200), ultima_vez: dias(ultima) });
+  const viene = (await alta('Viene Siempre', -3)).json;
+  const dejo = (await alta('Dejó Sin Avisar', -60)).json;
+  const socios = (await admin.get('/api/socios')).json;
+  assert.equal(socios.find((s) => s.id === viene.id).parece_que_dejo, null, 'vino hace 3 días: debe, pero no dejó');
+  const marcado = socios.find((s) => s.id === dejo.id).parece_que_dejo;
+  assert.ok(marcado, 'hace 60 días que no viene y debe la cuota');
+  assert.equal(marcado.cuotas.length, 1);
+  assert.equal(marcado.total, 45000);
+  // Darlo de baja borrando esa cuota: queda sin deuda y la cuota, bonificada.
+  assert.equal((await admin.patch(`/api/socios/${viene.id}`, { estado: 'baja', bonificar_sin_venir: true })).status, 400, 'sin cuotas sin venir');
+  const r = await admin.patch(`/api/socios/${dejo.id}`, { estado: 'baja', bonificar_sin_venir: true });
+  assert.equal(r.status, 200, r.texto);
+  assert.equal(r.json.situacion, 'baja');
+  assert.equal(r.json.deuda, 0);
+  assert.equal(r.json.cuotas[0].estado, 'bonificada');
+  // Si vuelve, se reactiva y paga desde ese día.
+  const vuelve = await admin.patch(`/api/socios/${dejo.id}`, { estado: 'activo' });
+  assert.equal(vuelve.status, 200, vuelve.texto);
+  assert.equal(vuelve.json.cuotas[0].desde, hoy);
+});

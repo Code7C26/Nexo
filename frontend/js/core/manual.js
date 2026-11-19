@@ -1019,7 +1019,8 @@ const SECCIONES_ES = [
       ] },
       "En **Ingreso**, la recepción busca al socio cuando llega: Nexo avisa si debe la cuota.",
       "Un **combo** baja el precio cuando el socio combina planes: con un porcentaje, o con un **precio fijo por mes** (BJJ + MMA a $80.000). También puede bajar un solo plan si el socio hace además alguno de otros: el funcional a mitad de precio si hace alguna marcial.",
-      "En **Socios**, el filtro **No vienen** muestra a los activos que hace dos semanas o más no entran, para llamarlos antes de que se den de baja. De alguien que ya venía, en el alta se carga la última vez que vino."
+      "En **Socios**, el filtro **No vienen** muestra a los activos que hace dos semanas o más no entran, para llamarlos antes de que se den de baja. De alguien que ya venía, en el alta se carga la última vez que vino.",
+      "**Parece que dejaron** junta a los que hace un mes no vienen y no pagaron la cuota de un mes que no vinieron: lo más común es que hayan dejado sin avisar. Nexo no los da de baja solo: en la ficha elegís darlo de baja borrando esa deuda o dejándola. Si vuelve, se lo reactiva y paga desde ese día."
     ],
     ver: ["cobrar", "clases"]
   },

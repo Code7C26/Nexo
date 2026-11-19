@@ -165,10 +165,15 @@ function textoCuota(s) {
 
 const badgeSituacion = (s) => badge(SITUACION[s.situacion].clase, SITUACION[s.situacion].texto).html;
 
+// Cómo se dice un descuento: un porcentaje, o el combo con su precio por mes
+// (el porcentaje con que lo reparte entre los planes no le dice nada a nadie).
+const textoDescuento = (d) =>
+  d.precio_combo != null ? `${d.nombre}, ${money(d.precio_combo)} por mes` : `−${porcentaje(d.porcentaje)} · ${d.nombre}`;
+
 // Un precio con su descuento: el de lista tachado, el final y de dónde sale.
 function precioConDescuento(lista, precio, descuento) {
   if (!descuento) return `<span class="cotizacion-precio"><strong class="mono">${money(precio)}</strong></span>`;
-  const etiqueta = `−${porcentaje(descuento.porcentaje)} · ${descuento.nombre}`;
+  const etiqueta = textoDescuento(descuento);
   return `
     <span class="cotizacion-precio">
       <s class="mono">${money(lista)}</s> <strong class="mono">${money(precio)}</strong>
@@ -193,7 +198,7 @@ function lineasCotizacion(cotizacion, desde) {
   });
   const cambian = cotizacion.cambian.map((c) => {
     const texto = c.descuento
-      ? `Desde su próxima cuota tiene ${porcentaje(c.descuento.porcentaje)} (${c.descuento.nombre})`
+      ? `Desde su próxima cuota tiene ${textoDescuento(c.descuento)}`
       : "Desde su próxima cuota deja de tener descuento";
     return `
     <li class="cotizacion-linea cotizacion-cambia">
@@ -247,6 +252,7 @@ const FILTROS = {
   debe: (s) => s.deuda > 0,
   al_dia: (s) => s.situacion === "al_dia",
   no_vienen: (s) => s.situacion !== "baja" && diasSinVenir(s) >= DIAS_NO_VIENE,
+  dejaron: (s) => Boolean(s.parece_que_dejo),
   baja: (s) => s.situacion === "baja"
 };
 
@@ -258,6 +264,14 @@ function diasSinVenir(s) {
   const desde = s.ultimo_ingreso ? s.ultimo_ingreso.slice(0, 10) : s.fecha_alta;
   return Math.floor((new Date(`${hoyISO()}T12:00:00Z`) - new Date(`${desde}T12:00:00Z`)) / 86400000);
 }
+// "Parece que dejó" (hist. §204): lo arma el servidor (30 días sin venir y la
+// cuota de un mes que no vino, sin pagar). El dueño decide en la ficha.
+function textoDejo(s) {
+  const d = s.parece_que_dejo;
+  const cuotas = d.cuotas.map((c) => fechaAR(c.desde)).join(", ");
+  return `Parece que dejó: ${d.vino ? `no viene desde el ${fechaAR(d.desde)}` : "nunca vino"} y debe la cuota del ${cuotas}`;
+}
+
 function textoSinVenir(s) {
   const dias = diasSinVenir(s);
   if (dias < DIAS_NO_VIENE) return "";
@@ -297,7 +311,13 @@ function renderLista() {
       <td data-label="Socio" class="m-titulo">
         <span class="celda-principal">${esc(s.nombre)}</span>
         ${s.documento ? `<span class="celda-meta">DNI ${esc(s.documento)}</span>` : ""}
-        ${s.situacion !== "baja" && textoSinVenir(s) ? `<span class="celda-meta ledger-warn">${esc(textoSinVenir(s))}</span>` : ""}
+        ${
+          s.parece_que_dejo
+            ? `<span class="celda-meta ledger-warn">${esc(textoDejo(s))}</span>`
+            : s.situacion !== "baja" && textoSinVenir(s)
+              ? `<span class="celda-meta ledger-warn">${esc(textoSinVenir(s))}</span>`
+              : ""
+        }
       </td>
       ${celdaMovil(["N°", s.numero], nombresDePlanes(s), textoCuota(s))}
       <td data-label="Planes">${esc(nombresDePlanes(s) || "—")}<span class="celda-meta">${esc(duracionesDePlanes(s))}</span></td>
@@ -691,6 +711,7 @@ function pintarFicha(s) {
 
   document.getElementById("btnSocioEstado").innerHTML =
     s.situacion === "baja" ? `${icono("undo-2")} Reactivar` : `${icono("log-out")} Dar de baja`;
+  pintarDejo(s);
 
   let alDia = "—";
   if (s.situacion === "por_empezar") alDia = `Empieza el ${fechaAR(s.empieza)}`;
@@ -711,7 +732,11 @@ function pintarFicha(s) {
       ? filaVacia(5, sinCuotas)
       : s.cuotas
           .map((c) => {
-            const detalle = c.descuento_pct ? `${c.duracion} · −${porcentaje(c.descuento_pct)} ${c.descuento ?? ""}` : c.duracion;
+            const detalle = !c.descuento_pct
+              ? c.duracion
+              : c.descuento_precio_combo != null
+                ? `${c.duracion} · ${c.descuento}, ${money(c.descuento_precio_combo)} por mes`
+                : `${c.duracion} · −${porcentaje(c.descuento_pct)} ${c.descuento ?? ""}`;
             return `
     <tr>
       <td data-label="Período">${esc(fechaAR(c.desde))} al ${esc(fechaAR(c.hasta))}</td>
@@ -925,6 +950,50 @@ formDescuentoSocio.addEventListener("submit", async (e) => {
   await refrescar([cargarSocios()]);
   pintarFicha(socio);
   avisar(socio.descuento ? `Desde la próxima cuota tiene "${socio.descuento}".` : "Ya no tiene descuento a mano.", "ok");
+});
+
+// El aviso de "Parece que dejó" en la ficha: darlo de baja borrando la cuota
+// de los meses que no vino (solo el admin) o dejándola como deuda.
+function pintarDejo(s) {
+  const aviso = document.getElementById("fichaSocioDejo");
+  const d = s.parece_que_dejo;
+  aviso.hidden = !d;
+  if (!d) return;
+  const meses = d.cuotas.length === 1 ? `la cuota del ${fechaAR(d.cuotas[0].desde)}` : `${d.cuotas.length} cuotas`;
+  const cuando = d.vino ? `No viene desde el ${fechaAR(d.desde)}` : "Nunca vino";
+  aviso.innerHTML = `
+    <p><strong>Parece que dejó de venir.</strong> ${esc(cuando)} y debe ${esc(meses)} (${money(d.total)}), de meses que no vino.</p>
+    <div class="socio-dejo-botones">
+      ${esAdmin() ? `<button type="button" class="btn btn-primary btn-chico" data-dejo="borrar">Darlo de baja y borrar esa deuda</button>` : ""}
+      <button type="button" class="btn btn-secundario btn-chico" data-dejo="dejar">Darlo de baja y dejar la deuda</button>
+    </div>
+    <p class="campo-ayuda">Si vuelve, se lo reactiva acá mismo y paga desde ese día. Si sigue viniendo, este aviso se va solo.</p>`;
+}
+
+document.getElementById("fichaSocioDejo").addEventListener("click", async (e) => {
+  const boton = e.target.closest("[data-dejo]");
+  const s = fichaSocio;
+  if (!boton || !s) return;
+  const borrar = boton.dataset.dejo === "borrar";
+  const ok = await confirmar({
+    titulo: "Dar de baja",
+    cuerpo: borrar
+      ? `${s.nombre} queda de baja y la deuda de los meses que no vino (${money(s.parece_que_dejo.total)}) se borra: esas cuotas quedan bonificadas.`
+      : `${s.nombre} queda de baja. La deuda (${money(s.deuda)}) sigue en su cuenta corriente.`,
+    aceptar: "Dar de baja",
+    destructivo: true
+  });
+  if (!ok) return;
+  const socio = await enviando(boton, () =>
+    api(`/api/socios/${s.id}`, {
+      method: "PATCH",
+      body: { estado: "baja", ...(borrar ? { bonificar_sin_venir: true } : {}) },
+      error: "No se pudo dar de baja."
+    })
+  );
+  await refrescar([cargarSocios(), recargarOtrasVistas()]);
+  pintarFicha(socio);
+  avisar(borrar ? `${socio.nombre} quedó de baja, sin la deuda de los meses que no vino.` : `${socio.nombre} quedó de baja.`, "ok");
 });
 
 document.getElementById("btnSocioEstado").addEventListener("click", async (e) => {
@@ -1545,6 +1614,28 @@ function chipsDePlanes(lista, nombre, marcados) {
     .join("");
 }
 
+// Cómo queda el combo, dicho en una frase mientras se arma (hist. §204).
+function pintarResumenCombo() {
+  const nota = document.getElementById("descuentoComboResumen");
+  const nombres = (nombre) =>
+    [...formDescuento.querySelectorAll(`input[name="${nombre}"]:checked`)].map((c) => planes.find((p) => p.id === Number(c.value))?.nombre ?? "");
+  const bajan = nombres("plan");
+  const alguno = nombres("alguno");
+  const unir = (lista, ultimo) => (lista.length < 2 ? lista.join("") : `${lista.slice(0, -1).join(", ")} ${ultimo} ${lista.at(-1)}`);
+  const precio = Number(formDescuento.precio_combo.value);
+  const pct = Number(formDescuento.porcentaje.value);
+  let texto = "";
+  if (bajan.length && descuentoConPrecio.checked && precio > 0) {
+    texto = `${unir(bajan, "y")} ${bajan.length > 1 ? "juntos cuestan" : "cuesta"} ${money(precio)} por mes`;
+  } else if (bajan.length && !descuentoConPrecio.checked && pct > 0) {
+    texto = `${unir(bajan, "y")} ${bajan.length > 1 ? "bajan" : "baja"} ${porcentaje(pct)}`;
+    if (!alguno.length && bajan.length > 1) texto += " si el socio los hace todos";
+  }
+  if (texto && alguno.length) texto += ` si el socio también hace ${unir(alguno, "o")}`;
+  nota.hidden = !texto;
+  nota.textContent = texto ? `Así queda: ${texto}.` : "";
+}
+
 function pintarPlanesCombo(marcados = [], alguno = []) {
   const lista = planes.filter((p) => p.activo || marcados.includes(p.id) || alguno.includes(p.id));
   if (lista.length < 2) {
@@ -1554,6 +1645,7 @@ function pintarPlanesCombo(marcados = [], alguno = []) {
   }
   descuentoPlanes.innerHTML = chipsDePlanes(lista, "plan", marcados);
   descuentoAlguno.innerHTML = chipsDePlanes(lista, "alguno", alguno);
+  pintarResumenCombo();
 }
 
 function limpiarFormDescuento() {
@@ -1640,6 +1732,8 @@ document.getElementById("descuentoAplica").addEventListener("change", () => {
 });
 descuentoPlanes.addEventListener("change", () => limpiarError(descuentoPlanes));
 descuentoAlguno.addEventListener("change", () => limpiarError(descuentoPlanes));
+formDescuento.addEventListener("input", pintarResumenCombo);
+formDescuento.addEventListener("change", pintarResumenCombo);
 descuentoConPrecio.addEventListener("change", () => {
   limpiarErrores(formDescuento);
   pintarAplica();

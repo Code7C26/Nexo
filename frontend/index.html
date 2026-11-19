@@ -1626,6 +1626,7 @@
                 <button type="button" class="segmento" data-filtro="debe" aria-pressed="false">Deben</button>
                 <button type="button" class="segmento" data-filtro="al_dia" aria-pressed="false">Al día</button>
                 <button type="button" class="segmento" data-filtro="no_vienen" aria-pressed="false" title="Activos que hace dos semanas o más no vienen">No vienen</button>
+                <button type="button" class="segmento" data-filtro="dejaron" aria-pressed="false" title="Hace un mes que no vienen y no pagaron la cuota">Parece que dejaron</button>
                 <button type="button" class="segmento" data-filtro="baja" aria-pressed="false">De baja</button>
               </div>
             </div>
@@ -1839,16 +1840,16 @@
                   </div>
                 </fieldset>
                 <fieldset class="opciones" id="descuentoCombo">
-                  <legend>Planes del combo</legend>
-                  <p class="opciones-nota">Los que bajan de precio: el socio tiene que hacerlos todos.</p>
+                  <legend>¿Qué planes bajan de precio?</legend>
                   <div class="chips-elegir" id="descuentoPlanes"></div>
-                  <p class="opciones-nota">Y además, alguno de estos (opcional): alcanza con que haga uno, y no bajan. Por ejemplo, el funcional a mitad de precio si hace alguna marcial: Funcional arriba, las marciales acá.</p>
+                  <p class="opciones-nota descuento-pregunta">¿Solo si además hace otro plan? (opcional)</p>
                   <div class="chips-elegir" id="descuentoAlguno"></div>
                   <label class="form-check"><input type="checkbox" name="con_precio" id="descuentoConPrecio" /> <span>El combo tiene un precio fijo por mes, en vez de un porcentaje</span></label>
                   <label id="descuentoPrecioCampo" hidden>Precio del combo por mes
                     <input type="number" name="precio_combo" min="1" step="1" inputmode="numeric" placeholder="80000" />
                   </label>
-                  <p class="opciones-nota" id="descuentoPrecioNota" hidden>Lo que pagan por mes los planes que bajan, todos juntos. Si después cambia el precio de un plan, el combo sigue costando lo mismo.</p>
+                  <p class="opciones-nota" id="descuentoPrecioNota" hidden>Si después cambia el precio de un plan, el combo sigue costando lo mismo.</p>
+                  <p class="descuento-resumen" id="descuentoComboResumen" aria-live="polite" hidden></p>
                 </fieldset>
                 <label id="descuentoCantidad" hidden>Desde cuántos planes
                   <input type="number" name="minimo_planes" min="2" max="10" step="1" value="2" inputmode="numeric" />
@@ -2016,6 +2017,7 @@
               <button type="button" class="btn btn-secundario" id="btnSocioEstado"></button>
             </div>
           </div>
+          <div class="socio-dejo" id="fichaSocioDejo" hidden></div>
           <dl class="ficha-datos" id="fichaSocioDatos"></dl>
         </section>
 
