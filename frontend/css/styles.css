@@ -10947,6 +10947,35 @@ a.asistente-guia-whatsapp:hover { border-color: var(--line-strong); }
 .grilla-filtro[aria-pressed="true"] { color: var(--ink); background: var(--surface-sunk); border-color: var(--line-strong); }
 .grilla-leyenda.con-filtro .grilla-filtro[aria-pressed="false"] { opacity: 0.55; }
 
+/* Antes de bajar la imagen: formato, fondo y la vista previa. */
+.grilla-imagen {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 18rem);
+  gap: var(--sp-4);
+  align-items: start;
+  margin-bottom: var(--sp-4);
+  padding: var(--sp-4);
+  background: var(--surface-sunk);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+}
+.grilla-imagen[hidden] { display: none; }
+.grilla-imagen-opciones { display: flex; flex-direction: column; align-items: flex-start; gap: var(--sp-3); }
+.grilla-imagen-opciones .config-tarjeta-titulo { margin: 0; }
+.grilla-imagen-opciones .campo-ayuda { margin: 0; }
+.grilla-imagen-botones { display: flex; gap: var(--sp-2); }
+.grilla-imagen-vista {
+  width: 100%;
+  max-height: 22rem;
+  object-fit: contain;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+}
+@media (max-width: 860px) {
+  .grilla-imagen { grid-template-columns: minmax(0, 1fr); }
+}
+
 .grilla-dias { margin-bottom: var(--sp-3); }
 .grilla-dias .segmento { position: relative; }
 .grilla-hoy-punto {

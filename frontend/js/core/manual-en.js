@@ -536,7 +536,9 @@ export const SECCIONES_EN = {
         "In **Members**, sign up the person (new, or already a customer) with their plan.",
         "The fee is due from the sign-up date and is collected like any sale."
       ] },
-      "In **Check-in**, the front desk looks up the member when they arrive: Nexo warns you if they owe the fee."
+      "In **Check-in**, the front desk looks up the member when they arrive: Nexo warns you if they owe the fee.",
+      "A **bundle** lowers the price when a member combines plans: by a percentage, or with a **fixed monthly price** (BJJ + MMA for $80,000). It can also lower just one plan if the member also does one of several others: functional training at half price if they do a martial art.",
+      "In **Members**, the **Not coming** filter shows active members who haven't come in for two weeks or more, so you can call them before they quit. For someone who was already coming, the sign-up form takes the last time they came."
     ]
   },
   clases: {
@@ -555,7 +557,7 @@ export const SECCIONES_EN = {
       "A class shared by several activities (sparring for Boxing, MMA and Kickboxing) is added once, ticking them all: it shows up on each one's schedule.",
       "Tap an activity above the schedule to see only its classes; tap it again to see them all. The image to share comes out filtered the same way.",
       "Instructors are the business's employees: if you add one from the schedule, they also show up in **Employees**.",
-      "**Image to share** turns the week's schedule into an image for Instagram or your WhatsApp status. On a phone it's shared directly.",
+      "**Image to share** turns the week's schedule into an image for Instagram or your WhatsApp status: vertical, or horizontal and bigger; with a dark or light background. On a phone it's shared directly.",
       { nota: "On a phone the schedule shows one day at a time: choose the day at the top." }
     ]
   },

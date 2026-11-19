@@ -14987,3 +14987,41 @@ porcentaje y no da esos precios exactos; los hermanos son un descuento a mano
 del 50 %; los productos son ejemplos con precios estimados. Sin profes: el
 mensaje no los nombra. Probado contra un servidor de prueba (43 horarios, 10
 planes, 10 productos; la segunda corrida no duplica) y en el navegador.
+
+## §203 — 19 de noviembre de 2026: combos de verdad, la imagen a elegir y "No vienen"
+
+Pedidos del usuario al ver Morro cargado.
+
+**Combos de verdad.** Las promos de Morro tienen que ser combos, no planes
+aparte. Un combo de antes solo bajaba un porcentaje a todos sus planes, y
+con eso BJJ + MMA daba $80.003 y el funcional al 50 % bajaba también la
+marcial. Esquema aditivo: `descuentos_socio.precio_combo` (precio fijo por
+mes; NULL = porcentaje) y `descuento_socio_planes.rol` ('baja' o 'alguno',
+por defecto 'baja': los combos de antes no cambian). El porcentaje de un
+combo con precio se calcula al leerlo, sin redondear, con el precio mensual
+de cada plan (su duración más corta llevada a un mes): las cuotas suman el
+precio justo ($43.636,36 + $36.363,64) y un aumento de un plan no cambia el
+combo. 'alguno' = alcanza con tener uno y no baja (`comboSeAplica`). El
+formulario de Descuentos suma "Y además, alguno de estos" y "precio fijo por
+mes"; la columna pasa a "Cuánto baja". `verificar-migracion`: 24 de 24.
+
+**La imagen para compartir.** Un panel antes de bajarla: vertical (1080 ×
+1350) u horizontal (1920 × 1080, columnas anchas: las clases simultáneas se
+leen), fondo oscuro o claro (de partida, el de la apariencia), con vista
+previa. El logo del negocio queda para la etapa de "logo y colores" (punto 8
+del plan).
+
+**"No vienen".** Filtro de Socios: activos que hace 15 días o más no entran
+(desde el último ingreso, o desde el alta si nunca vinieron), con "Hace 2
+meses que no viene" en la fila. Para que un socio que ya venía aparezca ahí
+desde el primer día, el alta hacia atrás acepta `ultima_vez`, que queda como
+su último ingreso (12:00 hora del negocio). Era la opción que el usuario
+recordaba: no existía (la del CRM es "dejaron de comprar").
+
+**Morro (cuenta real).** Las tres promos se pausaron como planes (no tenían
+socios) y van como combos: BJJ + MMA a $80.000, Kickboxing + MMA a $70.000 y
+el funcional al 50 % con cualquier marcial. Se cargaron los 21 socios que
+pasó el usuario (9 de BJJ + MMA, 8 de BJJ, 4 de MMA), 5 debiendo la cuota
+de este período (Gonzalo Uranga, Peludo, Lauti Gomez, Ignacio y Tomás
+Marcos) y Tomás sin venir hace dos meses. El cargador suma `socios` y
+combos con `alguno` y `precio_combo`.
