@@ -22038,6 +22038,289 @@ app.post('/api/socios/:id/ingresos', (req, res) => {
   res.status(201).json({ ...ingreso, al_dia: situacion.deuda === 0, socio: situacion });
 });
 
+/* ---------- La grilla de clases (hist. §200) ---------- */
+//
+// Lo que el gimnasio ofrece cada semana (ver las tablas en schema.sql): las
+// actividades, sus horarios y los profes de cada uno. La ven todos, porque la
+// recepción la consulta, y la arma el admin. Un profe es un empleado (hist.
+// §199) y no puede estar en dos horarios que se pisan. Los horarios van en la
+// hora del negocio, como los de los empleados.
+
+const COLORES_ACTIVIDAD = ['azul', 'naranja', 'verde', 'violeta', 'rojo', 'amarillo', 'rosa', 'gris'];
+const DIAS_GRILLA = ['lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado', 'domingo'];
+
+function actividadesDe(organizacionId) {
+  return db
+    .prepare('SELECT id, nombre, horario, color, activo FROM actividades WHERE organizacion_id = ? ORDER BY activo DESC, nombre COLLATE NOCASE')
+    .all(organizacionId)
+    .map((a) => ({ ...a, activo: Boolean(a.activo) }));
+}
+
+// Los horarios vigentes de las actividades activas, con sus profes activos.
+function clasesDe(organizacionId) {
+  const clases = db
+    .prepare(
+      `SELECT clases.id, clases.actividad_id, clases.dia_semana, clases.desde, clases.hasta, clases.sucursal_id,
+              clases.detalle, clases.cupo, sucursales.nombre AS sucursal
+         FROM clases
+         JOIN actividades ON actividades.id = clases.actividad_id
+         LEFT JOIN sucursales ON sucursales.id = clases.sucursal_id
+        WHERE clases.organizacion_id = ? AND clases.activo = 1 AND actividades.activo = 1
+        ORDER BY clases.dia_semana, clases.desde, clases.id`
+    )
+    .all(organizacionId);
+  const profes = db
+    .prepare(
+      `SELECT clase_profes.clase_id, empleados.id, empleados.nombre
+         FROM clase_profes
+         JOIN clases ON clases.id = clase_profes.clase_id
+         JOIN empleados ON empleados.id = clase_profes.empleado_id
+        WHERE clases.organizacion_id = ? AND clases.activo = 1 AND empleados.activo = 1
+        ORDER BY empleados.nombre COLLATE NOCASE`
+    )
+    .all(organizacionId);
+  return clases.map((c) => ({ ...c, profes: profes.filter((p) => p.clase_id === c.id).map(({ id, nombre }) => ({ id, nombre })) }));
+}
+
+const textoClase = (actividad, c, profes) =>
+  `${actividad} el ${DIAS_GRILLA[c.dia_semana]} de ${c.desde} a ${c.hasta}${profes.length ? ` (${profes.map((p) => p.nombre).join(', ')})` : ''}`;
+
+app.get('/api/grilla', (req, res) => {
+  const organizacionId = req.usuario.organizacion_id;
+  res.json({
+    actividades: actividadesDe(organizacionId),
+    clases: clasesDe(organizacionId),
+    profes: db
+      .prepare('SELECT id, nombre FROM empleados WHERE organizacion_id = ? AND activo = 1 ORDER BY nombre COLLATE NOCASE')
+      .all(organizacionId),
+    colores: COLORES_ACTIVIDAD
+  });
+});
+
+// Valida el alta o la edición de una actividad: { error } o lo que se guarda.
+function datosDeActividad(body, organizacionId, actividad = null) {
+  const datos = {};
+  if (!actividad || body.nombre !== undefined) {
+    const nombre = String(body.nombre ?? '').trim();
+    if (!nombre) return { error: 'Escribí el nombre de la actividad.' };
+    if (nombre.length > 60) return { error: 'El nombre es muy largo.' };
+    datos.nombre = nombre;
+  }
+  if (!actividad || body.horario !== undefined) {
+    const horario = body.horario ?? 'fijo';
+    if (!['fijo', 'libre'].includes(horario)) return { error: 'El horario es fijo o libre.' };
+    datos.horario = horario;
+  }
+  if (!actividad || body.color !== undefined) {
+    const color = body.color ?? 'azul';
+    if (!COLORES_ACTIVIDAD.includes(color)) return { error: 'Ese color no está en la grilla.' };
+    datos.color = color;
+  }
+  if (body.activo !== undefined) datos.activo = body.activo ? 1 : 0;
+  // Dos activas no se llaman igual: en la grilla se distinguen por el nombre.
+  const nombre = datos.nombre ?? actividad?.nombre;
+  if ((datos.activo ?? actividad?.activo ?? 1) === 1) {
+    const otra = db
+      .prepare('SELECT 1 FROM actividades WHERE organizacion_id = ? AND activo = 1 AND LOWER(nombre) = LOWER(?) AND id IS NOT ?')
+      .get(organizacionId, nombre, actividad?.id ?? null);
+    if (otra) return { error: `Ya hay una actividad que se llama ${nombre}.` };
+  }
+  return { datos };
+}
+
+app.post('/api/actividades', soloAdmin, (req, res) => {
+  const organizacionId = req.usuario.organizacion_id;
+  const { error, datos } = datosDeActividad(req.body ?? {}, organizacionId);
+  if (error) return res.status(400).json({ error });
+  const id = withTransaction(() => {
+    const nueva = Number(
+      db
+        .prepare('INSERT INTO actividades (organizacion_id, nombre, horario, color) VALUES (?, ?, ?, ?)')
+        .run(organizacionId, datos.nombre, datos.horario, datos.color).lastInsertRowid
+    );
+    auditar(req, {
+      accion: 'crear',
+      entidad: 'organizacion',
+      entidad_id: organizacionId,
+      operacion_tipo: 'actividad',
+      operacion_id: nueva,
+      detalle: `Actividad "${datos.nombre}" creada, de horario ${datos.horario}`
+    });
+    return nueva;
+  });
+  res.status(201).json(actividadesDe(organizacionId).find((a) => a.id === id));
+});
+
+// Darla de baja la saca de la grilla con sus horarios; volver a darla de alta
+// los trae de vuelta.
+app.patch('/api/actividades/:id', soloAdmin, (req, res) => {
+  const organizacionId = req.usuario.organizacion_id;
+  const actividad = db.prepare('SELECT * FROM actividades WHERE id = ? AND organizacion_id = ?').get(Number(req.params.id), organizacionId);
+  if (!actividad) return res.status(404).json({ error: 'Actividad no encontrada.' });
+  const { error, datos } = datosDeActividad(req.body ?? {}, organizacionId, actividad);
+  if (error) return res.status(400).json({ error });
+  const cambios = diffCampos(actividad, datos, ['nombre', 'horario', 'color', 'activo']);
+  if (cambios) {
+    withTransaction(() => {
+      db.prepare(`UPDATE actividades SET ${Object.keys(datos).map((c) => `${c} = ?`).join(', ')} WHERE id = ?`).run(...Object.values(datos), actividad.id);
+      // Una actividad libre no tiene cupo: se entra cuando se quiere.
+      if (datos.horario === 'libre') db.prepare('UPDATE clases SET cupo = NULL WHERE actividad_id = ?').run(actividad.id);
+      auditar(req, {
+        accion: datos.activo === 0 ? 'anular' : 'editar',
+        entidad: 'organizacion',
+        entidad_id: organizacionId,
+        operacion_tipo: 'actividad',
+        operacion_id: actividad.id,
+        valor_anterior: cambios.anterior,
+        valor_nuevo: cambios.nuevo,
+        detalle: `Actividad "${datos.nombre ?? actividad.nombre}" ${datos.activo === 0 ? 'dada de baja' : 'editada'}`
+      });
+    });
+  }
+  res.json(actividadesDe(organizacionId).find((a) => a.id === actividad.id));
+});
+
+// Valida un horario. El alta trae `dias` (martes y jueves a las 19 se cargan
+// juntos) y la edición, `dia_semana`. Devuelve { error } o lo que se guarda,
+// con los días y los profes.
+function datosDeClase(body, organizacionId, clase = null) {
+  const actividad = db
+    .prepare('SELECT id, nombre, horario FROM actividades WHERE id = ? AND organizacion_id = ? AND activo = 1')
+    .get(Number(body.actividad_id), organizacionId);
+  if (!actividad) return { error: 'Elegí la actividad.' };
+  const dias = clase ? [body.dia_semana] : body.dias;
+  if (!Array.isArray(dias) || !dias.length) return { error: 'Elegí al menos un día.' };
+  if (dias.some((d) => !Number.isInteger(d) || d < 0 || d > 6) || new Set(dias).size !== dias.length) {
+    return { error: 'Los días no son válidos.' };
+  }
+  const { desde, hasta } = body;
+  if (!ES_HORA.test(String(desde)) || !ES_HORA.test(String(hasta))) return { error: 'Las horas van como 19:00.' };
+  if (hasta <= desde) return { error: 'La hora en que termina va después de la de inicio.' };
+  let sucursalId = null;
+  if (body.sucursal_id != null && body.sucursal_id !== '') {
+    const sucursal = db.prepare('SELECT id FROM sucursales WHERE id = ? AND organizacion_id = ?').get(Number(body.sucursal_id), organizacionId);
+    if (!sucursal) return { error: 'La sucursal no existe.' };
+    sucursalId = sucursal.id;
+  }
+  const detalle = String(body.detalle ?? '').trim() || null;
+  if (detalle && detalle.length > 60) return { error: 'El detalle es muy largo.' };
+  let cupo = null;
+  if (actividad.horario === 'fijo' && body.cupo != null && body.cupo !== '') {
+    cupo = Number(body.cupo);
+    if (!Number.isInteger(cupo) || cupo < 1 || cupo > 1000) return { error: 'El cupo es una cantidad de personas.' };
+  }
+  const ids = body.profes ?? [];
+  if (!Array.isArray(ids) || ids.length > 10 || new Set(ids).size !== ids.length) return { error: 'Los profes no son válidos.' };
+  const profes = [];
+  for (const id of ids) {
+    const profe = db.prepare('SELECT id, nombre FROM empleados WHERE id = ? AND organizacion_id = ? AND activo = 1').get(Number(id), organizacionId);
+    if (!profe) return { error: 'Ese profe no trabaja en este negocio.' };
+    profes.push(profe);
+  }
+  // Un profe no puede dar dos clases a la vez.
+  const pisada = db.prepare(
+    `SELECT actividades.nombre AS actividad, clases.desde, clases.hasta
+       FROM clase_profes
+       JOIN clases ON clases.id = clase_profes.clase_id
+       JOIN actividades ON actividades.id = clases.actividad_id
+      WHERE clase_profes.empleado_id = ? AND clases.activo = 1 AND actividades.activo = 1
+        AND clases.dia_semana = ? AND clases.desde < ? AND clases.hasta > ? AND clases.id IS NOT ?
+      LIMIT 1`
+  );
+  for (const profe of profes) {
+    for (const dia of dias) {
+      const otra = pisada.get(profe.id, dia, hasta, desde, clase?.id ?? null);
+      if (otra) return { error: `${profe.nombre} ya está en ${otra.actividad} el ${DIAS_GRILLA[dia]} de ${otra.desde} a ${otra.hasta}.` };
+    }
+  }
+  return { actividad, dias, profes, datos: { actividad_id: actividad.id, desde, hasta, sucursal_id: sucursalId, detalle, cupo } };
+}
+
+function guardarProfes(claseId, profes) {
+  db.prepare('DELETE FROM clase_profes WHERE clase_id = ?').run(claseId);
+  const insertar = db.prepare('INSERT INTO clase_profes (clase_id, empleado_id) VALUES (?, ?)');
+  for (const profe of profes) insertar.run(claseId, profe.id);
+}
+
+app.post('/api/clases', soloAdmin, (req, res) => {
+  const organizacionId = req.usuario.organizacion_id;
+  const { error, actividad, dias, profes, datos } = datosDeClase(req.body ?? {}, organizacionId);
+  if (error) return res.status(400).json({ error });
+  const ids = withTransaction(() =>
+    dias.map((dia) => {
+      const id = Number(
+        db
+          .prepare(
+            `INSERT INTO clases (actividad_id, organizacion_id, dia_semana, desde, hasta, sucursal_id, detalle, cupo)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+          )
+          .run(datos.actividad_id, organizacionId, dia, datos.desde, datos.hasta, datos.sucursal_id, datos.detalle, datos.cupo).lastInsertRowid
+      );
+      guardarProfes(id, profes);
+      auditar(req, {
+        accion: 'crear',
+        entidad: 'organizacion',
+        entidad_id: organizacionId,
+        operacion_tipo: 'clase',
+        operacion_id: id,
+        detalle: `Horario nuevo: ${textoClase(actividad.nombre, { ...datos, dia_semana: dia }, profes)}`
+      });
+      return id;
+    })
+  );
+  res.status(201).json(clasesDe(organizacionId).filter((c) => ids.includes(c.id)));
+});
+
+// Edita un horario entero, o lo saca de la grilla con { activo: false }.
+app.patch('/api/clases/:id', soloAdmin, (req, res) => {
+  const organizacionId = req.usuario.organizacion_id;
+  const clase = db
+    .prepare(
+      `SELECT clases.*, actividades.nombre AS actividad FROM clases JOIN actividades ON actividades.id = clases.actividad_id
+        WHERE clases.id = ? AND clases.organizacion_id = ? AND clases.activo = 1`
+    )
+    .get(Number(req.params.id), organizacionId);
+  if (!clase) return res.status(404).json({ error: 'Ese horario ya no está en la grilla.' });
+  const profesAntes = db
+    .prepare('SELECT empleados.id, empleados.nombre FROM clase_profes JOIN empleados ON empleados.id = clase_profes.empleado_id WHERE clase_id = ? ORDER BY empleados.nombre COLLATE NOCASE')
+    .all(clase.id);
+  const antes = textoClase(clase.actividad, clase, profesAntes);
+  if (req.body?.activo === false) {
+    withTransaction(() => {
+      db.prepare('UPDATE clases SET activo = 0 WHERE id = ?').run(clase.id);
+      auditar(req, {
+        accion: 'anular',
+        entidad: 'organizacion',
+        entidad_id: organizacionId,
+        operacion_tipo: 'clase',
+        operacion_id: clase.id,
+        detalle: `Horario sacado de la grilla: ${antes}`
+      });
+    });
+    return res.json({ ok: true });
+  }
+  const { error, actividad, dias, profes, datos } = datosDeClase(req.body ?? {}, organizacionId, clase);
+  if (error) return res.status(400).json({ error });
+  const despues = textoClase(actividad.nombre, { ...datos, dia_semana: dias[0] }, profes);
+  withTransaction(() => {
+    db.prepare(
+      'UPDATE clases SET actividad_id = ?, dia_semana = ?, desde = ?, hasta = ?, sucursal_id = ?, detalle = ?, cupo = ? WHERE id = ?'
+    ).run(datos.actividad_id, dias[0], datos.desde, datos.hasta, datos.sucursal_id, datos.detalle, datos.cupo, clase.id);
+    guardarProfes(clase.id, profes);
+    auditar(req, {
+      accion: 'editar',
+      entidad: 'organizacion',
+      entidad_id: organizacionId,
+      operacion_tipo: 'clase',
+      operacion_id: clase.id,
+      valor_anterior: JSON.stringify({ horario: antes, detalle: clase.detalle, cupo: clase.cupo }),
+      valor_nuevo: JSON.stringify({ horario: despues, detalle: datos.detalle, cupo: datos.cupo }),
+      detalle: `Horario editado: ${despues}`
+    });
+  });
+  res.json(clasesDe(organizacionId).find((c) => c.id === clase.id));
+});
+
 /* ---------- Abonos (CLAUDE.md §29, hist. §79) ---------- */
 
 // El módulo `abonos` (ver la tabla en schema.sql): un servicio que un cliente

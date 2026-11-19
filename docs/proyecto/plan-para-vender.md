@@ -16,6 +16,14 @@ Escalar es reforzarlo todo (servidor, datos, seguridad, integraciones),
 ponerlo en regla (contador, monotributo, abogado, marca) y cobrar los planes.
 Es un cambio grande, más de infraestructura y de trámites que de funciones.
 
+**Vender antes que sumar funciones** (usuario, 19 de noviembre): "lo que yo
+no quiero es entrar en el loop de querer agregar más funciones y no vender
+nunca". Se vende lo que ya hay, sin esperar a que el producto sea perfecto;
+lo que sí tiene que ser perfecto son las funciones actuales: sin errores,
+cómodas, entendibles y explicadas en el manual. Eso se termina de pulir con
+los primeros negocios conocidos. Las funciones nuevas llegan después, en
+versiones. Ver "Versión 1" en el punto 12.
+
 Quién hace cada cosa: **(U)** el usuario, porque es un trámite o una cuenta a
 su nombre; **(C)** código, que se hace en una sesión de trabajo; **(U+C)** las
 dos cosas.
@@ -31,9 +39,13 @@ infraestructura sigue como está.
 ## 0. Las decisiones que ordenan todo lo demás
 
 - [ ] **(U) Escalar sí o no**, después de la presentación.
-- [ ] **(U) De quién es el CUIT de Nexo:** el monotributo de Santino (ya
-  decidido como titular de los términos) o una sociedad. Con un contador. Si
-  el titular es menor de edad, planteárselo primero.
+- [x] **(U) De quién es el CUIT de Nexo:** **monotributo**, no sociedad
+  (usuario, 19 de noviembre). Una SAS es siempre responsable inscripto (IVA,
+  Ganancias, balance), y la idea no es escalar a toda costa sino un ingreso
+  cómodo para los dos sin pasar de la K. Responsable inscripto solo si Nexo
+  pasa a ser una empresa a la que se dediquen al 100 %; ese cambio sigue el
+  protocolo del punto 8. El monotributo es de Santino (los dos tienen 19); si
+  Joaquín suma mucho, pasan a ser socios, y eso lo arreglan entre ellos.
 - [ ] **(U) Dónde corre Nexo y con qué base de datos** (punto 2).
 - [ ] **(U) Los planes y sus precios** (punto 7).
 
@@ -155,6 +167,12 @@ solas y avisen**, sí.
 - [ ] **(U) Pruebas con plata real** pendientes: el QR del mostrador, un pago
   en cuotas, uno con retenciones; Mercado Libre con una cuenta de vendedor
   real; publicar la app de Tienda Nube en su tienda de apps.
+- [ ] **(U) Certificar la app de Mercado Libre** (Developer Partner Program),
+  para que no salga como no verificada al conectar (lo vio el usuario el 18
+  de noviembre de 2026). No se pide como la de Google: Mercado Libre la da a
+  su criterio, con un mínimo de vendedores que usen la app seguido (los
+  últimos 3 meses) y los requisitos que fija un Integration Expert, revisados
+  cada trimestre. Recién tiene sentido con negocios reales usándola.
 - [ ] **(C) Retenciones de Mercado Pago** (§16, §33), recargo por cuotas y
   acreditación diferida.
 - Más integraciones, según lo que pidan los clientes: Shopify o WooCommerce
@@ -210,16 +228,37 @@ abierto.
     anual en pesos es riesgoso);
   - Gratis con topes como puerta de entrada, y Pro como el plan de la IA.
 
+  **Criterios del usuario (19 de noviembre):** no todas las funciones en
+  todos los planes (el más barato tendría cosas que nadie usa), y no un
+  precio por cantidad de negocios activos. Lo difícil es que Nexo abarca
+  muchos rubros y cada uno se mide distinto: un comercio por sucursales y
+  cajas, un gimnasio por socios activos, y así. La estructura se arma con
+  eso en cuenta; queda para verlo bien con el equipo.
+
 ## 8. Legal y administrativo
 
-- [ ] **(U) Contador y monotributo** (o sociedad): destraba ARCA en
-  producción y facturar las suscripciones. **Los topes del monotributo**
+- [ ] **(U) Contador y monotributo:** destraba ARCA en producción y
+  facturar las suscripciones (factura C, cuota fija sin porcentaje por
+  factura; aparte pueden ir Ingresos Brutos según la provincia y las
+  retenciones al cobrar). Recategorización en agosto y febrero, por lo
+  facturado en los últimos 12 meses; pasar el tope de la K saca del
+  monotributo en el momento. **Los topes del monotributo**
   (anuales, vigentes desde agosto de 2026, según ARCA): A $ 12.009.410, B
   $ 17.595.183, C $ 24.670.494, D $ 30.628.651, E $ 36.028.231, F
   $ 45.151.659, G $ 53.995.799, H $ 81.924.660, I $ 91.699.762, J
   $ 105.012.519 y K $ 126.610.839. La A alcanza para unos 50 clientes de
   Emprendedor; la K, para unos 500. La cuota mensual de cada categoría la da
   el contador.
+- **Si algún día se pasa a una SAS** (usuario, 19 de noviembre): cada negocio
+  le delega la factura electrónica al CUIT de Nexo, así que cambiar de CUIT
+  obliga a todos a volver a delegar. Protocolo: (1) los trámites de la SAS y
+  su certificado de ARCA, antes de tocar nada; (2) avisar a todos los
+  clientes desde Nexo con tiempo y una guía para delegarle a la SAS (la
+  delegación nueva se puede hacer antes, conviviendo con la vieja); (3) el
+  día del cambio, Nexo pasa a facturar con la SAS y deja de facturar las
+  suscripciones con el monotributo; (4) a quien no delegó, Nexo se lo pide
+  al entrar. El certificado propio de cada negocio (§33) no depende de este
+  cambio.
 - [ ] **(U) Los datos del titular** en `/etc/nexo/nexo.env`
   (`NEXO_TITULAR_NOMBRE`, `NEXO_TITULAR_CUIL`, `NEXO_TITULAR_DOMICILIO`). Sin
   ellos, `/terminos` y `/privacidad` dicen "a completar". Al cambiarlos, todas
@@ -303,6 +342,37 @@ Anotadas sin tocarlas hasta que se decida escalar:
 2. **Para poder vender:** contador y monotributo, ARCA en producción, el cobro
    automático de los planes, el servidor pago con su servidor de prueba, el
    dominio con su mail y el abogado.
+
+   **Antes del primer piloto con datos reales** (el gimnasio de artes
+   marciales, 19 de noviembre; ver `docs/investigaciones/investigacion-gymdesk.md`).
+   Lo mínimo para que sus datos no se pierdan ni los vea nadie más, sacado
+   de los puntos 2 y 3; el servidor pago y Postgres esperan a cobrar:
+   - **Litestream** (C): hoy el respaldo a la nube es diario; con esto se
+     pierden segundos, no un día. Lo más importante.
+   - **El servidor endurecido** (U+C): ssh solo con llave, firewall,
+     fail2ban, actualizaciones de seguridad, HSTS.
+   - **Verificación en dos pasos** para los administradores (C).
+   - **La prueba de que un negocio no ve los datos de otro** y una revisión
+     de seguridad (C).
+   - **El repo privado**, con la deploy key antes (U).
+   - **Restaurar un respaldo una vez** de punta a punta y anotar cuánto
+     tarda (U+C).
+   - **Los datos del titular** en los términos y la privacidad (U), aunque
+     el abogado venga después.
+
+   **Versión 1, en paralelo con esos trámites** (usuario, 19 de noviembre):
+   - **Funciones congeladas** después de presentar. Una idea nueva va a la
+     lista de próximas versiones y no se hace, salvo que un negocio piloto no
+     pueda trabajar sin ella.
+   - **Puesta a punto de lo que hay:** recorrer cada pantalla como alguien
+     que nunca usó Nexo, arreglar todo error y todo lo que confunde, y dejar
+     el manual (`#/ayuda`) completo y al día.
+   - **Pilotos con negocios conocidos,** gratis o con descuento a cambio de
+     usarlo de verdad y contar qué falla. Lo que encuentran se arregla primero.
+   - **Arrancar a cobrar** cuando los pilotos trabajen un mes sin errores
+     graves y los trámites estén.
+   - Después, **versiones:** las funciones nuevas salen de a tandas, con su
+     aviso de novedades.
 3. **Con los primeros clientes:** integraciones que se recuperan solas, el
    CAEA, la IA paga con cupos, WhatsApp con el número real, Android y la
    Microsoft Store, y la migración a Postgres.

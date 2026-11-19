@@ -254,6 +254,12 @@ export const RUTAS_PERMISOS = {
   'PATCH /api/descuentos-socio/:id': 'admin',
   'GET /api/socios': 'ambos',
   'GET /api/socios/ingresos': 'ambos',
+  // La grilla de clases (hist. §200): la ve la recepción, la arma el admin.
+  'GET /api/grilla': 'ambos',
+  'POST /api/actividades': 'admin',
+  'PATCH /api/actividades/:id': 'admin',
+  'POST /api/clases': 'admin',
+  'PATCH /api/clases/:id': 'admin',
   // La pantalla de entrada y los avisos que le deja a la recepción (hist. §144).
   // El QR de Mercado Pago en el mostrador (hist. §145): cancelar el que no se
   // pagó. Solo las ventas que esperan un QR, no cualquier venta.

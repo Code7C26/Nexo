@@ -539,6 +539,24 @@ export const SECCIONES_EN = {
       "In **Check-in**, the front desk looks up the member when they arrive: Nexo warns you if they owe the fee."
     ]
   },
+  clases: {
+    titulo: "The class schedule",
+    pantalla: "Classes",
+    preguntas: ["how do i set up the class schedule", "how do i add class times", "how do i assign an instructor to a class", "what classes are on today", "how do i share the schedule on instagram"],
+    palabras: ["class", "classes", "schedule", "timetable", "time", "times", "activity", "activities", "instructor", "instructors", "coach", "capacity", "week"],
+    bloques: [
+      "**Classes** shows the gym's week: every activity with its times and who teaches each class. The whole team sees it; whoever runs the business sets it up.",
+      { pasos: [
+        "Tap **New activity**: the name (BJJ, Functional), the color and whether it's **Fixed** (classes at set times) or **Open** (available during a time window, like the weights room).",
+        "Tap **New time slot**: the activity, the days (Tuesday and Thursday at 7 pm are added in one go), the start and end time, and the instructors. The detail (Beginners, Kids) and the capacity are optional.",
+        "To change or remove a time slot, tap it on the schedule."
+      ] },
+      "Two classes can be at the same time: they go side by side. An instructor can't be in two classes at once; Nexo warns you.",
+      "Instructors are the business's employees: if you add one from the schedule, they also show up in **Employees**.",
+      "**Image to share** turns the week's schedule into an image for Instagram or your WhatsApp status. On a phone it's shared directly.",
+      { nota: "On a phone the schedule shows one day at a time: choose the day at the top." }
+    ]
+  },
   "datos-del-negocio": {
     titulo: "Your business details",
     pantalla: "Settings › Business details",

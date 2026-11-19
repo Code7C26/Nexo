@@ -1019,7 +1019,29 @@ const SECCIONES_ES = [
       ] },
       "En **Ingreso**, la recepción busca al socio cuando llega: Nexo avisa si debe la cuota."
     ],
-    ver: ["cobrar"]
+    ver: ["cobrar", "clases"]
+  },
+  {
+    id: "clases",
+    grupo: "Servicios y gimnasio",
+    titulo: "La grilla de clases",
+    pantalla: ["#/clases", "Clases"],
+    modulo: "socios",
+    preguntas: ["cómo armo la grilla de clases", "cómo cargo los horarios de las clases", "cómo le asigno un profe a una clase", "qué clases hay hoy", "cómo comparto la grilla en instagram"],
+    palabras: ["clase", "clases", "grilla", "horario", "horarios", "actividad", "actividades", "profe", "profes", "profesor", "instructor", "cupo", "semana", "turno"],
+    bloques: [
+      "En **Clases** está la semana del gimnasio: todas las actividades con sus horarios y quién da cada clase. La ve todo el equipo; la arma quien administra.",
+      { pasos: [
+        "Tocá **Nueva actividad**: el nombre (BJJ, Funcional), el color y si es de horario **Fijo** (clases a una hora) o **Libre** (abierta en una franja, como la sala de musculación).",
+        "Tocá **Nuevo horario**: la actividad, los días (martes y jueves a las 19 se cargan de una vez), a qué hora empieza y termina, y los profes. El detalle (Principiantes, Kids) y el cupo son opcionales.",
+        "Para cambiar o sacar un horario, tocalo en la grilla."
+      ] },
+      "Dos clases pueden ser a la misma hora: van una al lado de la otra. Un profe no puede estar en dos clases a la vez; Nexo te avisa.",
+      "Los profes son los empleados del negocio: si sumás uno desde la grilla, aparece también en **Empleados**.",
+      "**Imagen para compartir** arma la grilla de la semana en una imagen para Instagram o el estado de WhatsApp. En el celular se comparte directo.",
+      { nota: "En el celular la grilla se ve de a un día: elegí el día arriba." }
+    ],
+    ver: ["socios", "horarios"]
   },
 
   /* ---------- Tu cuenta y tu equipo ---------- */

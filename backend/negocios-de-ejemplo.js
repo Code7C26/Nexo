@@ -592,7 +592,31 @@ async function armarGimnasio(n) {
     ['Servicios', 98000, 'Luz', 12],
     ['Mantenimiento', 45000, 'Service de las cintas', 20]
   ]);
-  return `${socios.length + 1} socios (${alDia + 1} al día, 2 deben), 3 planes y un combo, y la barra con ${ventas} ventas`;
+
+  // La grilla de clases (hist. §200): la sala abierta todo el día y las
+  // clases con sus profes, algunas a la misma hora.
+  const profe = async (nombre) => (await n.api.post('/api/empleados', { nombre })).id;
+  const [vale, gonza, euge, pato] = [await profe('Vale Ríos'), await profe('Gonza Paz'), await profe('Euge Torres'), await profe('Pato Díaz')];
+  const actividad = async (nombre, color, horario = 'fijo') => (await n.api.post('/api/actividades', { nombre, color, horario })).id;
+  const sala = await actividad('Musculación', 'gris', 'libre');
+  const func = await actividad('Funcional', 'naranja');
+  const cross = await actividad('Crossfit', 'rojo');
+  const spinning = await actividad('Spinning', 'azul');
+  const yoga = await actividad('Yoga', 'verde');
+  const clase = (actividad_id, dias, desde, hasta, profes, extra = {}) =>
+    n.api.post('/api/clases', { actividad_id, dias, desde, hasta, profes, ...extra });
+  await clase(sala, [0, 1, 2, 3, 4], '07:00', '23:00', []);
+  await clase(sala, [5], '09:00', '14:00', []);
+  await clase(func, [0, 2, 4], '08:00', '09:00', [vale], { cupo: 15 });
+  await clase(func, [0, 2, 4], '19:00', '20:00', [vale], { cupo: 15 });
+  await clase(cross, [1, 3], '18:00', '19:00', [gonza], { cupo: 12 });
+  await clase(cross, [1, 3], '20:00', '21:00', [gonza], { cupo: 12, detalle: 'Avanzados' });
+  await clase(spinning, [0, 2], '19:00', '19:45', [pato], { cupo: 20 });
+  await clase(spinning, [1, 3], '09:00', '09:45', [pato], { cupo: 20 });
+  await clase(yoga, [1, 3], '19:00', '20:15', [euge], { detalle: 'Todos los niveles' });
+  await clase(yoga, [5], '10:00', '11:15', [euge]);
+  await clase(func, [5], '10:00', '11:00', [vale, gonza], { detalle: 'Clase abierta' });
+  return `${socios.length + 1} socios (${alDia + 1} al día, 2 deben), 3 planes y un combo, la grilla de clases y la barra con ${ventas} ventas`;
 }
 
 /* ---------- Clima Sur: servicios con presupuestos, trabajos y abonos ---------- */

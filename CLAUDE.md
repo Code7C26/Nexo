@@ -1285,7 +1285,9 @@ Implementado hoy (Etapa F, §38):
   suma el punto de venta.
 - **Socios y cuotas del gimnasio:** van como un módulo reusable aparte (ver
   `handoff.md`). Un gimnasio también compra y vende productos: su preset
-  combina comercio con socios.
+  combina comercio con socios. Con socios va la **grilla de clases** (hist.
+  §200): actividades fijas o libres, sus horarios en la semana y los profes
+  (que son empleados), con una imagen para compartir.
 - **Tipos más complejos** (barbería con turnos y mensajes, restaurante con
   mesas y comandas): se muestran como "Próximamente" hasta tener su módulo.
 
