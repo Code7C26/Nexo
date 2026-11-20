@@ -2951,6 +2951,9 @@ function abrirModalProducto(producto = null, { tipo } = {}) {
   form.mano_obra_por.value = producto?.mano_obra_por ?? "servicio";
   form.categoria_id.value = producto?.categoria_id ?? "";
   form.precio_venta.value = producto?.precio_venta ?? "";
+  // Vacío si todavía no tiene: así se ve que falta, en vez de un 0.
+  form.costo.value = producto?.precio_costo > 0 ? Math.round(producto.precio_costo * 100) / 100 : "";
+  form.costo.dataset.inicial = form.costo.value;
   form.margen_objetivo.value = producto?.margen_objetivo ?? "";
   form.stock_minimo.value = producto?.stock_minimo ?? "";
   form.stock_maximo.value = producto?.stock_maximo ?? "";
@@ -2988,6 +2991,9 @@ function mostrarCamposSegunTipo() {
     (esServicio || conVariantes || !["kg", "g", "l", "ml"].includes(form.unidad.value)) && !form.plu.value;
   document.getElementById("productoDuracionCampo").hidden = !esServicio;
   document.getElementById("productoManoObraCampos").hidden = !esServicio;
+  // El de un servicio sale de su mano de obra y sus materiales, y el de cada
+  // variante se carga en Variantes.
+  document.getElementById("productoCostoCampo").hidden = esServicio || conVariantes || !esAdmin();
   document.getElementById("productoUnidadEtiqueta").textContent = esServicio ? "Se cobra por" : "Se vende por";
 }
 document.getElementById("formProducto").tipo.addEventListener("change", mostrarCamposSegunTipo);
@@ -3049,11 +3055,21 @@ document.getElementById("formProducto").addEventListener("submit", async (e) => 
     if (Object.keys(precios).length > 0) datos.precios = precios;
   }
 
-  await api(productoEditandoId ? `/api/productos/${productoEditandoId}` : "/api/productos", {
+  const guardado = await api(productoEditandoId ? `/api/productos/${productoEditandoId}` : "/api/productos", {
     method: productoEditandoId ? "PATCH" : "POST",
     body: datos,
     error: `No se pudo guardar el ${terminoDeTipo(datos.tipo)}.`
   });
+  // El costo va aparte (POST /api/productos/:id/costo): queda en el historial
+  // de stock, como el de "Lo que ya tenías".
+  const costo = form.costo.value.trim();
+  if (!document.getElementById("productoCostoCampo").hidden && costo !== "" && costo !== form.costo.dataset.inicial) {
+    await api(`/api/productos/${productoEditandoId ?? guardado.id}/costo`, {
+      method: "POST",
+      body: { costo: Number(costo) },
+      error: "Se guardó, pero no se pudo cargar el costo."
+    });
+  }
 
   const eraEdicion = productoEditandoId !== null;
   // Con productos y servicios, la tabla queda en la pestaña de lo que se
@@ -3195,7 +3211,7 @@ function preciosPorListaVarianteHtml(v) {
 function renderVariantesTabla() {
   const body = document.getElementById("variantesProductoBody");
   if (variantesCache.length === 0) {
-    body.innerHTML = filaVacia(8, "Todavía no hay variantes creadas.");
+    body.innerHTML = filaVacia(9, "Todavía no hay variantes creadas.");
     return;
   }
   body.innerHTML = variantesCache
@@ -3205,6 +3221,7 @@ function renderVariantesTabla() {
       <td data-label="Combinación">${esc(v.combinacion)}</td>
       <td data-label="SKU"><input type="text" class="variante-sku" value="${esc(v.sku ?? "")}" placeholder="—" /></td>
       <td data-label="Código de barras"><input type="text" class="variante-codigo-barras" value="${esc(v.codigo_barras ?? "")}" placeholder="—" autocomplete="off" maxlength="60" /></td>
+      <td data-label="Costo" class="align-right col-admin"><input type="number" step="0.01" min="0" class="variante-costo" value="${v.precio_costo > 0 ? Math.round(v.precio_costo * 100) / 100 : ""}" data-inicial="${v.precio_costo > 0 ? Math.round(v.precio_costo * 100) / 100 : ""}" placeholder="Sin costo" autocomplete="off" /></td>
       <td data-label="Precio de venta" class="align-right"><input type="number" step="0.01" min="0" class="variante-precio" value="${esc(v.precio_venta ?? "")}" placeholder="Sin precio propio" /></td>
       <td data-label="Precios por lista" class="variante-precios-lista">${preciosPorListaVarianteHtml(v)}</td>
       <td data-label="Stock" class="align-right mono">${numero(v.stock)}</td>
@@ -3236,6 +3253,15 @@ function renderVariantesTabla() {
         body: body,
         error: "No se pudo guardar la variante."
       });
+      // El costo, como el del producto (POST /api/productos/:id/costo).
+      const costo = fila.querySelector(".variante-costo");
+      if (esAdmin() && costo.value.trim() !== "" && costo.value.trim() !== costo.dataset.inicial) {
+        await api(`/api/productos/${variantesProductoId}/costo`, {
+          method: "POST",
+          body: { variante_id: Number(varianteId), costo: Number(costo.value) },
+          error: "Se guardó, pero no se pudo cargar el costo."
+        });
+      }
       await refrescar([cargarVariantesModal(), cargarProductos()]);
       if (productoFichaId === variantesProductoId) await abrirFichaProducto(productoFichaId);
       avisar("Variante actualizada.", "ok");

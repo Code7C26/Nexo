@@ -483,6 +483,7 @@ export const RUTAS_PERMISOS = {
   'GET /api/carga-inicial': 'admin',
   'GET /api/carga-inicial/stock': 'admin',
   'POST /api/carga-inicial/stock': 'admin',
+  'POST /api/productos/:id/costo': 'admin',
   'GET /api/carga-inicial/saldos': 'admin',
   'POST /api/carga-inicial/saldos': 'admin',
   'GET /api/carga-inicial/ventas': 'admin',

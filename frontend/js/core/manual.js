@@ -180,7 +180,7 @@ const SECCIONES_ES = [
         "Tocá **Guardar producto**."
       ] },
       "Para cambiar un precio, abrí el producto desde la lista y editalo. El código o SKU sirve para buscarlo rápido; el **Código de barras** es el que lee el lector del mostrador, y el **Código de balanza (PLU)**, el de lo que pesás en una balanza con etiquetas.",
-      { nota: "El costo se actualiza solo cada vez que cargás una compra: Nexo hace el promedio entre lo que tenías y lo que entró." }
+      { nota: "El costo se actualiza solo cada vez que cargás una compra: Nexo hace el promedio entre lo que tenías y lo que entró. Lo que no vino de una compra (lo que trajiste de Tienda Nube sin costo, por ejemplo) se carga en **Editar**, en **Costo de cada uno**; con talles o colores, el de cada variante va en **Variantes**." }
     ],
     ver: ["variantes", "listas-precios", "categorias", "registrar-compra"]
   },

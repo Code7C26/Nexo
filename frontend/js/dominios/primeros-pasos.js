@@ -20,6 +20,14 @@ import { mostrarVista } from "../core/router.js";
 const panel = document.getElementById("primerosPasos");
 const claveOculto = () => `nexo.primerosPasos.oculto.${document.documentElement.dataset.organizacion}`;
 
+// El paso de una función va si está prendida y viene con el tipo de negocio:
+// una tienda online que prendió los socios no arranca por "Creá tus planes".
+// Cuál de las dos ventas (mostrador o alta) sigue solo lo prendido.
+function deSuTipo(modulo) {
+  const tipo = negocio.perfiles?.tipos.find((t) => t.clave === negocio.rubro);
+  return moduloActivo(modulo) && (!tipo || tipo.modulos.includes(modulo));
+}
+
 // Cada paso: qué hacer, para qué, si ya está, y adónde lleva (una vista y, si
 // hay, el botón que abre el alta, o un hash con subruta).
 function pasos(c) {
@@ -53,7 +61,7 @@ function pasos(c) {
   // Venta online (hist. §128): justo después del catálogo, que es lo que se
   // publica. Queda hecho con una tienda conectada o con una venta anotada
   // por Instagram, WhatsApp u otro canal de internet.
-  if (moduloActivo("canales")) {
+  if (deSuTipo("canales")) {
     lista.push({
       titulo: "Conectá tu tienda online",
       detalle: "Tienda Nube o Mercado Libre: el stock y los precios se actualizan solos, y cada pedido entra como venta. Si vendés por Instagram o WhatsApp, anotá por dónde al cargar la venta.",
@@ -61,7 +69,22 @@ function pasos(c) {
       hash: "#/configuracion/tienda-nube"
     });
   }
-  if (moduloActivo("socios")) {
+  // Con stock y sin costo (lo que entró de una tienda que no lo tenía), cada
+  // venta saldría con toda la plata de ganancia. Se carga en la planilla de
+  // "Lo que ya tenías", que deja el costo en el historial.
+  if (moduloActivo("stock") && c.con_stock > 0) {
+    lista.push({
+      titulo: `Cargá lo que te costó cada ${termino("singular")}`,
+      detalle: !c.sin_costo
+        ? "Con el costo, Nexo sabe cuánto ganás en cada venta."
+        : c.sin_costo === 1
+          ? "Hay uno con stock y sin costo: sin él, Nexo no sabe cuánto ganás cuando lo vendés."
+          : `Hay ${c.sin_costo} con stock y sin costo: sin él, Nexo no sabe cuánto ganás cuando los vendés.`,
+      hecho: !c.sin_costo,
+      hash: "#/configuracion/stock-inicial"
+    });
+  }
+  if (deSuTipo("socios")) {
     lista.push(
       {
         titulo: "Creá tus planes",
@@ -79,7 +102,7 @@ function pasos(c) {
     vista: "clientes",
     boton: "btnNuevoCliente"
   });
-  if (moduloActivo("crm")) {
+  if (deSuTipo("crm")) {
     lista.push({
       titulo: "Anotá tu primera consulta",
       detalle: "Quién te preguntó, qué busca y cuándo volver a escribirle: Nexo te lo recuerda.",
@@ -88,7 +111,7 @@ function pasos(c) {
       boton: "btnNuevaConsulta"
     });
   }
-  if (moduloActivo("trabajos")) {
+  if (deSuTipo("trabajos")) {
     lista.push({
       titulo: "Programá tu primer trabajo",
       detalle: "Qué hay que hacer, cuándo y quién; al terminarlo, se cobra.",
@@ -97,7 +120,7 @@ function pasos(c) {
       boton: "btnNuevoTrabajo"
     });
   }
-  if (moduloActivo("abonos")) {
+  if (deSuTipo("abonos")) {
     lista.push({
       titulo: "Cargá un abono",
       detalle: "Un servicio que un cliente te paga todos los meses.",

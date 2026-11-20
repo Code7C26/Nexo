@@ -7535,6 +7535,7 @@
               <th scope="col">Combinación</th>
               <th scope="col">SKU</th>
               <th scope="col">Código de barras</th>
+              <th scope="col" class="align-right col-admin">Costo</th>
               <th scope="col" class="align-right">Precio de venta</th>
               <th scope="col">Precios por lista</th>
               <th scope="col" class="align-right">Stock</th>
@@ -7694,6 +7695,14 @@
         </div>
         <label>Precio de venta (lista predeterminada)
           <input type="number" name="precio_venta" step="0.01" min="0" placeholder="0.00" autocomplete="off" />
+        </label>
+        <!-- El costo a mano (solo el admin, sin variantes: cada variante tiene
+             el suyo en Variantes). Lo que entra por una compra lo cambia
+             solo; esto es para lo que no vino de una compra en Nexo, como lo
+             que se trajo de una tienda sin costo. -->
+        <label class="col-admin" id="productoCostoCampo">Costo de cada uno
+          <input type="number" name="costo" step="0.01" min="0" placeholder="0.00" autocomplete="off" />
+          <span class="campo-ayuda">Lo que te costó. Tus compras en Nexo lo actualizan solas.</span>
         </label>
         <!-- Opciones en runtime (ALICUOTAS_IVA de core/fiscal.js). El precio
              de arriba es el final, con el IVA adentro. Un negocio

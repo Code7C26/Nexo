@@ -11,7 +11,7 @@
 
 - Al cerrar una etapa, se hacen tres cosas:
   - su relato completo se agrega al final de `docs/proyecto/handoff-historico.md` con el
-    siguiente número (hoy el último es §209);
+    siguiente número (hoy el último es §210);
   - acá se actualizan "Estado actual" y "Qué sigue";
   - si cambió alguna decisión vigente, se actualiza también esa lista.
 - Nunca apilar secciones "Última etapa" en este archivo: así fue como llegó a
@@ -59,10 +59,17 @@ sistemas de gimnasios** (pedido del usuario; investigado antes en
 - **Regla nueva del usuario:** antes de diseñar algo, averiguar cómo lo hace la
   mejor competencia del rubro y anotarlo en `docs/investigaciones/`.
 
-**20 de noviembre, hist. §209:** Personalizar del Resumen mueve cada pieza
+**20 de noviembre, hist. §209 (publicado, PR #109):** Personalizar del Resumen mueve cada pieza
 arrastrándola desde sus tres rayas (mouse y dedo, con scroll automático y
 flechas del teclado), en vez de los botones de subir y bajar; y "Por socio"
 pasa a "Promedio por socio" (pedidos del usuario).
+
+**20 de noviembre, hist. §210 (sin publicar):** la guía de primeros pasos va según el tipo
+de negocio y sus funciones (una tienda online con Socios prendido ya no ve
+"Creá tus planes"). El costo se carga a mano en Editar (y en Variantes), Tienda
+Nube trae el costo cuando lo tiene, y la guía avisa los productos con stock y
+sin costo. Arreglado el 500 al traer el catálogo de Tienda Nube. **Falta:**
+probarlo en el navegador y publicar.
 
 **Lo que sigue: el punto 7** (la planilla de productos y clientes), sin
 empezar. Antes, ver cómo importan Dux, Contagram y Praxia.
