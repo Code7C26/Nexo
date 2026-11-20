@@ -964,7 +964,7 @@ const SECCIONES_ES = [
         "qué se compra y a quién;",
         "el IVA del período."
       ] },
-      "Con **Personalizar** elegís qué piezas ver y en qué orden. Arranca con las de tu tipo de negocio.",
+      "Con **Personalizar** elegís qué piezas ver, y cada una se cambia de lugar arrastrándola desde sus tres rayas. Arranca con las de tu tipo de negocio.",
       "La ganancia de cada venta usa el costo que tenía el producto cuando lo vendiste, aunque después cambie."
     ],
     ver: ["iva", "que-reponer", "venta-online"]

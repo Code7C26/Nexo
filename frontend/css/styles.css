@@ -10306,10 +10306,24 @@ a.asistente-guia-whatsapp:hover { border-color: var(--line-strong); }
 .tablero-elegir strong { display: block; font-size: var(--txt-sm); }
 .tablero-elegir small { display: block; font-size: var(--txt-2xs); color: var(--ink-muted); }
 .tablero-fila.is-oculta strong { color: var(--ink-muted); }
-.tablero-mover { display: flex; gap: 2px; }
-.tablero-mover .btn-icon { min-width: 36px; min-height: 36px; }
-.tablero-mover .btn-icon:disabled { opacity: 0.3; }
-.tablero-subir svg { transform: rotate(180deg); }
+/* El ícono para arrastrar (las tres rayas de siempre): touch-action: none
+   para que el dedo arrastre la pieza y no la lista. */
+.tablero-arrastrar {
+  min-width: 40px;
+  min-height: 40px;
+  color: var(--ink-muted);
+  cursor: grab;
+  touch-action: none;
+}
+.tablero-arrastrar:hover { color: var(--ink); }
+.tablero-fila.is-arrastrando {
+  position: relative;
+  z-index: 1;
+  background: var(--surface-hover);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.35);
+  border-radius: var(--r-sm);
+}
+.tablero-fila.is-arrastrando .tablero-arrastrar { cursor: grabbing; color: var(--ink); }
 .tablero-acciones { justify-content: space-between; }
 .tablero-acciones .btn[hidden] { display: none; }
 @media (max-width: 860px) {

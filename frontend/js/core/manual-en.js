@@ -497,7 +497,7 @@ export const SECCIONES_EN = {
         "what's purchased and from whom;",
         "the VAT for the period."
       ] },
-      "With **Customize** you choose which pieces to see and in what order. It starts with the ones for your type of business.",
+      "With **Customize** you choose which pieces to see, and you move each one by dragging it by its three lines. It starts with the ones for your type of business.",
       "The profit of each sale uses the cost the product had when you sold it, even if it changes later."
     ]
   },

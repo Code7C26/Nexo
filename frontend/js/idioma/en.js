@@ -5719,8 +5719,13 @@ export default {
   "{0} altas y {1} bajas en el período ({2} % de bajas)": "{0} sign-ups and {1} cancellations in the period ({2} % churn)",
   "No hubo cuotas en este período": "No fees in this period",
   "{0} % de {1}; {2} vencido": "{0} % of {1}; {2} overdue",
-  "{0} por socio activo": "{0} per active member",
+  "En promedio, {0} por socio activo": "On average, {0} per active member",
   "Hace dos semanas o más; {0} parece que dejaron": "Two weeks or more; {0} seem to have quit",
   "{0}: {1} entradas": "{0}: {1} check-ins",
-  "Nadie entró en estos días.": "Nobody checked in on these days."
+  "Nadie entró en estos días.": "Nobody checked in on these days.",
+  "Promedio por socio": "Average per member",
+  "Lo cobrado de cuotas dividido por los socios activos": "Fees collected divided by active members",
+  "Elegí qué ver, y arrastrá cada pieza desde sus tres rayas para cambiarla de lugar. Es tuyo: los demás del negocio ven el suyo.": "Choose what to see, and drag each piece by its three lines to move it. It’s yours: everyone else in the business sees their own.",
+  "Arrastrá para cambiarla de lugar": "Drag to move it",
+  "Mover {0}: arrastrala o usá las flechas": "Move {0}: drag it or use the arrow keys"
 };

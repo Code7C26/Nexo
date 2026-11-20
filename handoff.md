@@ -11,7 +11,7 @@
 
 - Al cerrar una etapa, se hacen tres cosas:
   - su relato completo se agrega al final de `docs/proyecto/handoff-historico.md` con el
-    siguiente número (hoy el último es §208);
+    siguiente número (hoy el último es §209);
   - acá se actualizan "Estado actual" y "Qué sigue";
   - si cambió alguna decisión vigente, se actualiza también esa lista.
 - Nunca apilar secciones "Última etapa" en este archivo: así fue como llegó a
@@ -40,7 +40,7 @@ repetidos en `index.html` (arreglado, con un test que no deja repetir ids), y
 la lista de precios del proveedor en foto o larga daba 413 porque el parser
 global cortaba en 100 KB antes del límite de la ruta.
 
-**20 de noviembre, hist. §208: las cuotas de los socios, como en los
+**20 de noviembre, hist. §208 (publicado, PR #108): las cuotas de los socios, como en los
 sistemas de gimnasios** (pedido del usuario; investigado antes en
 `docs/investigaciones/investigacion-cuotas-gimnasio.md`).
 - **Un cobro por socio y por período:** los planes que empiezan el mismo día
@@ -58,6 +58,11 @@ sistemas de gimnasios** (pedido del usuario; investigado antes en
   navegador con Gimnasio Fuerza (compu y celular).
 - **Regla nueva del usuario:** antes de diseñar algo, averiguar cómo lo hace la
   mejor competencia del rubro y anotarlo en `docs/investigaciones/`.
+
+**20 de noviembre, hist. §209:** Personalizar del Resumen mueve cada pieza
+arrastrándola desde sus tres rayas (mouse y dedo, con scroll automático y
+flechas del teclado), en vez de los botones de subir y bajar; y "Por socio"
+pasa a "Promedio por socio" (pedidos del usuario).
 
 **Lo que sigue: el punto 7** (la planilla de productos y clientes), sin
 empezar. Antes, ver cómo importan Dux, Contagram y Praxia.
