@@ -64,12 +64,12 @@ arrastrándola desde sus tres rayas (mouse y dedo, con scroll automático y
 flechas del teclado), en vez de los botones de subir y bajar; y "Por socio"
 pasa a "Promedio por socio" (pedidos del usuario).
 
-**20 de noviembre, hist. §210 (sin publicar):** la guía de primeros pasos va según el tipo
+**20 de noviembre, hist. §210 (publicado, PR #110):** la guía de primeros pasos va según el tipo
 de negocio y sus funciones (una tienda online con Socios prendido ya no ve
 "Creá tus planes"). El costo se carga a mano en Editar (y en Variantes), Tienda
 Nube trae el costo cuando lo tiene, y la guía avisa los productos con stock y
 sin costo. Arreglado el 500 al traer el catálogo de Tienda Nube. **Falta:**
-probarlo en el navegador y publicar.
+que el amigo del usuario lo pruebe con su tienda.
 
 **Lo que sigue: el punto 7** (la planilla de productos y clientes), sin
 empezar. Antes, ver cómo importan Dux, Contagram y Praxia.
