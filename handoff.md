@@ -34,7 +34,7 @@ PR #102, con el cargador de hist. §201).**
 - **Falta:** cargar la cuenta del dojo del profe (hist. §201: el usuario la
   crea y trae los datos; yo corro `npm run cargar`).
 
-**20 de noviembre, hist. §206 y §207:** el "Editar" de las actividades de
+**20 de noviembre, hist. §206 y §207 (publicado, PR #107):** el "Editar" de las actividades de
 Clases y el "Dejar en cuenta corriente" del mostrador no andaban por ids
 repetidos en `index.html` (arreglado, con un test que no deja repetir ids), y
 la lista de precios del proveedor en foto o larga daba 413 porque el parser
