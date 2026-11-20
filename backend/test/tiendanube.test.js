@@ -22,6 +22,8 @@ const falso = {
   pedidosRecibidos: [],
   webhooks: [],
   productos: new Map(),
+  // Lo que la tienda ya tenía, para traer el catálogo (GET /products).
+  catalogo: [],
   pedidos: new Map(),
   siguienteId: 1000
 };
@@ -59,6 +61,11 @@ function atender(req, res) {
     if (ruta.startsWith('/webhooks/') && req.method === 'DELETE') {
       falso.webhooks = falso.webhooks.filter((w) => String(w.id) !== ruta.split('/')[2]);
       return responder(200, {});
+    }
+    if (ruta === '/products' && req.method === 'GET') {
+      return url.searchParams.get('page') === '1' && falso.catalogo.length
+        ? responder(200, falso.catalogo)
+        : responder(404, { description: 'Last page is 0' });
     }
     if (ruta === '/products' && req.method === 'POST') {
       const producto = { id: falso.siguienteId++, ...datos, variants: datos.variants.map((v) => ({ ...v, id: falso.siguienteId++ })) };
@@ -546,6 +553,62 @@ function cambiarPlan(cliente, plan) {
     assert.equal(r.status, 0, r.stderr);
   });
 }
+
+test('traer el catálogo: el costo de la tienda entra con el stock, y lo que vino sin costo se carga desde Nexo', async () => {
+  falso.catalogo = [
+    { id: 9001, name: { es: 'Buzo con costo' }, attributes: [], variants: [{ id: 9101, sku: 'IMP-1', price: '30000.00', stock: 4, cost: '12000.50' }] },
+    { id: 9002, name: { es: 'Buzo sin costo' }, attributes: [], variants: [{ id: 9102, sku: 'IMP-2', price: '28000.00', stock: 3, cost: null }] },
+    {
+      id: 9003,
+      name: { es: 'Media' },
+      attributes: [{ es: 'Talle' }],
+      variants: [
+        { id: 9103, sku: 'MED-S', price: '3000.00', stock: 5, values: [{ es: 'S' }], cost: null },
+        { id: 9104, sku: 'MED-M', price: '3000.00', stock: 0, values: [{ es: 'M' }], cost: '1000' }
+      ]
+    }
+  ];
+  // Lo de los tests de arriba (la remera tiene stock y no costo).
+  const deAntes = (await admin.get('/api/negocio/primeros-pasos')).json.sin_costo;
+  const r = await admin.post('/api/integraciones/tiendanube/importar');
+  assert.equal(r.status, 200, r.texto);
+  assert.equal(r.json.creados, 3);
+
+  const productos = (await admin.get('/api/productos')).json;
+  const conCosto = productos.find((p) => p.sku === 'IMP-1');
+  const sinCosto = productos.find((p) => p.sku === 'IMP-2');
+  assert.deepEqual([conCosto.precio_costo, conCosto.stock], [12000.5, 4]);
+  assert.deepEqual([sinCosto.precio_costo, sinCosto.stock], [0, 3]);
+  const media = productos.find((p) => p.nombre === 'Media');
+  const variantes = (await admin.get(`/api/productos/${media.id}/variantes`)).json;
+  const talleS = variantes.find((v) => v.sku === 'MED-S');
+  assert.deepEqual(variantes.map((v) => v.precio_costo).sort(), [0, 1000]);
+
+  // La guía avisa los que tienen stock y no tienen costo (el sin costo y el
+  // talle S), y el stock que vino sin costo no cuenta como "lo que ya tenías".
+  const antes = (await admin.get('/api/negocio/primeros-pasos')).json;
+  assert.equal(antes.sin_costo, deAntes + 2);
+  const planilla = (await admin.get('/api/carga-inicial/stock')).json.filas;
+  assert.equal(planilla.find((f) => f.sku === 'IMP-2').cargado, false);
+  assert.equal(planilla.find((f) => f.sku === 'IMP-1').cargado, true);
+
+  // Desde Nexo: el producto y la variante, sin tocar el stock.
+  const delProducto = await admin.post(`/api/productos/${sinCosto.id}/costo`, { costo: 11000 });
+  assert.equal(delProducto.status, 200, delProducto.texto);
+  assert.equal(delProducto.json.costo, 11000);
+  const deVariante = await admin.post(`/api/productos/${media.id}/costo`, { variante_id: talleS.id, costo: 900 });
+  assert.equal(deVariante.status, 200, deVariante.texto);
+  const despues = (await admin.get('/api/productos')).json.find((p) => p.id === sinCosto.id);
+  assert.deepEqual([despues.precio_costo, despues.stock], [11000, 3]);
+  assert.equal((await admin.get('/api/negocio/primeros-pasos')).json.sin_costo, deAntes);
+
+  // Con variantes va por variante; un empleado no puede, y otro negocio tampoco.
+  assert.equal((await admin.post(`/api/productos/${media.id}/costo`, { costo: 900 })).status, 400);
+  assert.equal((await admin.post(`/api/productos/${sinCosto.id}/costo`, { costo: -1 })).status, 400);
+  const empleado = await crearEmpleado(servidor, admin, { usuario: 'cajera-costos' });
+  assert.equal((await empleado.post(`/api/productos/${sinCosto.id}/costo`, { costo: 1 })).status, 403);
+  assert.equal((await otro.post(`/api/productos/${sinCosto.id}/costo`, { costo: 1 })).status, 404);
+});
 
 test('en Gratis queda en pausa: el pedido no entra, y al volver a un plan pago la pasada lo trae', async () => {
   const antes = (await estadoDe(admin)).pedidos_importados;

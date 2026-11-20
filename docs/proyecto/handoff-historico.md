@@ -15148,3 +15148,47 @@ mueven. El orden se lee de la pantalla al soltar; nada cambia hasta Guardar.
 Probado en el navegador (compu y celular, de la última a la primera, y guardado).
 También: "Por socio" pasa a "Promedio por socio", y las entradas dicen "En
 promedio".
+
+## §210 — 20 de noviembre de 2026: la guía según el tipo, y el costo de lo que vino de Tienda Nube
+
+Lo contó el usuario de un amigo con una tienda online.
+
+**La guía de primeros pasos mostraba "Creá tus planes" y "Anotá a tu primer
+socio".** La guía ya seguía los módulos prendidos, y ese negocio tenía Socios
+prendido aparte de su tipo (Tienda online no lo trae; ninguna migración lo
+suma, así que lo prendió el dueño, en el alta o en Funciones). No pude mirar
+la base del servidor para confirmarlo. Pedido del usuario: la guía va según
+el tipo de negocio *y* sus funciones. `deSuTipo()` en `primeros-pasos.js`: el
+paso de una función (tienda online, socios, consultas, trabajos, abonos) va
+si está prendida y viene con el tipo. Cuál de las dos ventas (mostrador o
+alta) sigue solo lo prendido.
+
+**No podía cargar el costo de lo que trajo de Tienda Nube.** El catálogo
+importado entra como stock inicial sin costo, el formulario del producto no
+tenía campo de costo (y el manual decía que sí), y la única forma era la
+planilla de "Lo que ya tenías". Encima la guía daba ese paso por hecho,
+porque el stock importado contaba como cargado. Lo que cambió:
+- **Costo a mano:** `POST /api/productos/:id/costo` (admin), con
+  `{ costo, variante_id? }`. Es un movimiento `stock_inicial` de cantidad 0
+  con ese costo (`aplicarStockInicial`, nota "Costo cargado a mano"): queda en
+  el historial y en la auditoría, y el promedio sale de ahí. No hubo origen
+  nuevo, porque el `CHECK` de `movimientos_stock.origen` pediría reconstruir
+  la tabla. Con stock en más de un depósito pide hacerlo por depósito en "Lo
+  que ya tenías".
+  - En pantalla: **Costo de cada uno** en Editar (sin variantes) y una
+    columna **Costo** en Variantes. Solo el admin.
+- **Tienda Nube trae el costo** de cada variante (`cost`, texto o null)
+  cuando lo tiene, aunque no haya stock.
+- **"Lo que ya tenías"** cuenta como cargado solo el stock inicial con costo
+  (`costo_unitario IS NOT NULL`).
+- **Paso nuevo en la guía:** "Cargá lo que te costó cada producto", si hay
+  stock: avisa cuántos tienen stock y no tienen costo (`con_stock` y
+  `sin_costo` en `/api/negocio/primeros-pasos`).
+- **Bug de antes:** traer el catálogo anotaba el log con el tipo
+  `importacion`, que `integracion_log` no admite. Los productos se creaban
+  igual, pero la pantalla recibía un 500. Ahora va como `publicacion`, sin
+  migración.
+
+Lo vendido antes de cargar el costo queda con costo 0 (§8: el costo de la
+venta se congela). Test nuevo en `tiendanube.test.js` (traer el catálogo).
+`npm test`: 490 de 490. Sin probar en el navegador.

@@ -87,7 +87,7 @@ export const SECCIONES_EN = {
         "Tap **Save**."
       ] },
       "To change a price, open the product from the list and edit it. The code or SKU is for finding it quickly; the **Barcode** is the one the counter scanner reads, and the **Scale code (PLU)** is for what you weigh on a scale that prints labels.",
-      { nota: "The cost updates on its own every time you record a purchase: Nexo averages what you had and what came in." }
+      { nota: "The cost updates on its own every time you record a purchase: Nexo averages what you had and what came in. What didn't come from a purchase (what you brought from Tienda Nube without a cost, for example) is entered in **Edit**, under **Cost of each**; with sizes or colors, each variant's cost goes in **Variants**." }
     ]
   },
   variantes: {

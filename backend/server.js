@@ -19144,7 +19144,28 @@ app.get('/api/negocio/primeros-pasos', soloAdmin, (req, res) => {
   // "Lo que ya tenías" (handoff 8c): el paso es de quien dijo en el alta que
   // su negocio ya venía funcionando, y queda hecho con cualquier parte cargada.
   const carga = estadoCargaInicial(id);
+  // Lo que tiene stock (cada producto sin variantes, o cada variante) y
+  // cuántos de esos no tienen costo: los que entraron de una tienda sin él.
+  const costos = db
+    .prepare(
+      `SELECT COUNT(*) AS con_stock, COALESCE(SUM(sin_costo), 0) AS sin_costo FROM (
+         SELECT COALESCE(p.precio_costo, 0) <= 0 AS sin_costo
+           FROM productos p
+          WHERE p.organizacion_id = ? AND p.activo = 1 AND p.tipo = 'producto'
+            AND NOT EXISTS (SELECT 1 FROM producto_variantes v WHERE v.producto_id = p.id AND v.activo = 1)
+            AND (SELECT COALESCE(SUM(CASE m.tipo WHEN 'salida' THEN -m.cantidad ELSE m.cantidad END), 0)
+                   FROM movimientos_stock m WHERE m.producto_id = p.id AND m.variante_id IS NULL) > 0
+         UNION ALL
+         SELECT COALESCE(v.precio_costo, 0) <= 0
+           FROM producto_variantes v JOIN productos p ON p.id = v.producto_id
+          WHERE p.organizacion_id = ? AND p.activo = 1 AND p.tipo = 'producto' AND v.activo = 1
+            AND (SELECT COALESCE(SUM(CASE m.tipo WHEN 'salida' THEN -m.cantidad ELSE m.cantidad END), 0)
+                   FROM movimientos_stock m WHERE m.variante_id = v.id) > 0)`
+    )
+    .get(id, id);
   res.json({
+    con_stock: costos.con_stock,
+    sin_costo: costos.sin_costo,
     ya_funcionaba: negocio.ya_funcionaba === 1,
     carga_inicial: Object.values(carga).some((parte) => parte.cantidad > 0),
     datos_negocio: Boolean(negocio.documento || negocio.direccion || negocio.telefono),
@@ -25474,6 +25495,12 @@ function importarProductoDeTiendaNube(req, integracion, externo) {
   const productoPorSku = db.prepare('SELECT id FROM productos WHERE organizacion_id = ? AND sku = ?');
   const variantePorSku = db.prepare('SELECT id, producto_id FROM producto_variantes WHERE organizacion_id = ? AND sku = ?');
   const stockDe = (v) => (v.stock === null || v.stock === undefined || v.stock === '' ? 0 : Math.max(0, Math.floor(Number(v.stock) || 0)));
+  // El costo de la variante, si la tienda lo tiene ("10.99" o null): entra
+  // con el stock, como el de "Lo que ya tenías". Sin él, queda sin costo.
+  const costoDe = (v) => {
+    const costo = Number(v.cost);
+    return v.cost != null && v.cost !== '' && Number.isFinite(costo) && costo > 0 ? redondear2(costo) : null;
+  };
   const descripcion = textoDeTienda(externo.description).replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 500) || null;
   const ahora = new Date().toISOString();
   const vincular = db.prepare(
@@ -25481,8 +25508,9 @@ function importarProductoDeTiendaNube(req, integracion, externo) {
        (integracion_id, producto_id, variante_id, externo_producto_id, externo_variante_id, ultimo_stock, ultimo_precio, creado_en, organizacion_id)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
   );
-  const entrarStock = (productoId, varianteId, cantidad) => {
-    if (!cantidad) return;
+  // Sin stock pero con costo, el movimiento va igual (en 0): el costo queda.
+  const entrarStock = (productoId, varianteId, cantidad, costo) => {
+    if (!cantidad && costo === null) return;
     registrarMovimientoStock({
       producto_id: productoId,
       variante_id: varianteId,
@@ -25490,9 +25518,14 @@ function importarProductoDeTiendaNube(req, integracion, externo) {
       tipo: 'ajuste',
       cantidad,
       origen: 'stock_inicial',
+      costo_unitario: costo,
       nota: 'Importado de Tienda Nube',
       organizacion_id: org
     });
+    if (costo !== null) {
+      if (varianteId) recalcularCostoVariante(varianteId);
+      else recalcularCostoProducto(productoId);
+    }
   };
 
   // Un solo renglón: se vincula con lo que ya haya en Nexo (mismo SKU) o se crea.
@@ -25511,7 +25544,7 @@ function importarProductoDeTiendaNube(req, integracion, externo) {
     withTransaction(() => {
       const id = insertarProducto(cuerpo, org);
       const stock = stockDe(v);
-      entrarStock(id, null, stock);
+      entrarStock(id, null, stock, costoDe(v));
       vincular.run(integracion.id, id, null, String(externo.id), String(v.id), stock, redondear2(precio), ahora, org);
     });
     return { estado: 'creado', sinControl: v.stock === null || v.stock === undefined };
@@ -25550,7 +25583,7 @@ function importarProductoDeTiendaNube(req, integracion, externo) {
         db.prepare('INSERT INTO producto_variante_valores (variante_id, atributo_id, valor_id) VALUES (?, ?, ?)').run(varianteId, atributoId, mapa.get(valor.toLowerCase()));
       });
       const stock = stockDe(v);
-      entrarStock(id, varianteId, stock);
+      entrarStock(id, varianteId, stock, costoDe(v));
       vincular.run(integracion.id, id, varianteId, String(externo.id), String(v.id), stock, redondear2(precio), ahora, org);
     }
   });
@@ -25572,9 +25605,12 @@ async function importarCatalogoDeTiendaNube(req, integracion) {
       resumen.errores.push({ producto: textoDeTienda(externo.name) || String(externo.id), error: err.message });
     }
   }
+  // 'publicacion', que es vincular productos con la tienda: integracion_log
+  // no admite 'importacion' (su CHECK), y con ese tipo el catálogo se traía
+  // igual pero la pantalla recibía un error.
   anotarIntegracion(
     integracion,
-    'importacion',
+    'publicacion',
     resumen.errores.length ? 'error' : 'ok',
     `Catálogo traído de la tienda: ${resumen.creados} creados, ${resumen.vinculados} vinculados a productos que ya tenías, ${resumen.omitidos} ya estaban, ${resumen.errores.length} con error.`
   );
@@ -27218,12 +27254,14 @@ function vencimientoDeCargaInicial(fecha, valor) {
 const cantidadDeStock = (valor) => esNumeroValido(valor) && valor >= 0;
 
 // Cuánto se cargó de cada parte, para la página y la guía de primeros pasos.
+// El stock cuenta con su costo: el que entró de una tienda sin costo (Tienda
+// Nube) todavía no le dice a Nexo cuánto se gana.
 function estadoCargaInicial(organizacionId) {
   const uno = (sql) => db.prepare(sql).get(organizacionId);
   return {
     stock: uno(
       `SELECT COUNT(DISTINCT producto_id || ':' || COALESCE(variante_id, '')) AS cantidad
-         FROM movimientos_stock WHERE organizacion_id = ? AND origen = 'stock_inicial'`
+         FROM movimientos_stock WHERE organizacion_id = ? AND origen = 'stock_inicial' AND costo_unitario IS NOT NULL`
     ),
     te_deben: uno(
       `SELECT COUNT(*) AS cantidad, COALESCE(SUM(saldo_inicial), 0) AS total
@@ -27274,7 +27312,7 @@ app.get('/api/carga-inicial/stock', soloAdmin, (req, res) => {
               COALESCE(stock_por_deposito.cantidad, 0) AS stock,
               EXISTS (SELECT 1 FROM movimientos_stock m
                        WHERE m.producto_id = productos.id AND m.variante_id IS NULL AND m.deposito_id = ?
-                         AND m.origen = 'stock_inicial') AS cargado
+                         AND m.origen = 'stock_inicial' AND m.costo_unitario IS NOT NULL) AS cargado
          FROM productos
          LEFT JOIN stock_por_deposito
            ON stock_por_deposito.producto_id = productos.id AND stock_por_deposito.deposito_id = ?
@@ -27290,7 +27328,7 @@ app.get('/api/carga-inicial/stock', soloAdmin, (req, res) => {
               COALESCE(stock_variante_por_deposito.cantidad, 0) AS stock,
               EXISTS (SELECT 1 FROM movimientos_stock m
                        WHERE m.variante_id = producto_variantes.id AND m.deposito_id = ?
-                         AND m.origen = 'stock_inicial') AS cargado
+                         AND m.origen = 'stock_inicial' AND m.costo_unitario IS NOT NULL) AS cargado
          FROM producto_variantes
          JOIN productos ON productos.id = producto_variantes.producto_id
          LEFT JOIN stock_variante_por_deposito
@@ -27311,7 +27349,7 @@ app.get('/api/carga-inicial/stock', soloAdmin, (req, res) => {
 // promedio recalculado desde el historial (costoDelHistorial). No genera
 // deuda ni toca la caja. Devuelve false si no cambia nada. Adentro de una
 // transacción.
-function aplicarStockInicial(req, { producto, varianteId, deposito, cantidad, costo }) {
+function aplicarStockInicial(req, { producto, varianteId, deposito, cantidad, costo, nota = 'Stock inicial' }) {
   const org = req.usuario.organizacion_id;
   const enDeposito = varianteId
     ? db.prepare('SELECT cantidad FROM stock_variante_por_deposito WHERE variante_id = ? AND deposito_id = ?').get(varianteId, deposito.id)
@@ -27333,7 +27371,7 @@ function aplicarStockInicial(req, { producto, varianteId, deposito, cantidad, co
     cantidad: delta,
     origen: 'stock_inicial',
     costo_unitario: costo,
-    nota: 'Stock inicial',
+    nota,
     organizacion_id: org
   });
   const costoNuevo = varianteId ? recalcularCostoVariante(varianteId) : recalcularCostoProducto(producto.id);
@@ -27344,7 +27382,7 @@ function aplicarStockInicial(req, { producto, varianteId, deposito, cantidad, co
     entidad_id: producto.id,
     valor_anterior: JSON.stringify({ stock: enDeposito, costo: costoAnterior, deposito: deposito.nombre }),
     valor_nuevo: JSON.stringify({ stock: cantidad, costo: redondear2(costoNuevo), deposito: deposito.nombre }),
-    detalle: `Stock inicial de "${nombre}" en "${deposito.nombre}": ${enDeposito} → ${cantidad}, a $${costo} cada uno`
+    detalle: `${nota} de "${nombre}" en "${deposito.nombre}": ${enDeposito} → ${cantidad}, a $${costo} cada uno`
   });
   return true;
 }
@@ -27419,6 +27457,61 @@ app.post('/api/carga-inicial/stock', soloAdmin, (req, res) => {
       cambiados += 1;
     }
     return { cambiados, creados: nuevos.length };
+  });
+  res.json(resultado);
+});
+
+// El costo de un producto (o de una variante) cargado a mano, para lo que no
+// vino de una compra en Nexo: lo que entró de una tienda sin costo, o un
+// producto recién dado de alta. No pisa el historial: es un movimiento de
+// stock inicial sin cantidad y con ese costo, como en la planilla de arriba,
+// y el promedio sale de ahí. Con stock en más de un depósito cada uno tiene
+// lo suyo, y se carga por depósito en esa planilla.
+app.post('/api/productos/:id/costo', soloAdmin, (req, res) => {
+  const org = req.usuario.organizacion_id;
+  const producto = db
+    .prepare('SELECT id, nombre, tipo, precio_costo FROM productos WHERE id = ? AND organizacion_id = ? AND activo = 1')
+    .get(Number(req.params.id), org);
+  if (!producto) return res.status(404).json({ error: 'Producto no encontrado.' });
+  if (producto.tipo === 'servicio') {
+    return res.status(400).json({ error: 'El costo de un servicio sale de su mano de obra y sus materiales.' });
+  }
+  const varianteId = req.body?.variante_id ?? null;
+  if (varianteId !== null && !esIdValido(varianteId)) return res.status(400).json({ error: 'La variante no es válida.' });
+  if (varianteId !== null) {
+    if (!db.prepare('SELECT 1 FROM producto_variantes WHERE id = ? AND producto_id = ? AND activo = 1').get(varianteId, producto.id)) {
+      return res.status(400).json({ error: `La variante de "${producto.nombre}" no existe.` });
+    }
+  } else if (db.prepare('SELECT 1 FROM producto_variantes WHERE producto_id = ? AND activo = 1').get(producto.id)) {
+    return res.status(400).json({ error: `"${producto.nombre}" tiene variantes: cargá el costo de cada una.` });
+  }
+  const costo = req.body?.costo;
+  if (!cantidadDeStock(costo)) return res.status(400).json({ error: 'El costo es un número de 0 para arriba.' });
+
+  const conStock = varianteId
+    ? db
+        .prepare('SELECT deposito_id, cantidad FROM stock_variante_por_deposito WHERE variante_id = ? AND cantidad <> 0')
+        .all(varianteId)
+    : db.prepare('SELECT deposito_id, cantidad FROM stock_por_deposito WHERE producto_id = ? AND cantidad <> 0').all(producto.id);
+  if (conStock.length > 1) {
+    return res.status(400).json({
+      error: `Tiene stock en ${conStock.length} depósitos: cargá lo que costó en cada uno desde Configuración → Lo que ya tenías.`
+    });
+  }
+  const deposito = depositoDeCargaInicial(conStock[0]?.deposito_id, org);
+  const resultado = withTransaction(() => {
+    const cambio = aplicarStockInicial(req, {
+      producto,
+      varianteId,
+      deposito,
+      cantidad: conStock[0]?.cantidad ?? 0,
+      costo,
+      nota: 'Costo cargado a mano'
+    });
+    const fila = varianteId
+      ? db.prepare('SELECT precio_costo FROM producto_variantes WHERE id = ?').get(varianteId)
+      : db.prepare('SELECT precio_costo FROM productos WHERE id = ?').get(producto.id);
+    return { cambio, costo: redondear2(fila.precio_costo) };
   });
   res.json(resultado);
 });
