@@ -5677,5 +5677,15 @@ export default {
   "Las cuotas sin venir se borran al darlo de baja.": "Fees for months without coming are cleared when deactivating.",
   "{0} no tiene cuotas de meses que no vino.": "{0} has no fees for months they didn't come.",
   ": dejó de venir (desde el {0})": ": stopped coming (since {0})",
-  "Cuota del socio N° {0} del {1} bonificada: dejó de venir": "Fee of member No. {0} from {1} waived: stopped coming"
+  "Cuota del socio N° {0} del {1} bonificada: dejó de venir": "Fee of member No. {0} from {1} waived: stopped coming",
+
+  // Eliminar planes que nunca hizo nadie (hist. §205)
+  "Eliminar plan": "Delete plan",
+  "\"{0}\" se borra, con su servicio del catálogo. Nunca lo hizo ningún socio, así que no se pierde nada.": "\"{0}\" is deleted, along with its catalog service. No member ever had it, so nothing is lost.",
+  "No se pudo eliminar el plan.": "The plan could not be deleted.",
+  "\"{0}\" quedó eliminado.": "\"{0}\" was deleted.",
+  "Algún socio hizo \"{0}\": queda pausado, para no perder sus cuotas.": "A member has had \"{0}\": it stays paused, so their fees aren't lost.",
+  "\"{0}\" está en el combo \"{1}\": sacalo de ahí primero.": "\"{0}\" is in the bundle \"{1}\": remove it from there first.",
+  "Plan de socios \"{0}\" eliminado: nunca lo hizo nadie{1}": "Member plan \"{0}\" deleted: nobody ever had it{1}",
+  "(su servicio queda pausado en el catálogo)": "(its service stays paused in the catalog)"
 };

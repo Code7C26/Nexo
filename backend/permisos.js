@@ -249,6 +249,8 @@ export const RUTAS_PERMISOS = {
   'GET /api/planes-socio': 'ambos',
   'POST /api/planes-socio': 'admin',
   'PATCH /api/planes-socio/:id': 'admin',
+  // Eliminar un plan que nunca hizo nadie (hist. §205).
+  'DELETE /api/planes-socio/:id': 'admin',
   'GET /api/descuentos-socio': 'ambos',
   'POST /api/descuentos-socio': 'admin',
   'PATCH /api/descuentos-socio/:id': 'admin',

@@ -20654,7 +20654,8 @@ function planesDeLaEmpresa(organizacionId, planId = null) {
       `SELECT planes_socio.id, planes_socio.producto_id, productos.nombre, productos.activo,
               (SELECT COUNT(DISTINCT inscripciones_socio.socio_id) FROM inscripciones_socio
                 WHERE inscripciones_socio.plan_id = planes_socio.id
-                  AND inscripciones_socio.estado = 'activa') AS socios_activos
+                  AND inscripciones_socio.estado = 'activa') AS socios_activos,
+              EXISTS (SELECT 1 FROM inscripciones_socio WHERE inscripciones_socio.plan_id = planes_socio.id) AS usado
          FROM planes_socio
          JOIN productos ON productos.id = planes_socio.producto_id
         WHERE planes_socio.organizacion_id = ? AND (? IS NULL OR planes_socio.id = ?)
@@ -20674,6 +20675,7 @@ function planesDeLaEmpresa(organizacionId, planId = null) {
   return planes.map((p) => ({
     ...p,
     activo: Boolean(p.activo),
+    usado: Boolean(p.usado),
     opciones: opciones
       .filter((o) => o.plan_id === p.id)
       .map((o) => ({ ...o, activo: Boolean(o.activo), duracion: nombreDuracion(o.meses) }))
@@ -21426,6 +21428,62 @@ app.patch('/api/planes-socio/:id', soloAdmin, (req, res) => {
     });
   }
   res.json(planDeLaEmpresa(plan.id, organizacionId));
+});
+
+// Eliminar un plan que nunca hizo nadie (hist. §205): uno cargado de más o
+// que pasó a ser un combo. Uno que algún socio hizo no se borra (sus cuotas
+// lo nombran): se pausa. Su servicio se borra del catálogo si no aparece en
+// ninguna operación; si aparece, queda pausado.
+let TABLAS_CON_PRODUCTO = null;
+function productoEnUso(productoId) {
+  TABLAS_CON_PRODUCTO ??= db
+    .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'")
+    .all()
+    .flatMap(({ name }) =>
+      db
+        .prepare(`PRAGMA foreign_key_list("${name}")`)
+        .all()
+        .filter((fk) => fk.table === 'productos' && !['planes_socio', 'producto_precios'].includes(name))
+        .map((fk) => `SELECT 1 FROM "${name}" WHERE "${fk.from}" = ?`)
+    );
+  return TABLAS_CON_PRODUCTO.some((consulta) => db.prepare(consulta).get(productoId));
+}
+
+app.delete('/api/planes-socio/:id', soloAdmin, (req, res) => {
+  const organizacionId = req.usuario.organizacion_id;
+  const plan = planDeLaEmpresa(Number(req.params.id), organizacionId);
+  if (!plan) return res.status(404).json({ error: 'Plan no encontrado.' });
+  if (plan.usado) {
+    return res.status(400).json({ error: `Algún socio hizo "${plan.nombre}": queda pausado, para no perder sus cuotas.` });
+  }
+  const combo = db
+    .prepare(
+      `SELECT descuentos_socio.nombre FROM descuento_socio_planes
+         JOIN descuentos_socio ON descuentos_socio.id = descuento_socio_planes.descuento_id
+        WHERE descuento_socio_planes.plan_id = ? LIMIT 1`
+    )
+    .get(plan.id);
+  if (combo) return res.status(400).json({ error: `"${plan.nombre}" está en el combo "${combo.nombre}": sacalo de ahí primero.` });
+  withTransaction(() => {
+    db.prepare('DELETE FROM planes_socio_opciones WHERE plan_id = ?').run(plan.id);
+    db.prepare('DELETE FROM planes_socio WHERE id = ?').run(plan.id);
+    const borrado = !productoEnUso(plan.producto_id);
+    if (borrado) {
+      db.prepare('DELETE FROM producto_precios WHERE producto_id = ?').run(plan.producto_id);
+      db.prepare('DELETE FROM productos WHERE id = ?').run(plan.producto_id);
+    } else {
+      db.prepare('UPDATE productos SET activo = 0 WHERE id = ?').run(plan.producto_id);
+    }
+    auditar(req, {
+      accion: 'anular',
+      entidad: 'producto',
+      entidad_id: plan.producto_id,
+      operacion_tipo: 'plan_socio',
+      operacion_id: plan.id,
+      detalle: `Plan de socios "${plan.nombre}" eliminado: nunca lo hizo nadie${borrado ? '' : ' (su servicio queda pausado en el catálogo)'}`
+    });
+  });
+  res.json({ ok: true });
 });
 
 // Los lee también la recepción: el alta ofrece los que se eligen a mano.
