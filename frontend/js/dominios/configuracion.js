@@ -416,6 +416,8 @@ const PAGINAS = {
   "lo-que-debes": { admin: true, menu: "lo-que-tenias", alEntrar: () => invocar("pintar:carga-inicial", "lo-que-debes") },
   "plata-inicial": { admin: true, menu: "lo-que-tenias", alEntrar: () => invocar("pintar:carga-inicial", "plata-inicial") },
   "ventas-anteriores": { admin: true, menu: "lo-que-tenias", alEntrar: () => invocar("pintar:carga-inicial", "ventas-anteriores") },
+  // Traer productos, clientes o proveedores desde Excel: dominios/importar.js (hist. §211).
+  planilla: { admin: true, menu: "lo-que-tenias", alEntrar: () => invocar("pintar:planilla") },
   funciones: { admin: true, form: formFunciones, alEntrar: pintarFunciones },
   "cambiar-tipo": { admin: true, form: formCambiarTipo, alEntrar: pintarCambiarTipo, menu: "funciones" },
   // Las etapas del embudo de consultas las pinta dominios/crm.js (hist. §90).

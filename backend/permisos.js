@@ -487,5 +487,7 @@ export const RUTAS_PERMISOS = {
   'GET /api/carga-inicial/saldos': 'admin',
   'POST /api/carga-inicial/saldos': 'admin',
   'GET /api/carga-inicial/ventas': 'admin',
-  'POST /api/carga-inicial/ventas': 'admin'
+  'POST /api/carga-inicial/ventas': 'admin',
+  // Traer productos, clientes o proveedores desde una planilla (hist. §211).
+  'POST /api/importar/:tipo': 'admin'
 };

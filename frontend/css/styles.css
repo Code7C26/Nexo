@@ -9686,6 +9686,107 @@ a.segmento {
 .ci-radio { display: inline-flex; align-items: center; gap: var(--sp-2); min-height: 44px; font-size: var(--txt-sm); }
 .form-fila > label[hidden] { display: none; }
 
+/* Traer desde una planilla (hist. §211, dominios/importar.js). Celular
+   primero: cada columna y cada renglón son una tarjetita apilada; en la compu,
+   la columna va con su ejemplo a la izquierda y lo que es a la derecha. */
+.im-paso[hidden] { display: none; }
+.im-atajo {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: var(--sp-4);
+  align-items: center;
+  padding: var(--sp-4);
+  color: inherit;
+  text-decoration: none;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  transition: border-color var(--dur-1) var(--ease-out), background var(--dur-1) var(--ease-out);
+}
+.im-atajo:hover { border-color: var(--line-strong); background: var(--surface-sunk); }
+.im-atajo > .ico { color: var(--ink-faint); }
+.im-atajo-texto { display: flex; flex-direction: column; gap: var(--sp-1); min-width: 0; }
+.im-atajo .ci-parte-icono { background: var(--accent-bg); color: var(--accent); }
+
+.im-soltar {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-6) var(--sp-4);
+  text-align: center;
+  border: 1.5px dashed var(--line-strong);
+  border-radius: var(--r-md);
+  transition: border-color var(--dur-1) var(--ease-out), background var(--dur-1) var(--ease-out);
+}
+.im-soltar.es-encima { border-color: var(--accent); background: var(--accent-bg); }
+.im-soltar .form-note { margin: 0; }
+.im-soltar .btn { margin-top: var(--sp-2); min-height: 44px; }
+.im-soltar-icono { display: grid; place-items: center; width: 48px; height: 48px; border-radius: var(--r-full); background: var(--surface-sunk); color: var(--ink-muted); }
+.im-soltar-icono .ico { width: 24px; height: 24px; }
+.im-soltar-titulo { margin: 0; font-weight: 600; }
+.im-pegar summary { cursor: pointer; min-height: 44px; display: flex; align-items: center; font-size: var(--txt-sm); color: var(--ink-muted); }
+.im-pegar summary:hover { color: var(--ink); }
+.im-pegar[open] { display: flex; flex-direction: column; gap: var(--sp-3); }
+.im-pegar-campo { display: flex; flex-direction: column; gap: 4px; font-size: var(--txt-sm); }
+.im-pegar textarea { font-family: var(--font-mono, monospace); font-size: var(--txt-sm); }
+.im-pegar .btn { align-self: flex-start; min-height: 44px; }
+#imAyuda { margin: 0; }
+
+.im-columnas { list-style: none; margin: 0; padding: 0; }
+.im-columna {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--sp-2);
+  padding: var(--sp-3) 0;
+  border-bottom: 1px solid var(--line);
+}
+.im-columna:first-child { padding-top: 0; }
+.im-columna:last-child { border-bottom: 0; }
+.im-columna-titulo { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.im-columna-titulo strong { font-weight: 500; overflow-wrap: anywhere; }
+.im-columna-titulo span { font-size: var(--txt-xs); color: var(--ink-faint); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.im-columna select { min-height: 44px; width: 100%; }
+.im-columna.sin-usar .im-columna-titulo strong { color: var(--ink-muted); }
+.im-deposito { display: flex; flex-direction: column; gap: 4px; font-size: var(--txt-sm); max-width: 320px; }
+.im-deposito select { min-height: 44px; }
+
+.im-aviso {
+  margin: 0;
+  padding: var(--sp-3);
+  font-size: var(--txt-sm);
+  color: var(--naranja);
+  background: var(--naranja-bg);
+  border-radius: var(--r-sm);
+}
+.im-filtro .segmento { min-height: 36px; }
+.im-cuenta { margin-left: 4px; font-variant-numeric: tabular-nums; color: var(--ink-faint); }
+.im-renglones { list-style: none; margin: 0; padding: 0; }
+.im-renglon {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--sp-1) var(--sp-3);
+  padding: var(--sp-3) 0;
+  border-bottom: 1px solid var(--line);
+}
+.im-renglon:first-child { padding-top: 0; }
+.im-renglon:last-child { border-bottom: 0; }
+.im-renglon-nombre { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.im-renglon-nombre strong { font-weight: 500; overflow-wrap: anywhere; }
+.im-renglon-nombre span { font-size: var(--txt-xs); color: var(--ink-faint); }
+.im-renglon .status { align-self: start; }
+.im-renglon-detalle { grid-column: 1 / -1; margin: 0; font-size: var(--txt-sm); color: var(--ink-muted); overflow-wrap: anywhere; }
+.im-renglon-detalle.es-error { color: var(--accent-danger); }
+.im-cambio-antes { text-decoration: line-through; color: var(--ink-faint); }
+#imMas { margin: 0; }
+#imPasoRevisar .config-tarjeta-pie .btn, #formImColumnas .config-tarjeta-pie .btn { min-height: 44px; }
+
+@media (min-width: 861px) {
+  .im-columna { grid-template-columns: minmax(0, 1fr) minmax(0, 260px); align-items: center; }
+  .im-renglon { grid-template-columns: minmax(0, 1fr) minmax(0, 2fr) auto; align-items: start; }
+  .im-renglon-detalle { grid-column: auto; }
+}
+
 @media (min-width: 861px) {
   .ci-parte { grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; }
   .ci-parte > .btn { grid-column: auto; justify-self: end; }

@@ -678,6 +678,23 @@ export const SECCIONES_EN = {
       { nota: "None of this makes up purchases or sales: the stock doesn't create debts or touch the cash, and recent sales don't deduct stock or add to the cash, because what you entered is already today's." }
     ]
   },
+  "desde-planilla": {
+    titulo: "Importing products, customers or suppliers from Excel",
+    pantalla: "Settings › What you already had › Import from a spreadsheet",
+    preguntas: ["how do i import my products from excel", "how do i bring my customers from a spreadsheet", "can i upload an excel file with my products", "how do i upload many products at once", "how do i update prices from a spreadsheet"],
+    palabras: ["excel", "spreadsheet", "import", "csv", "xlsx", "upload", "bulk", "many", "list", "migrate"],
+    bloques: [
+      "If you already had your products, customers or suppliers in a spreadsheet, bring them in all at once with your own columns, without copying them into any template.",
+      { pasos: [
+        "Go to **Settings › What you already had › Import from a spreadsheet** (or tap **From a spreadsheet** in Products, Customers or Suppliers).",
+        "Choose what you're importing and upload the Excel (.xlsx) or CSV file. You can also copy the columns in Excel and paste them.",
+        "Nexo guesses what each column is from its header (\"Price\", \"Barcode\", \"CUIT\"). Fix any that's wrong, or mark it **Don't use**.",
+        "Tap **Review**: each row says whether it's **New**, whether it **Changes** (with what it had and what it will have) or why it's **Not imported**.",
+        "Tap **Import**. Rows with an error are left out: fix them in the spreadsheet and upload it again."
+      ] },
+      { nota: "A product you already have is found by its code, barcode or name; a customer or supplier, by CUIT, email or name. An empty cell doesn't erase anything. The stock in the spreadsheet is today's stock in the warehouse you choose, with its cost, like **Your stock today**: it doesn't make up purchases. Categories that don't exist are created automatically." }
+    ]
+  },
   notificaciones: {
     titulo: "Notifications on your phone and computer",
     pantalla: "Settings › Notifications",

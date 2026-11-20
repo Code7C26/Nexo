@@ -119,7 +119,28 @@ const SECCIONES_ES = [
       ] },
       { nota: "Nada de esto inventa compras ni ventas: el stock no genera deudas ni toca la caja, y las ventas recientes no descuentan stock ni suman a la caja, porque lo que cargaste ya es lo de hoy." }
     ],
-    ver: ["stock", "cuentas-corrientes", "caja"]
+    ver: ["desde-planilla", "stock", "cuentas-corrientes", "caja"]
+  },
+  {
+    id: "desde-planilla",
+    grupo: "Empezar",
+    titulo: "Traer productos, clientes o proveedores desde Excel",
+    pantalla: ["#/configuracion/planilla", "Configuración › Lo que ya tenías › Traer desde una planilla"],
+    admin: true,
+    preguntas: ["cómo importo mis productos desde excel", "cómo paso mis clientes de una planilla", "puedo subir un excel con mis productos", "cómo subo muchos productos de una vez", "cómo actualizo los precios desde una planilla"],
+    palabras: ["excel", "planilla", "importar", "csv", "xlsx", "subir", "masivo", "masiva", "muchos", "lista", "migrar", "traer"],
+    bloques: [
+      "Si ya tenías tus productos, tus clientes o tus proveedores en una planilla, los traés de una vez y con tus columnas, sin pasarlos a ningún modelo.",
+      { pasos: [
+        "Entrá a **Configuración › Lo que ya tenías › Traer desde una planilla** (o tocá **Desde una planilla** en Productos, Clientes o Proveedores).",
+        "Elegí qué traés y subí el Excel (.xlsx) o el CSV. También podés copiar las columnas en Excel y pegarlas.",
+        "Nexo adivina qué es cada columna por su título (\"Precio\", \"Cód. barras\", \"CUIT\"). Corregí la que no esté bien, o marcala **No usar**.",
+        "Tocá **Revisar**: cada renglón dice si es **Nuevo**, si **Cambia** (con lo que tenía y lo que va a tener) o por qué **No se trae**.",
+        "Tocá **Traer**. Los renglones con un error quedan afuera: corregilos en la planilla y subila de nuevo."
+      ] },
+      { nota: "Un producto que ya tenés se encuentra por su código, su código de barras o su nombre; un cliente o un proveedor, por su CUIT, su mail o su nombre. Una celda vacía no borra nada. El stock que trae la planilla es el de hoy en el depósito que elijas, con su costo, como en **Tu stock de hoy**: no inventa compras. Las categorías que no existen se crean solas." }
+    ],
+    ver: ["lo-que-tenias", "cargar-producto"]
   },
   {
     id: "notificaciones",

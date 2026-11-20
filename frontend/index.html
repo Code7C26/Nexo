@@ -3087,6 +3087,7 @@
             <div class="panel-acciones">
               <button class="btn btn-secundario col-admin" id="btnCategoriasProductos"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#tag"></use></svg> Categorías</button>
               <button class="btn btn-secundario col-admin" id="btnListasPrecios"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#layers"></use></svg> Listas de precios</button>
+              <a class="btn btn-secundario col-admin" href="#/configuracion/planilla" data-planilla="productos"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#file-spreadsheet"></use></svg> Desde una planilla</a>
               <a class="btn btn-secundario col-admin" href="#/ofertas"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#percent"></use></svg> Ofertas</a>
               <button class="btn btn-primary btn-nuevo" id="btnNuevoProducto"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#plus"></use></svg> <span>Nuevo <span id="btnNuevoProductoTermino">producto</span></span></button>
             </div>
@@ -3500,7 +3501,10 @@
         <section class="panel">
           <div class="panel-head">
             <h2>Clientes</h2>
+            <div class="panel-acciones">
+            <a class="btn btn-secundario col-admin" href="#/configuracion/planilla" data-planilla="clientes"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#file-spreadsheet"></use></svg> Desde una planilla</a>
             <button class="btn btn-primary btn-nuevo" id="btnNuevoCliente"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#plus"></use></svg> Nuevo cliente</button>
+            </div>
           </div>
           <!-- Los cargados dos veces, con el botón para unirlos (hist. §177).
                Solo el admin: unir mueve la cuenta corriente. -->
@@ -3641,7 +3645,10 @@
         <section class="panel">
           <div class="panel-head">
             <h2>Proveedores</h2>
+            <div class="panel-acciones">
+            <a class="btn btn-secundario col-admin" href="#/configuracion/planilla" data-planilla="proveedores"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#file-spreadsheet"></use></svg> Desde una planilla</a>
             <button class="btn btn-primary btn-nuevo" id="btnNuevoProveedor"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#plus"></use></svg> Nuevo proveedor</button>
+            </div>
           </div>
           <!-- Los cargados dos veces antes de §175, con el botón para unirlos
                (hist. §176). Solo el admin: unir mueve la cuenta corriente. -->
@@ -5597,7 +5604,80 @@
                 <h2 id="configCargaTitulo" tabindex="-1">Lo que ya tenías</h2>
                 <p>Si tu negocio ya venía funcionando, cargá lo que tenés hoy y Nexo arranca con tus números de verdad. Cada parte va por separado y en el orden que quieras, y ninguna inventa compras ni ventas.</p>
               </header>
+              <a class="im-atajo" href="#/configuracion/planilla">
+                <span class="ci-parte-icono"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#file-spreadsheet"></use></svg></span>
+                <span class="im-atajo-texto">
+                  <span class="config-tarjeta-titulo">¿Lo tenés en una planilla?</span>
+                  <span class="config-tarjeta-texto">Traé de una vez tus productos con su precio, su stock y su costo, tus clientes y tus proveedores, desde el Excel que ya usabas.</span>
+                </span>
+                <svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#chevron-right"></use></svg>
+              </a>
               <ol class="ci-partes" id="ciPartes"></ol>
+            </section>
+
+            <!-- Traer desde una planilla (hist. §211): lo maneja dominios/importar.js.
+                 Tres pasos en la misma página: el archivo, qué es cada columna y revisar. -->
+            <section class="config-pagina col-admin" data-seccion="planilla" aria-labelledby="configPlanillaTitulo" hidden>
+              <a class="ci-volver" href="#/configuracion/lo-que-tenias"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#chevron-left"></use></svg> Lo que ya tenías</a>
+              <header class="config-pagina-head">
+                <h2 id="configPlanillaTitulo" tabindex="-1">Traer desde una planilla</h2>
+                <p>Tus productos, tus clientes o tus proveedores, desde el Excel o la planilla que ya usabas, con tus columnas. Nexo te muestra qué va a crear y qué va a cambiar, y recién ahí guarda.</p>
+              </header>
+
+              <div class="form config-tarjeta im-paso" id="imPasoArchivo">
+                <div class="config-tarjeta-cuerpo">
+                  <div class="segmentos" role="group" aria-label="Qué vas a traer" id="imTipo">
+                    <button type="button" class="segmento" data-tipo="productos" aria-pressed="true">Productos</button>
+                    <button type="button" class="segmento" data-tipo="clientes" aria-pressed="false">Clientes</button>
+                    <button type="button" class="segmento" data-tipo="proveedores" aria-pressed="false">Proveedores</button>
+                  </div>
+                  <div class="im-soltar" id="imSoltar">
+                    <span class="im-soltar-icono"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#file-spreadsheet"></use></svg></span>
+                    <p class="im-soltar-titulo">Elegí la planilla o arrastrala acá</p>
+                    <p class="form-note">Excel (.xlsx) o CSV, de hasta 5000 renglones. Se lee la primera hoja.</p>
+                    <button type="button" class="btn btn-primary" id="btnImArchivo">Elegir el archivo</button>
+                    <input type="file" id="imArchivo" accept=".xlsx,.csv,.tsv,.txt,.xls,.ods,text/csv,text/plain,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden />
+                  </div>
+                  <details class="im-pegar">
+                    <summary>O pegá las columnas copiadas de Excel</summary>
+                    <label class="im-pegar-campo">Lo copiado, con la fila de los títulos
+                      <textarea id="imTexto" rows="7" placeholder="Nombre&#9;Precio&#9;Stock"></textarea>
+                    </label>
+                    <button type="button" class="btn btn-secundario" id="btnImPegar">Leer lo pegado</button>
+                  </details>
+                  <p class="form-note" id="imAyuda"></p>
+                </div>
+              </div>
+
+              <form class="form config-tarjeta im-paso" id="formImColumnas" novalidate hidden>
+                <div class="config-tarjeta-cuerpo">
+                  <p class="config-tarjeta-titulo">Qué es cada columna</p>
+                  <p class="config-tarjeta-texto" id="imOrigen"></p>
+                  <ul class="im-columnas" id="imColumnas"></ul>
+                  <label class="im-deposito" id="imDepositoCampo" hidden>El stock es del depósito
+                    <select id="imDeposito"></select>
+                  </label>
+                </div>
+                <div class="config-tarjeta-pie">
+                  <button type="button" class="btn btn-secundario" id="btnImOtra">Elegir otra</button>
+                  <button type="submit" class="btn btn-primary">Revisar</button>
+                </div>
+              </form>
+
+              <div class="form config-tarjeta im-paso" id="imPasoRevisar" hidden>
+                <div class="config-tarjeta-cuerpo">
+                  <p class="config-tarjeta-titulo" id="imRevisarTitulo">Revisá antes de traerla</p>
+                  <p class="config-tarjeta-texto" id="imResumen" aria-live="polite"></p>
+                  <p class="im-aviso" id="imAviso" hidden></p>
+                  <div class="segmentos im-filtro" role="group" aria-label="Qué renglones ver" id="imFiltro"></div>
+                  <ul class="im-renglones" id="imRenglones"></ul>
+                  <p class="form-note" id="imMas" hidden></p>
+                </div>
+                <div class="config-tarjeta-pie">
+                  <button type="button" class="btn btn-secundario" id="btnImColumnas">Cambiar las columnas</button>
+                  <button type="button" class="btn btn-primary" id="btnImGuardar">Traer</button>
+                </div>
+              </div>
             </section>
 
             <section class="config-pagina col-admin" data-seccion="stock-inicial" aria-labelledby="configStockInicialTitulo" hidden>
