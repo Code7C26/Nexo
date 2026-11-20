@@ -40,7 +40,7 @@ repetidos en `index.html` (arreglado, con un test que no deja repetir ids), y
 la lista de precios del proveedor en foto o larga daba 413 porque el parser
 global cortaba en 100 KB antes del límite de la ruta.
 
-**20 de noviembre, hist. §208: las cuotas de los socios, como en los
+**20 de noviembre, hist. §208 (publicado, PR #108): las cuotas de los socios, como en los
 sistemas de gimnasios** (pedido del usuario; investigado antes en
 `docs/investigaciones/investigacion-cuotas-gimnasio.md`).
 - **Un cobro por socio y por período:** los planes que empiezan el mismo día
