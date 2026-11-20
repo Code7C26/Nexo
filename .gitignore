@@ -1,5 +1,8 @@
 node_modules/
 *.db
+# Los archivos temporales de SQLite en modo WAL (hist. §161): son parte de la base.
+*.db-shm
+*.db-wal
 backend/db/*.backup-*
 # Respaldos automáticos de la base (backend/db/respaldo.js).
 /backups/
