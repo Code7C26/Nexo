@@ -7,6 +7,7 @@
 import { cantidad, esc, fechaAR, fechaHoraAR, money, numero } from "./formato.js";
 import { condicionFiscal, condicionIvaCliente, leyendaFiscal } from "./fiscal.js";
 import { negocio } from "./negocio.js";
+import { colorParaPapel, imgLogo } from "./marca.js";
 import { avisar } from "./ui.js";
 import { api } from "./api.js";
 
@@ -22,6 +23,14 @@ import { api } from "./api.js";
 // step y no queremos sumar dependencias solo para esto).
 
 const hojaImpresionEl = document.getElementById("hojaImpresion");
+
+// La marca del negocio en el papel (hist. §212): el logo arriba del nombre, y
+// el nombre en su color, en la versión que se lee sobre el blanco. El ticket
+// va sin color: la impresora térmica imprime en negro.
+const estiloDelNombre = () => {
+  const color = colorParaPapel(negocio.color_marca);
+  return color ? ` style="color: ${esc(color)}"` : "";
+};
 
 
 
@@ -233,7 +242,8 @@ export function armarHojaFactura(f) {
       <p class="fac-copia">ORIGINAL</p>
       <header class="fac-cabecera">
         <div class="fac-emisor">
-          <p class="fac-emisor-nombre">${esc(emisor.nombre || "—")}</p>
+          ${imgLogo("fac-logo")}
+          <p class="fac-emisor-nombre"${estiloDelNombre()}>${esc(emisor.nombre || "—")}</p>
           ${datoFactura("Razón Social:", emisor.razon_social || emisor.nombre)}
           ${datoFactura("Domicilio Comercial:", emisor.direccion)}
           ${datoFactura("Condición frente al IVA:", condicionFiscal(emisor.condicion_iva))}
@@ -397,6 +407,7 @@ export function armarTicket({ venta, cobros = [], factura = null, vuelto = 0 }) 
   return `
     <div translate="no" class="hoja hoja-ticket">
       <div class="tk-centro">
+        ${imgLogo("tk-logo")}
         <p class="tk-negocio">${esc(emisor.nombre || "—")}</p>
         ${lineaTicket(emisor.razon_social && emisor.razon_social !== emisor.nombre ? emisor.razon_social : "")}
         ${lineaTicket(cuit)}
@@ -478,6 +489,7 @@ export function armarReciboPago({ cliente, pagado, saldo, medio, atendio }) {
   return `
     <div translate="no" class="hoja hoja-ticket">
       <div class="tk-centro">
+        ${imgLogo("tk-logo")}
         <p class="tk-negocio">${esc(negocio.nombre || "—")}</p>
         ${lineaTicket(cuit)}
         ${lineaTicket(negocio.direccion)}
@@ -517,7 +529,8 @@ export function armarHojaComprobante({ rotulo, comprobanteNro, fecha, campos = [
     <div translate="no" class="hoja">
       <header class="hoja-encabezado">
         <div class="hoja-negocio">
-          <h1>${esc(negocio.nombre || "—")}</h1>
+          ${imgLogo("hoja-logo")}
+          <h1${estiloDelNombre()}>${esc(negocio.nombre || "—")}</h1>
           ${lineaSiHay("CUIT:", negocio.documento)}
           ${lineaSiHay("", condicionFiscal(negocio.condicion_iva))}
           ${lineaSiHay("", negocio.direccion)}

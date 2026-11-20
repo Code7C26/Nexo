@@ -2113,6 +2113,23 @@ if (!db.prepare('PRAGMA table_info(organizaciones)').all().some((col) => col.nam
   db.exec('ALTER TABLE organizaciones ADD COLUMN balanza_formato TEXT');
 }
 
+// La marca del negocio y la foto de perfil (hist. §212, ver schema.sql).
+// Aditivas y nulas, sin backfill: sin logo ni color, todo sigue como estaba.
+// La imagen va última, después de su tipo y su versión.
+for (const [tabla, columna] of [
+  ['organizaciones', 'color_marca TEXT'],
+  ['organizaciones', 'logo_tipo TEXT'],
+  ['organizaciones', 'logo_version TEXT'],
+  ['organizaciones', 'logo BLOB'],
+  ['usuarios', 'foto_tipo TEXT'],
+  ['usuarios', 'foto_version TEXT'],
+  ['usuarios', 'foto BLOB']
+]) {
+  if (!db.prepare(`PRAGMA table_info(${tabla})`).all().some((col) => col.name === columna.split(' ')[0])) {
+    db.exec(`ALTER TABLE ${tabla} ADD COLUMN ${columna}`);
+  }
+}
+
 // Ofertas con vigencia (hist. §133, ver schema.sql): las tablas nuevas las
 // crea schema.sql; acá, la oferta y el precio de lista de cada renglón de
 // venta. Aditivas y nulas, sin backfill: una venta de antes no tuvo oferta.

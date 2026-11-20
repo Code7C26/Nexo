@@ -34,6 +34,13 @@ let negocios = [];
 // espacio en Dub. Con [...] para no partir un carácter compuesto.
 const inicial = (nombre) => ([...nombre.trim()][0] ?? "N").toLocaleUpperCase("es-AR");
 
+// Con logo (hist. §212), el logo en vez de la letra, como un espacio de Dub
+// con su imagen.
+const cuadradito = (n) =>
+  n.logo
+    ? `<span class="negocio-inicial negocio-logo" aria-hidden="true"><img src="${esc(n.logo)}" alt="" /></span>`
+    : `<span class="negocio-inicial" aria-hidden="true">${esc(inicial(n.nombre))}</span>`;
+
 /* ---------- Aviso después de recargar ---------- */
 
 // Lo que se avisa sobrevive a la recarga en sessionStorage: lo deja quien
@@ -85,7 +92,7 @@ function pintarNegociosDeLaCuenta() {
       const vence = n.plan.vence ? `, hasta el ${esc(n.plan.vence.split("-").reverse().join("/"))}` : "";
       return `
       <li class="cuenta-negocio${n.actual ? " is-actual" : ""}">
-        <span class="negocio-inicial" aria-hidden="true">${esc(inicial(n.nombre))}</span>
+        ${cuadradito(n)}
         <div class="cuenta-negocio-texto">
           <p class="cuenta-negocio-nombre"><strong>${esc(n.nombre)}</strong> <span class="status ${n.rol === "admin" ? "status-cobrado" : "status-pendiente"}">${ROL_EN_NEGOCIO[n.rol] ?? esc(n.rol)}</span></p>
           <p class="cuenta-negocio-detalle">${esc(n.tipo)}${duenio ? ` · ${duenio}` : ""} · Plan ${esc(n.plan.nombre)}${vence}</p>
@@ -113,7 +120,7 @@ listaCuentaNegocios?.addEventListener("click", async (e) => {
 function pintarActual() {
   const actual = negocios.find((n) => n.actual);
   if (!actual) return;
-  boton.querySelector(".negocio-inicial").textContent = inicial(actual.nombre);
+  boton.querySelector(".negocio-inicial").outerHTML = cuadradito(actual);
   boton.querySelector(".negocio-nombre").textContent = actual.nombre;
   boton.querySelector(".negocio-tipo").textContent = actual.tipo;
   boton.title = actual.nombre;
@@ -134,7 +141,7 @@ function pintarMenu() {
         (n) => `
       <button type="button" class="negocio-opcion${n.actual ? " is-actual" : ""}" role="menuitemradio"
         aria-checked="${n.actual ? "true" : "false"}" data-id="${n.id}" data-nombre="${esc(n.nombre)}">
-        <span class="negocio-inicial" aria-hidden="true">${esc(inicial(n.nombre))}</span>
+        ${cuadradito(n)}
         <span class="negocio-textos">
           <strong class="negocio-nombre">${esc(n.nombre)}</strong>
           <span class="negocio-tipo">${esc(n.se_borra ? "Se está dando de baja" : n.tipo)}</span>

@@ -5,6 +5,15 @@
 try {
   const guardado = localStorage.getItem("nexo.tema");
   if (guardado) document.documentElement.setAttribute("data-tema", guardado);
+  // El color del negocio (hist. §212, core/marca.js), el de la última vez:
+  // va después de styles.css y pisa el azul antes de pintar.
+  const marca = localStorage.getItem("nexo.marca");
+  if (marca) {
+    const estilo = document.createElement("style");
+    estilo.dataset.marca = "";
+    estilo.textContent = marca;
+    document.head.append(estilo);
+  }
   const sidebarGuardada = localStorage.getItem("nexo.sidebar");
   if (sidebarGuardada) document.documentElement.setAttribute("data-sidebar", sidebarGuardada);
   // Marca cosmética para evitar el flash de la app antes de que sesion.js

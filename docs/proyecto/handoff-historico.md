@@ -15260,3 +15260,14 @@ Regresión contra HEAD sin diferencias. Manual (castellano e inglés):
 **Queda:** crear variantes nuevas desde la planilla (talle y color en
 columnas), precios por lista de precios (una columna por lista) y el saldo
 de cuenta corriente de cada cliente en la misma planilla.
+
+## §212 — 20 de noviembre de 2026: logo y colores del negocio, y la foto de perfil (punto 8)
+
+- **Competencia:** Square (un "branding" con logo y color que va a recibos, POS y facturas; logo del ticket impreso en blanco y negro, máx. 400×200), Gymdesk (logo y color en la app de socios y la web, kiosco de entrada), Dux (logo en Configuración › Empresa).
+- **Configuración › Logo y colores** (`#/configuracion/marca`, en `dominios/configuracion.js`): subir logo (se achica en el navegador a 640 px, sin el margen transparente, WebP o PNG), elegir color (Azul de Nexo, los del logo, 7 fijos u "Otro"), vista previa de la barra, la hoja y el papel. Con "cambios sin guardar" como las otras páginas.
+- **Dónde va:** el cuadradito del selector de negocios (sobre blanco), factura y presupuesto (logo + nombre en el color legible sobre blanco), ticket y recibo (logo en grises), pantalla de entrada (logo grande). El color reemplaza a `--accent`, `--accent-on-dark` y `--sidebar-active` (el negro no cambia), ajustado para pasar 4,5 de contraste en cada tema (`core/marca.js`). `arranque.js` lo pone antes de pintar (`localStorage nexo.marca`).
+- **Foto de perfil** en Mi cuenta: cuadrada de 256 px, se guarda al elegirla, va en el círculo del pie del menú.
+- **Esquema (aditivo, nulo):** `organizaciones.color_marca/logo_tipo/logo_version/logo` (BLOB) y `usuarios.foto_tipo/foto_version/foto`. Se borran con la baja del negocio y de la cuenta; la descarga de datos lleva el logo como data URL. `verificar-migracion`: 24 de 24.
+- **Rutas:** `PUT /api/negocio/marca` (admin), `GET /api/negocios/:id/logo` (quien trabaja en ese negocio; también la caja), `PUT/GET /api/auth/foto`. Se valida la firma de los bytes (PNG/JPEG/WebP), máx. 600 KB; dirección con `?v=` y caché inmutable.
+- Test nuevo: `marca`. `npm test`: 501 de 501. Probado en el navegador (oscuro, claro, celular sin scroll horizontal, impreso, entrada, foto).
+- **Falta:** probarlo con una impresora térmica real; si el logo es blanco sobre transparente, en la placa blanca no se ve (se podría ofrecer el fondo de la placa).

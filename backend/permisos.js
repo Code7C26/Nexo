@@ -404,6 +404,13 @@ export const RUTAS_PERMISOS = {
   'PUT /api/negocio': 'admin',
   // El formato de las etiquetas de la balanza (hist. §132).
   'PUT /api/negocio/balanza': 'admin',
+  // El logo y el color del negocio (hist. §212): los cambia el admin, y el
+  // logo lo ven todos los que trabajan en ese negocio (el menú, lo impreso).
+  'PUT /api/negocio/marca': 'admin',
+  'GET /api/negocios/:id/logo': 'ambos',
+  // La foto de perfil es de cada cuenta.
+  'PUT /api/auth/foto': 'ambos',
+  'GET /api/auth/foto': 'ambos',
   // Descargar los datos y dar de baja el negocio (hist. §109): llevan costos
   // y borran todo.
   'GET /api/negocio/exportar': 'admin',

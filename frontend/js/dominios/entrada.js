@@ -46,7 +46,13 @@ function pintarCodigo() {
 
 // Con el enlace directo (#/entrada), el negocio llega después de entrar: se
 // pinta también con cada reinicio y con el reloj.
-const pintarNegocio = () => (document.getElementById("entradaNegocio").textContent = negocio.nombre ?? "");
+// Con su logo grande arriba (hist. §212), como el kiosco de Gymdesk.
+const logo = document.getElementById("entradaLogo");
+function pintarNegocio() {
+  document.getElementById("entradaNegocio").textContent = negocio.nombre ?? "";
+  logo.hidden = !negocio.logo;
+  if (negocio.logo && logo.getAttribute("src") !== negocio.logo) logo.src = negocio.logo;
+}
 
 function reiniciar() {
   pintarNegocio();

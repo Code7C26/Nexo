@@ -95,7 +95,10 @@ export function contarFilasDelNegocio(organizacionId) {
 // llevarla a otro sistema o guardarla); el equipo, con el nombre y el mail de
 // cada persona en vez de su id de cuenta.
 export function exportarNegocio(organizacionId) {
-  const negocio = db.prepare('SELECT * FROM organizaciones WHERE id = ?').get(organizacionId);
+  const { logo, ...negocio } = db.prepare('SELECT * FROM organizaciones WHERE id = ?').get(organizacionId);
+  // El logo (hist. §212), como se pondría en una página: en JSON, los bytes
+  // sueltos saldrían número por número.
+  negocio.logo = logo ? `data:${negocio.logo_tipo};base64,${Buffer.from(logo).toString('base64')}` : null;
   const equipo = db
     .prepare(
       `SELECT usuarios.nombre, usuarios.email, pertenencia.rol, pertenencia.activo, pertenencia.fecha_alta
@@ -146,7 +149,8 @@ export function borrarDatosNegocio(organizacionId) {
       db.prepare(
         `UPDATE organizaciones
             SET nombre = 'Negocio dado de baja', documento = NULL, direccion = NULL, telefono = NULL, email = NULL,
-                condicion_iva = NULL, pie_comprobante = NULL, baja_hecha = datetime('now')
+                condicion_iva = NULL, pie_comprobante = NULL, color_marca = NULL,
+                logo = NULL, logo_tipo = NULL, logo_version = NULL, baja_hecha = datetime('now')
           WHERE id = ?`
       ).run(organizacionId);
       const rotasDespues = db.prepare('PRAGMA foreign_key_check').all().length;

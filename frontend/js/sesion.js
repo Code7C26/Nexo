@@ -288,6 +288,15 @@
     window.nexoCaja = usuario.caja ?? null;
     const nombreEl = document.querySelector("[data-usuario-nombre]");
     if (nombreEl) nombreEl.textContent = usuario.nombre;
+    // La foto de perfil (hist. §212) en el círculo del pie del menú. Sin
+    // foto queda el ícono; Mi cuenta (dominios/perfil.js) la cambia.
+    const avatar = document.getElementById("btnPerfil");
+    if (avatar && usuario.foto) {
+      const foto = document.createElement("img");
+      foto.src = usuario.foto;
+      foto.alt = "";
+      avatar.replaceChildren(foto);
+    }
     const rolEl = document.querySelector("[data-usuario-rol]");
     if (rolEl) rolEl.textContent = usuario.caja ? "Caja" : usuario.rol === "admin" ? "Administrador" : "Empleado";
     mostrarAvisoEjemplo(usuario.ejemplo);
