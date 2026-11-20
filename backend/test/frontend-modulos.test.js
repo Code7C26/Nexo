@@ -315,6 +315,20 @@ test('todo getElementById("literal") apunta a un id que existe', () => {
   assert.deepEqual(faltantes, [], `Ids que no existen:\n${faltantes.join('\n')}`);
 });
 
+test('index.html no repite ningún id', () => {
+  // Con un id repetido, getElementById da siempre el primero: el módulo del
+  // segundo engancha el elemento de otra pantalla y su botón no hace nada
+  // (el "Editar" de las actividades abría el formulario del CRM).
+  const html = readFileSync(path.join(RAIZ_JS, '..', 'index.html'), 'utf8');
+  const vistos = new Set();
+  const repetidos = new Set();
+  for (const [, id] of html.matchAll(/\bid="([^"]+)"/g)) {
+    if (vistos.has(id)) repetidos.add(id);
+    vistos.add(id);
+  }
+  assert.deepEqual([...repetidos], [], `Ids repetidos en index.html:\n${[...repetidos].join('\n')}`);
+});
+
 test('quitar cualquier esc(x.campo) real del frontend hace fallar el chequeo (mutación)', () => {
   // El control de arriba prueba cadenas sintéticas; esto prueba el código
   // real: si el analizador dejara de ver alguno de los esc() que hoy protegen

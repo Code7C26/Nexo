@@ -150,16 +150,20 @@ app.use((req, res, next) => {
 
 // Los webhooks de las integraciones (CLAUDE.md §32) se firman sobre el cuerpo
 // tal cual llegó: se guarda solo para esas rutas, antes de parsearlo.
-// La foto de la factura de un proveedor (hist. §151) es la única que viaja
-// grande: va con su propio límite en su ruta, y acá se saltea.
-// La factura que se manda por mail (hist. §186) trae su PDF, y también va con
-// el suyo.
-const RUTA_LEER_COMPROBANTE = '/api/compras/leer-comprobante';
-const RUTA_MAIL_FACTURA = /^\/api\/facturas\/\d+\/mail$/;
+// Las rutas que viajan grandes van con su propio límite en su ruta, y acá se
+// saltean: si este las leyera primero, cortaría en los 100 KB de siempre y el
+// límite de la ruta nunca llegaría a usarse (hist. §207). Son la foto de la
+// factura de un proveedor (hist. §151), la factura por mail con su PDF (hist.
+// §186) y la lista de precios de un proveedor, en foto y guardada (hist. §198).
+const RUTAS_CON_LIMITE_PROPIO = [
+  /^\/api\/compras\/leer-comprobante$/,
+  /^\/api\/facturas\/\d+\/mail$/,
+  /^\/api\/proveedores\/\d+\/lista\/leer$/,
+  /^\/api\/proveedores\/\d+\/listas$/
+];
 app.use(
   express.json({
-    type: (req) =>
-      req.path !== RUTA_LEER_COMPROBANTE && !RUTA_MAIL_FACTURA.test(req.path) && Boolean(req.is('application/json')),
+    type: (req) => !RUTAS_CON_LIMITE_PROPIO.some((ruta) => ruta.test(req.path)) && Boolean(req.is('application/json')),
     verify: (req, res, buf) => {
       if (req.url.startsWith('/api/integraciones/')) req.cuerpoCrudo = Buffer.from(buf);
     }

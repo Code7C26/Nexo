@@ -15061,3 +15061,34 @@ el servicio aparece en alguna operación (`productoEnUso` mira toda tabla con
 FK a productos), el servicio queda pausado. Uno que algún socio hizo no se
 borra: sus cuotas lo nombran, y se pausa como siempre. En Planes aparece
 "Eliminar" solo en los que se pueden borrar.
+
+## §206 — 20 de noviembre de 2026: ids repetidos en index.html
+
+El "Editar" de las actividades de la grilla de clases no hacía nada. El
+formulario de la actividad se llamaba `formActividad`, igual que el de
+seguimiento del CRM, que está antes en la página: `getElementById` daba ese, y
+`clases.js` abría el formulario del CRM en otra pantalla. El mismo error tenía
+el punto de venta con `btnPosACuenta`: "Cobrar a cuenta" del turno también
+fiaba la venta en curso, y "Dejar en cuenta corriente" del cobro no hacía
+nada. Se renombraron a `formActividadGrilla` y `btnPosCobrarACuenta`, y
+`frontend-modulos.test.js` suma "index.html no repite ningún id" (con el HTML
+de antes falla).
+
+## §207 — 20 de noviembre de 2026: las rutas grandes cortaban en 100 KB
+
+El parser global de JSON (`express.json`, con el límite de 100 KB de siempre)
+solo salteaba la foto de la factura del proveedor y la factura por mail. Las
+dos rutas de la lista de precios del proveedor (`/lista/leer`, 12 MB, y
+`/listas`, 4 MB) declaraban su límite, pero el global las leía antes y
+respondía 413: una foto de la lista (un JPEG en base64 de cientos de KB), un
+PDF escaneado o una lista larga no llegaban a leerse. Ahora toda ruta con
+límite propio va en `RUTAS_CON_LIMITE_PROPIO` y el global la saltea. Test en
+`lista-proveedor.test.js` (3000 renglones, unos 150 KB; sin el arreglo da
+413).
+
+Mismo día, pedido del usuario: las cuotas de un socio con combo salen como
+dos ventas, y no quiere las cuotas en Ventas. Investigado en
+`docs/investigaciones/investigacion-cuotas-gimnasio.md` (Gymdesk, Glofox,
+Wodify, GymAr): un cobro por socio y por período, y las cuotas aparte de las
+ventas del mostrador. Falta que el usuario elija; cambia el esquema
+(`cuotas_socio.venta_id` deja de ser UNIQUE).
