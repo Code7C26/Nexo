@@ -54,10 +54,14 @@ function estadoCuota(c) {
   return vencida(c) ? badge("status-vencido", "Vencida").html : badge("status-pendiente", "Vence hoy").html;
 }
 
+// Facturar va como en Ventas: la cuota es una venta por dentro.
+const botonFacturar = (c) =>
+  c.facturada || c.estado === "bonificada" ? "" : `<button type="button" class="btn btn-secundario btn-chico" data-facturar="${c.venta_id}">Facturar</button>`;
+
 function accionesCuota(c) {
-  if (c.saldo <= 0) return "";
+  if (c.saldo <= 0) return `<div class="cuotas-cuentas">${botonFacturar(c)}</div>`;
   if (cobrando !== c.venta_id) {
-    return `<button type="button" class="btn btn-secundario btn-chico" data-cobrar="${c.venta_id}">Cobrar</button>`;
+    return `<div class="cuotas-cuentas">${botonFacturar(c)}<button type="button" class="btn btn-secundario btn-chico" data-cobrar="${c.venta_id}">Cobrar</button></div>`;
   }
   // La de efectivo primero y resaltada, como en la recepción.
   const orden = [...cuentas].sort((a, b) => Number(b.tipo === "efectivo") - Number(a.tipo === "efectivo"));
@@ -151,6 +155,8 @@ async function cobrar(boton) {
 cuerpo.addEventListener("click", (e) => {
   const socio = e.target.closest("[data-socio]");
   if (socio) return invocar("abrirFicha:socio", Number(socio.dataset.socio));
+  const facturar = e.target.closest("[data-facturar]");
+  if (facturar) return invocar("facturar:venta", Number(facturar.dataset.facturar));
   const abrir = e.target.closest("[data-cobrar]");
   if (abrir) {
     cobrando = Number(abrir.dataset.cobrar);

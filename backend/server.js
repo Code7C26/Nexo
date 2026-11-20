@@ -21831,6 +21831,13 @@ app.get('/api/socios/cuotas', (req, res) => {
       .all(organizacionId)
       .map((s) => [s.id, s])
   );
+  // Las que ya tienen factura: en la lista no se ofrece facturarlas de nuevo.
+  const facturadas = new Set(
+    db
+      .prepare('SELECT DISTINCT venta_id FROM facturas WHERE organizacion_id = ? AND venta_id IS NOT NULL')
+      .all(organizacionId)
+      .map((f) => f.venta_id)
+  );
   const porVenta = new Map();
   for (const c of filas) {
     const cobro = porVenta.get(c.venta_id);
@@ -21854,7 +21861,8 @@ app.get('/api/socios/cuotas', (req, res) => {
       importe: redondear2(c.importe_venta),
       cobrado: redondear2(c.cobrado_venta),
       saldo,
-      estado
+      estado,
+      facturada: facturadas.has(c.venta_id)
     });
   }
   const cuotas = [...porVenta.values()];

@@ -4524,24 +4524,7 @@ function renderVentas(lista) {
   }
 
   body.querySelectorAll(".btn-facturar-venta").forEach((btn) => {
-    btn.addEventListener("click", async () => {
-      ventaAFacturarId = Number(btn.dataset.id);
-      const form = document.getElementById("formFacturarVenta");
-      // Los datos de la venta y del cliente precargan la factura (hist. §116):
-      // una venta con plazo es a cuenta corriente, y con servicios se pide el
-      // período.
-      const venta = await api(`/api/ventas/${ventaAFacturarId}`, { error: "No se pudo cargar la venta." });
-      const cliente = await api(`/api/clientes/${venta.cliente_id}`, { error: "No se pudo cargar el cliente." });
-      const aPlazo = Boolean(venta.fecha_vencimiento && venta.fecha_vencimiento > venta.fecha);
-      const tipos = new Map(productos.map((p) => [p.id, p.tipo]));
-      mostrarLetraSiSeElige(form);
-      prepararDatosFactura(form, cliente, {
-        conPeriodo: venta.items.some((i) => tipos.get(i.producto_id) === "servicio"),
-        condicionVenta: aPlazo ? "cuenta_corriente" : "contado",
-        vencimiento: aPlazo ? venta.fecha_vencimiento : ""
-      });
-      modalFacturarVenta.hidden = false;
-    });
+    btn.addEventListener("click", () => abrirFacturarVenta(Number(btn.dataset.id)));
   });
 
   body.querySelectorAll(".btn-anular-venta").forEach((btn) => {
@@ -5053,6 +5036,28 @@ function pintarDesgloseVenta(desglose) {
     item(quedo, { aviso: quedo.bajo ? "Menos que lo normal" : "", total: true });
 }
 
+// Facturar una venta: desde la lista de Ventas y desde Cuotas (las de los
+// socios no se listan en Ventas, hist. §208). Los datos de la venta y del
+// cliente precargan la factura (hist. §116): una venta con plazo es a cuenta
+// corriente, y con servicios se pide el período.
+async function abrirFacturarVenta(id) {
+  ventaAFacturarId = id;
+  const form = document.getElementById("formFacturarVenta");
+  const venta = await api(`/api/ventas/${ventaAFacturarId}`, { error: "No se pudo cargar la venta." });
+  const cliente = await api(`/api/clientes/${venta.cliente_id}`, { error: "No se pudo cargar el cliente." });
+  const aPlazo = Boolean(venta.fecha_vencimiento && venta.fecha_vencimiento > venta.fecha);
+  const tipos = new Map(productos.map((p) => [p.id, p.tipo]));
+  mostrarLetraSiSeElige(form);
+  prepararDatosFactura(form, cliente, {
+    // Un plan de socio es un servicio aunque el catálogo no esté cargado.
+    conPeriodo: venta.items.some((i) => (tipos.get(i.producto_id) ?? i.tipo) === "servicio"),
+    condicionVenta: aPlazo ? "cuenta_corriente" : "contado",
+    vencimiento: aPlazo ? venta.fecha_vencimiento : ""
+  });
+  modalFacturarVenta.hidden = false;
+}
+registrar("facturar:venta", abrirFacturarVenta);
+
 async function abrirFichaVenta(id) {
   ventaFichaId = id;
   const venta = await api(`/api/ventas/${id}`, {
@@ -5243,7 +5248,7 @@ document.getElementById("formFacturarVenta").addEventListener("submit", async (e
     boton.disabled = false;
   }
 
-  await refrescar([cargarVentas(), cargarFacturas()]);
+  await refrescar([cargarVentas(), cargarFacturas(), recargar("cuotas")]);
   avisarEmision(emitida, `Venta #${ventaAFacturarId} facturada.`);
   ventaAFacturarId = null;
   modalFacturarVenta.hidden = true;

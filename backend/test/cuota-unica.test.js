@@ -123,7 +123,7 @@ test('las cuotas no se listan en Ventas: van en Socios → Cuotas, una fila por 
 
   const lista = (await admin.get('/api/socios/cuotas')).json;
   const fila = lista.cuotas.find((c) => c.venta_id === ventaId);
-  assert.deepEqual([fila.socio, fila.planes, fila.importe, fila.saldo, fila.estado], ['Lista Cuotas', ['BJJ', 'MMA'], 80000, 80000, 'pendiente']);
+  assert.deepEqual([fila.socio, fila.planes, fila.importe, fila.saldo, fila.estado, fila.facturada], ['Lista Cuotas', ['BJJ', 'MMA'], 80000, 80000, 'pendiente', false]);
   assert.ok(lista.totales.por_cobrar >= 80000);
   assert.equal((await admin.get('/api/socios/cuotas?mes=2001-01')).json.cuotas.length, 0, 'otro mes');
 
