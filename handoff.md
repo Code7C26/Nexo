@@ -71,7 +71,7 @@ Nube trae el costo cuando lo tiene, y la guía avisa los productos con stock y
 sin costo. Arreglado el 500 al traer el catálogo de Tienda Nube. **Falta:**
 que el amigo del usuario lo pruebe con su tienda.
 
-**20 de noviembre, hist. §211: traer desde una planilla (punto 7).**
+**20 de noviembre, hist. §211: traer desde una planilla (punto 7, publicado, PR #111).**
 Configuración › Lo que ya tenías › **Traer desde una planilla** (y **Desde una
 planilla** en Productos, Clientes y Proveedores): productos con precio, costo,
 stock, categoría y códigos, clientes y proveedores, desde el .xlsx o el CSV que
