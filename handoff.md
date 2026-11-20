@@ -59,7 +59,7 @@ sistemas de gimnasios** (pedido del usuario; investigado antes en
 - **Regla nueva del usuario:** antes de diseñar algo, averiguar cómo lo hace la
   mejor competencia del rubro y anotarlo en `docs/investigaciones/`.
 
-**20 de noviembre, hist. §209:** Personalizar del Resumen mueve cada pieza
+**20 de noviembre, hist. §209 (publicado, PR #109):** Personalizar del Resumen mueve cada pieza
 arrastrándola desde sus tres rayas (mouse y dedo, con scroll automático y
 flechas del teclado), en vez de los botones de subir y bajar; y "Por socio"
 pasa a "Promedio por socio" (pedidos del usuario).
