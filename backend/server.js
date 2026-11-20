@@ -21009,56 +21009,115 @@ const planesActivosDe = (socioId) =>
       .map((f) => f.plan_id)
   );
 
-// Arma las cuotas que le faltan a un plan de un socio hasta hoy, con los
-// períodos de periodosPendientes(): cada una nueva usa la duración de hoy. El
-// descuento es el que le toca hoy con los planes que tiene activos. La venta lleva la fecha en que empieza el período y vence
-// ese mismo día: la cuota se paga por adelantado. Va DENTRO de una transacción,
-// después de anotar todos los planes del socio (un combo los mira a todos).
-function generarCuotasDe(inscripcionId, hoy) {
-  const plan = db.prepare(`${SELECT_INSCRIPCION} WHERE inscripciones_socio.id = ?`).get(inscripcionId);
-  const socio = db.prepare('SELECT id, cliente_id, numero, descuento_id, organizacion_id FROM socios WHERE id = ?').get(plan.socio_id);
-  const descuento = mejorDescuento(plan.plan_id, planesActivosDe(socio.id), socio.descuento_id, descuentosDeLaEmpresa(socio.organizacion_id));
-  const porcentaje = descuento?.porcentaje ?? 0;
-  const existentes = new Map(
-    db
-      .prepare('SELECT desde, meses FROM cuotas_socio WHERE inscripcion_id = ? AND desde >= ?')
-      .all(plan.id, plan.ciclo_desde)
-      .map((c) => [c.desde, c.meses])
-  );
+// Una cuota en su venta: el renglón de su plan y la fila de cuotas_socio.
+// `cuotas` son las de un mismo socio que empiezan el mismo día: van todas en
+// una sola venta (hist. §208), un renglón por plan, como cobran los sistemas
+// de gimnasios (un pagador, un cobro). La venta lleva la fecha en que empieza
+// el período y vence ese mismo día: la cuota se paga por adelantado. Actor
+// sistema y sin usuario: nadie la cargó, la generó Nexo (CLAUDE.md §22).
+// Cada cuota: { plan (fila de SELECT_INSCRIPCION), desde, hasta, precio,
+// porcentaje, descuento }. Va DENTRO de una transacción.
+function venderCuotas(socio, cuotas, { fecha = cuotas[0].desde, detalle = 'Cuota' } = {}) {
+  const ventaId = crearVenta({
+    cliente_id: socio.cliente_id,
+    items: cuotas.map((c) => ({ producto_id: c.plan.producto_id, cantidad: 1, precio_unitario: c.precio })),
+    fecha,
+    organizacion_id: socio.organizacion_id
+  });
   const insertarCuota = db.prepare(
     `INSERT INTO cuotas_socio (inscripcion_id, opcion_id, venta_id, desde, hasta, meses, precio_lista, descuento_pct, descuento_id)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
   );
-  const periodos = periodosPendientes({
-    cicloDesde: plan.ciclo_desde,
-    cobrarDesde: plan.cobrar_desde,
-    meses: plan.meses,
-    existentes,
-    hoy
-  });
-  for (const { desde, hasta } of periodos) {
-    const ventaId = crearVenta({
-      cliente_id: socio.cliente_id,
-      items: [{ producto_id: plan.producto_id, cantidad: 1, precio_unitario: conDescuento(plan.precio_lista, porcentaje) }],
-      fecha: desde,
-      organizacion_id: socio.organizacion_id
-    });
-    insertarCuota.run(plan.id, plan.opcion_id, ventaId, desde, hasta, plan.meses, plan.precio_lista, porcentaje, descuento?.id ?? null);
-    // Actor sistema y sin usuario: nadie la cargó, la generó Nexo al empezar
-    // el período (CLAUDE.md §22).
-    registrarAuditoria({
-      actor: 'sistema',
-      accion: 'crear',
-      entidad: 'venta',
-      entidad_id: ventaId,
-      operacion_tipo: 'socio',
-      operacion_id: socio.id,
-      detalle:
-        `Cuota del socio N° ${socio.numero}, ${planYDuracion(plan.plan, plan.meses)}, del ${fechaLegible(desde)} al ${fechaLegible(hasta)}` +
-        (porcentaje ? `, con ${redondear2(porcentaje)}% de descuento (${descuento.nombre})` : ''),
-      organizacion_id: socio.organizacion_id
-    });
+  for (const c of cuotas) {
+    insertarCuota.run(c.plan.id, c.plan.opcion_id, ventaId, c.desde, c.hasta, c.plan.meses, c.plan.precio_lista, c.porcentaje, c.descuento?.id ?? null);
   }
+  const planes = cuotas.map(
+    (c) =>
+      `${planYDuracion(c.plan.plan, c.plan.meses)} del ${fechaLegible(c.desde)} al ${fechaLegible(c.hasta)}` +
+      (c.porcentaje ? `, con ${redondear2(c.porcentaje)}% de descuento (${c.descuento.nombre})` : '')
+  );
+  registrarAuditoria({
+    actor: 'sistema',
+    accion: 'crear',
+    entidad: 'venta',
+    entidad_id: ventaId,
+    operacion_tipo: 'socio',
+    operacion_id: socio.id,
+    detalle: `${detalle} del socio N° ${socio.numero}: ${planes.join('; ')}`,
+    organizacion_id: socio.organizacion_id
+  });
+  return ventaId;
+}
+
+const SELECT_SOCIO_DE_CUOTAS = 'SELECT id, cliente_id, numero, descuento_id, organizacion_id FROM socios WHERE id = ?';
+
+// Arma las cuotas que les faltan hasta hoy a los planes activos de un socio,
+// con los períodos de periodosPendientes(): cada una nueva usa la duración de
+// hoy, y el descuento que le toca hoy con los planes que tiene activos. Las
+// que empiezan el mismo día van en una sola venta (venderCuotas). Va DENTRO de
+// una transacción, después de anotar todos los planes del socio (un combo los
+// mira a todos).
+function generarCuotasDelSocio(socioId, hoy) {
+  const socio = db.prepare(SELECT_SOCIO_DE_CUOTAS).get(socioId);
+  const inscripciones = db
+    .prepare(`${SELECT_INSCRIPCION} WHERE inscripciones_socio.socio_id = ? AND inscripciones_socio.estado = 'activa' ORDER BY inscripciones_socio.id`)
+    .all(socio.id);
+  const activos = new Set(inscripciones.map((i) => i.plan_id));
+  const descuentos = descuentosDeLaEmpresa(socio.organizacion_id);
+  const existentesDe = db.prepare('SELECT desde, meses FROM cuotas_socio WHERE inscripcion_id = ? AND desde >= ?');
+  const porDia = new Map();
+  for (const plan of inscripciones) {
+    const descuento = mejorDescuento(plan.plan_id, activos, socio.descuento_id, descuentos);
+    const porcentaje = descuento?.porcentaje ?? 0;
+    const periodos = periodosPendientes({
+      cicloDesde: plan.ciclo_desde,
+      cobrarDesde: plan.cobrar_desde,
+      meses: plan.meses,
+      existentes: new Map(existentesDe.all(plan.id, plan.ciclo_desde).map((c) => [c.desde, c.meses])),
+      hoy
+    });
+    for (const { desde, hasta } of periodos) {
+      if (!porDia.has(desde)) porDia.set(desde, []);
+      porDia.get(desde).push({ plan, desde, hasta, precio: conDescuento(plan.precio_lista, porcentaje), porcentaje, descuento });
+    }
+  }
+  for (const desde of [...porDia.keys()].sort()) venderCuotas(socio, porDia.get(desde));
+}
+
+// Un plan que se suma (o vuelve) mientras el socio ya paga otro de la misma
+// duración se cobra el mismo día que ese (hist. §208): el primer período va
+// desde `fecha` hasta el día antes del próximo vencimiento del otro, y se
+// cobra la parte que corresponde a esos días. Después los dos van en la misma
+// cuota. Es lo que hacen los sistemas de gimnasios (GymMaster ajusta "the gap
+// between the previous and new billing dates"). Sin otro plan así, o con una
+// fecha a futuro, el plan sigue con su propio ciclo. Un período que ya
+// terminó no se cobra, como siempre. Va DENTRO de una transacción, con la
+// inscripción ya anotada desde `fecha`.
+function alinearConElSocio(inscripcionId, fecha, hoy) {
+  if (fecha > hoy) return;
+  const plan = db.prepare(`${SELECT_INSCRIPCION} WHERE inscripciones_socio.id = ?`).get(inscripcionId);
+  const ancla = db
+    .prepare(
+      `SELECT cuotas_socio.desde, cuotas_socio.hasta FROM cuotas_socio
+         JOIN inscripciones_socio ON inscripciones_socio.id = cuotas_socio.inscripcion_id
+        WHERE inscripciones_socio.socio_id = ? AND inscripciones_socio.id <> ? AND inscripciones_socio.estado = 'activa'
+          AND cuotas_socio.meses = ? AND cuotas_socio.desde < ? AND cuotas_socio.hasta >= ?
+        ORDER BY inscripciones_socio.id LIMIT 1`
+    )
+    .get(plan.socio_id, plan.id, plan.meses, fecha, fecha);
+  if (!ancla) return;
+  const proximo = sumarDias(ancla.hasta, 1);
+  db.prepare('UPDATE inscripciones_socio SET ciclo_desde = ?, cobrar_desde = ? WHERE id = ?').run(proximo, maxISO(proximo, hoy), plan.id);
+  if (ancla.hasta < hoy) return;
+  const socio = db.prepare(SELECT_SOCIO_DE_CUOTAS).get(plan.socio_id);
+  const descuento = mejorDescuento(plan.plan_id, planesActivosDe(socio.id), socio.descuento_id, descuentosDeLaEmpresa(socio.organizacion_id));
+  const porcentaje = descuento?.porcentaje ?? 0;
+  const dias = (desde, hasta) => (Date.parse(hasta) - Date.parse(desde)) / 86400000 + 1;
+  const precio = redondear2((conDescuento(plan.precio_lista, porcentaje) * dias(fecha, ancla.hasta)) / dias(ancla.desde, ancla.hasta));
+  venderCuotas(socio, [{ plan, desde: fecha, hasta: ancla.hasta, precio, porcentaje, descuento }], {
+    fecha: maxISO(fecha, hoy),
+    detalle: 'Primera cuota, por los días hasta el vencimiento de sus otros planes,'
+  });
 }
 
 // Genera lo que falte a los planes activos de la empresa, o de un socio. Solo
@@ -21068,7 +21127,7 @@ function ponerCuotasAlDia(organizacionId, socioId = null) {
   const hoy = fechaDeHoy();
   const pendientes = db
     .prepare(
-      `SELECT inscripciones_socio.id FROM inscripciones_socio
+      `SELECT DISTINCT inscripciones_socio.socio_id FROM inscripciones_socio
          JOIN socios ON socios.id = inscripciones_socio.socio_id
         WHERE socios.organizacion_id = ? AND (? IS NULL OR socios.id = ?)
           AND inscripciones_socio.estado = 'activa' AND inscripciones_socio.ciclo_desde <= ?
@@ -21080,22 +21139,34 @@ function ponerCuotasAlDia(organizacionId, socioId = null) {
     .all(organizacionId, socioId, socioId, hoy, hoy);
   if (pendientes.length === 0) return;
   withTransaction(() => {
-    for (const { id } of pendientes) generarCuotasDe(id, hoy);
+    for (const { socio_id: id } of pendientes) generarCuotasDelSocio(id, hoy);
   });
 }
 
-// Lo que se debe de cada cuota: el neto de su venta (lo devuelto ya no se
-// reclama) menos lo cobrado. La de una venta anulada no se debe: quedó
-// bonificada. El plan es el de la duración de la cuota, por si después cambió.
+// Lo que se debe de cada cuota: el neto de su renglón en la venta (lo
+// devuelto ya no se reclama) menos su parte de lo cobrado. Una venta puede
+// llevar las cuotas de varios planes que empiezan el mismo día (hist. §208):
+// lo cobrado es de la venta y se reparte entre sus renglones según su importe
+// (cuotaDeSuRenglon). La de una venta anulada no se debe: quedó bonificada.
+// El plan es el de la duración de la cuota, por si después cambió.
+const SUBQUERY_RENGLON_CUOTA = `
+  ((SELECT COALESCE(SUM(venta_items.cantidad * venta_items.precio_unitario), 0)
+      FROM venta_items WHERE venta_items.venta_id = ventas.id AND venta_items.producto_id = productos.id)
+   - (SELECT COALESCE(SUM(devolucion_items.cantidad * devolucion_items.precio_unitario), 0)
+        FROM devolucion_items
+        JOIN devoluciones ON devoluciones.id = devolucion_items.devolucion_id
+        JOIN venta_items ON venta_items.id = devolucion_items.venta_item_id
+       WHERE venta_items.venta_id = ventas.id AND venta_items.producto_id = productos.id AND devoluciones.estado = 'activa'))`;
 const SELECT_CUOTAS = `
   SELECT cuotas_socio.id, inscripciones_socio.socio_id, cuotas_socio.inscripcion_id, cuotas_socio.venta_id,
          cuotas_socio.desde, cuotas_socio.hasta, cuotas_socio.meses, cuotas_socio.precio_lista,
          cuotas_socio.descuento_pct, descuentos_socio.nombre AS descuento, descuentos_socio.precio_combo AS descuento_precio_combo,
          productos.nombre AS plan,
          ventas.estado AS estado_venta,
+         ${SUBQUERY_RENGLON_CUOTA} AS importe,
          (SELECT COALESCE(SUM(venta_items.cantidad * venta_items.precio_unitario), 0)
-            FROM venta_items WHERE venta_items.venta_id = ventas.id) - ${SUBQUERY_DEVUELTO_VENTA} AS importe,
-         (SELECT COALESCE(SUM(cobros.importe), 0) FROM cobros WHERE cobros.venta_id = ventas.id) AS cobrado
+            FROM venta_items WHERE venta_items.venta_id = ventas.id) - ${SUBQUERY_DEVUELTO_VENTA} AS importe_venta,
+         (SELECT COALESCE(SUM(cobros.importe), 0) FROM cobros WHERE cobros.venta_id = ventas.id) AS cobrado_venta
     FROM cuotas_socio
     JOIN inscripciones_socio ON inscripciones_socio.id = cuotas_socio.inscripcion_id
     JOIN socios ON socios.id = inscripciones_socio.socio_id
@@ -21104,6 +21175,32 @@ const SELECT_CUOTAS = `
     JOIN planes_socio ON planes_socio.id = planes_socio_opciones.plan_id
     JOIN productos ON productos.id = planes_socio.producto_id
     LEFT JOIN descuentos_socio ON descuentos_socio.id = cuotas_socio.descuento_id`;
+
+// La parte de lo cobrado de la venta que le toca a la cuota de un plan.
+function cuotaDeSuRenglon(cuota) {
+  const { importe_venta: total, cobrado_venta: cobrado } = cuota;
+  return { ...cuota, cobrado: total > 0.005 ? (cobrado * cuota.importe) / total : 0 };
+}
+
+// Las cuotas impagas juntas por su venta: lo que se cobra de una vez (hist.
+// §208). El saldo es el de la venta entera, sin redondear plan por plan.
+function cobrosDeCuotas(impagas) {
+  const porVenta = new Map();
+  for (const c of impagas) {
+    const cobro = porVenta.get(c.venta_id);
+    if (cobro) cobro.planes.push(c.plan);
+    else {
+      porVenta.set(c.venta_id, {
+        venta_id: c.venta_id,
+        desde: c.desde,
+        planes: [c.plan],
+        cobrado: redondear2(c.cobrado_venta),
+        saldo: redondear2(c.importe_venta - c.cobrado_venta)
+      });
+    }
+  }
+  return [...porVenta.values()].map(({ planes, ...cobro }) => ({ ...cobro, plan: planes.join(' y ') }));
+}
 
 function decorarCuota({ estado_venta, ...cuota }) {
   const importe = redondear2(cuota.importe);
@@ -21157,7 +21254,8 @@ function conSituacion(socio, inscripciones, cuotas, descuentos, hoy) {
   const activos = planes.filter((p) => p.estado === 'activa');
   const vigentes = activos.filter((p) => p.cubierto_hasta >= hoy);
   const impagas = cuotas.filter((c) => c.saldo > 0);
-  const deuda = redondear2(impagas.reduce((acc, c) => acc + c.saldo, 0));
+  const porCobrar = cobrosDeCuotas(impagas);
+  const deuda = redondear2(porCobrar.reduce((acc, c) => acc + c.saldo, 0));
   let situacion = 'al_dia';
   if (activos.length === 0) situacion = 'baja';
   else if (deuda > 0) situacion = 'debe';
@@ -21175,12 +21273,12 @@ function conSituacion(socio, inscripciones, cuotas, descuentos, hoy) {
       .filter(Boolean)
       .sort()
       .at(-1);
-    const sinVenir = impagas.filter((c) => c.desde > base && c.cobrado === 0);
+    const sinVenir = porCobrar.filter((c) => c.desde > base && c.cobrado === 0);
     if (base && sumarDias(base, DIAS_PARECE_QUE_DEJO) <= hoy && sinVenir.length) {
       pareceQueDejo = {
         desde: base,
         vino: Boolean(socio.ultimo_ingreso),
-        cuotas: sinVenir.map(({ id, venta_id, desde, plan, saldo }) => ({ id, venta_id, desde, plan, saldo })),
+        cuotas: sinVenir.map(({ venta_id, desde, plan, saldo }) => ({ venta_id, desde, plan, saldo })),
         total: redondear2(sinVenir.reduce((acc, c) => acc + c.saldo, 0))
       };
     }
@@ -21192,7 +21290,7 @@ function conSituacion(socio, inscripciones, cuotas, descuentos, hoy) {
     situacion,
     deuda,
     parece_que_dejo: pareceQueDejo,
-    cuotas_impagas: impagas.length,
+    cuotas_impagas: porCobrar.length,
     debe_desde: impagas[0]?.desde ?? null,
     al_dia_hasta: situacion === 'al_dia' ? primera(vigentes.map((p) => p.cubierto_hasta)) : null,
     empieza: situacion === 'por_empezar' ? primera(activos.map((p) => p.ciclo_desde)) : null,
@@ -21217,7 +21315,10 @@ function sociosConSituacion(organizacionId, socioId = null) {
     db.prepare(`${SELECT_INSCRIPCION} ${filtro} ORDER BY inscripciones_socio.estado, productos.nombre, inscripciones_socio.id`).all(...parametros)
   );
   const cuotas = agrupar(
-    db.prepare(`${SELECT_CUOTAS} ${filtro} ORDER BY cuotas_socio.desde, cuotas_socio.id`).all(...parametros).map(decorarCuota)
+    db
+      .prepare(`${SELECT_CUOTAS} ${filtro} ORDER BY cuotas_socio.desde, cuotas_socio.venta_id, cuotas_socio.id`)
+      .all(...parametros)
+      .map((c) => decorarCuota(cuotaDeSuRenglon(c)))
   );
   const descuentos = descuentosDeLaEmpresa(organizacionId);
   return socios.map((s) => conSituacion(s, inscripciones.get(s.id) ?? [], cuotas.get(s.id) ?? [], descuentos, hoy));
@@ -21285,7 +21386,7 @@ function fechaDeAlta(valor, hoy) {
   return { fecha };
 }
 
-// Anota un plan de un socio; sus cuotas las arma después generarCuotasDe. Va
+// Anota un plan de un socio; sus cuotas las arma después generarCuotasDelSocio. Va
 // DENTRO de una transacción.
 function inscribir(socioId, opcion, desde, hoy) {
   const { lastInsertRowid } = db
@@ -21318,7 +21419,7 @@ function reactivarInscripcion(inscripcionId, hoy) {
 }
 
 // La primera cuota de cada plan pedido, con el descuento que le tocaría, para
-// mostrarla antes de confirmar. Es el mismo cálculo de generarCuotasDe:
+// mostrarla antes de confirmar. Es el mismo cálculo de generarCuotasDelSocio:
 // mejorDescuento sobre los planes que quedarían activos. `existentes` son los
 // planes que el socio ya tiene, que también pueden cambiar de descuento (un
 // combo que se completa): van en `cambian`.
@@ -21948,7 +22049,7 @@ app.post('/api/socios', (req, res) => {
         .run(clienteId, numero, alta, manual.id, organizacionId).lastInsertRowid
     );
     // Todos los planes anotados antes de generar cuotas: un combo los mira a todos.
-    const inscripciones = opciones.map((opcion) => inscribir(id, opcion, alta, hoy));
+    for (const opcion of opciones) inscribir(id, opcion, alta, hoy);
     auditar(req, {
       accion: 'crear',
       entidad: 'cliente',
@@ -21960,7 +22061,7 @@ app.post('/api/socios', (req, res) => {
         (manual.id ? `, con el descuento "${manual.nombre}"` : '') +
         (ultimaVez ? `; vino por última vez el ${fechaLegible(ultimaVez)}` : '')
     });
-    for (const inscripcionId of inscripciones) generarCuotasDe(inscripcionId, hoy);
+    generarCuotasDelSocio(id, hoy);
     if (ultimaVez) {
       db.prepare('INSERT INTO ingresos_socio (socio_id, fecha, usuario_id, al_dia, deuda) VALUES (?, ?, ?, 1, 0)').run(
         id,
@@ -22071,7 +22172,7 @@ app.patch('/api/socios/:id', (req, res) => {
         operacion_id: socio.id,
         detalle: `El socio N° ${socio.numero}, ${socio.nombre}, volvió (cuotas desde el ${fechaLegible(desde)})`
       });
-      for (const i of aReactivar) generarCuotasDe(i.id, hoy);
+      generarCuotasDelSocio(socio.id, hoy);
     }
   });
   res.json(detalleSocio(socio.id, organizacionId));
@@ -22105,7 +22206,8 @@ app.post('/api/socios/:id/planes', (req, res) => {
       operacion_id: socio.id,
       detalle: `El socio N° ${socio.numero} suma ${planYDuracion(opcion.plan, opcion.meses)}, desde el ${fechaLegible(fecha)}`
     });
-    generarCuotasDe(inscripcionId, hoy);
+    alinearConElSocio(inscripcionId, fecha, hoy);
+    generarCuotasDelSocio(socio.id, hoy);
   });
   res.status(201).json(detalleSocio(socio.id, organizacionId));
 });
@@ -22178,14 +22280,16 @@ app.patch('/api/socios/:id/planes/:inscripcionId', (req, res) => {
         operacion_id: socio.id,
         detalle: `El socio N° ${socio.numero} vuelve a "${opcion?.plan ?? inscripcion.plan}" (cuotas desde el ${fechaLegible(desde)})`
       });
-      generarCuotasDe(inscripcion.id, hoy);
+      alinearConElSocio(inscripcion.id, desde, hoy);
+      generarCuotasDelSocio(socio.id, hoy);
     }
   });
   res.json(detalleSocio(socio.id, organizacionId));
 });
 
 // Cobra todo lo que debe de cuotas, de la más vieja a la más nueva, en una
-// cuenta de tesorería: un cobro común por cada cuota (CLAUDE.md §9), en una
+// cuenta de tesorería: un cobro común por cada venta de cuotas (CLAUDE.md §9;
+// una venta lleva los planes que empiezan el mismo día, hist. §208), en una
 // sola transacción.
 app.post('/api/socios/:id/cobros', (req, res) => {
   const organizacionId = req.usuario.organizacion_id;
@@ -22198,7 +22302,7 @@ app.post('/api/socios/:id/cobros', (req, res) => {
 
   ponerCuotasAlDia(organizacionId, socio.id);
   const [{ cuotas }] = sociosConSituacion(organizacionId, socio.id);
-  const impagas = cuotas.filter((c) => c.saldo > 0);
+  const impagas = cobrosDeCuotas(cuotas.filter((c) => c.saldo > 0));
   if (impagas.length === 0) return res.status(400).json({ error: `${socio.nombre} no debe ninguna cuota.` });
 
   const total = withTransaction(() => {

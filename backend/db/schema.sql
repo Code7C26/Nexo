@@ -1774,6 +1774,9 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_inscripciones_socio_activa
 -- Una fila por período de un plan: [desde, hasta] y la venta que lo cobra.
 -- Las arma server.js cada vez que mira a un socio, sin cron: el UNIQUE de
 -- (inscripcion_id, desde) es lo que impide cobrar dos veces el mismo período.
+-- Los planes de un socio que empiezan el mismo día van en una sola venta, un
+-- renglón por plan (hist. §208): un cobro por socio y por período, como en los
+-- sistemas de gimnasios. Por eso venta_id no es UNIQUE.
 -- precio_lista, descuento_pct y descuento_id son la foto del momento (como el
 -- costo histórico de una venta, CLAUDE.md §8): cambiar el precio o el
 -- descuento después no reescribe lo que ya se generó. Una cuota cuya venta se
@@ -1783,7 +1786,7 @@ CREATE TABLE IF NOT EXISTS cuotas_socio (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   inscripcion_id INTEGER NOT NULL REFERENCES inscripciones_socio(id),
   opcion_id INTEGER NOT NULL REFERENCES planes_socio_opciones(id),
-  venta_id INTEGER NOT NULL UNIQUE REFERENCES ventas(id),
+  venta_id INTEGER NOT NULL REFERENCES ventas(id),
   desde TEXT NOT NULL,
   hasta TEXT NOT NULL,
   meses INTEGER NOT NULL,
