@@ -75,6 +75,7 @@ import "./dominios/cuentas-corrientes.js";
 import { categoriasGasto, gastos } from "./dominios/gastos.js";
 import "./dominios/pos.js";
 import "./dominios/socios.js";
+import "./dominios/cuotas.js";
 import "./dominios/entrada.js";
 import "./dominios/notificaciones.js";
 import "./dominios/trabajos.js";

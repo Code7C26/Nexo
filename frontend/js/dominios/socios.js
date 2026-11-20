@@ -140,7 +140,7 @@ async function cargarIngresosHoy() {
 
 // Lo que cambia en el resto de Nexo cuando se cobra o se da de alta: la cuota
 // es una venta en la cuenta corriente del cliente, y el cobro entra a caja.
-const recargarOtrasVistas = () => recargar("ventas", "caja", "clientes", "cuentasCorrientes");
+const recargarOtrasVistas = () => recargar("ventas", "caja", "clientes", "cuentasCorrientes", "cuotas");
 
 /* ---------- Textos compartidos ---------- */
 
@@ -1069,6 +1069,8 @@ async function mostrarFicha(socio) {
 async function abrirFicha(id) {
   await mostrarFicha(await api(`/api/socios/${id}`, { error: "No se pudo cargar el socio." }));
 }
+// Desde la lista de cuotas (dominios/cuotas.js, hist. §208).
+registrar("abrirFicha:socio", abrirFicha);
 
 /* ---------- Ingreso (#/ingreso) ---------- */
 
@@ -1859,6 +1861,12 @@ registrar("nuevo:socio", (consulta) => {
   // Con el alta ya abierta el hash no cambia: se la vuelve a abrir a mano.
   if (location.hash === "#/socios/nuevo") abrirAlta();
   else location.hash = "#/socios/nuevo";
+});
+
+// Después de cobrar desde Cuotas (dominios/cuotas.js): la lista, al día.
+registrar("cargar:socios", async () => {
+  await cargarSocios();
+  renderLista();
 });
 
 alEntrarEnVista("socios", async (subruta) => {

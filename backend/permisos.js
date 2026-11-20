@@ -256,6 +256,7 @@ export const RUTAS_PERMISOS = {
   'PATCH /api/descuentos-socio/:id': 'admin',
   'GET /api/socios': 'ambos',
   'GET /api/socios/ingresos': 'ambos',
+  'GET /api/socios/cuotas': 'ambos',
   // La grilla de clases (hist. §200): la ve la recepción, la arma el admin.
   'GET /api/grilla': 'ambos',
   'POST /api/actividades': 'admin',

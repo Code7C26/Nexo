@@ -11235,3 +11235,18 @@ button.grilla-agenda-clase { cursor: pointer; }
   .grilla-rotulo { border-bottom: 0; }
   .grilla-abierto { flex-direction: row; flex-wrap: wrap; border-bottom: 0; }
 }
+
+/* ---------- Cuotas del mes (hist. §208) ---------- */
+
+.cuotas-mes {
+  display: flex;
+  gap: var(--sp-2);
+}
+
+/* Al tocar "Cobrar", un botón por cuenta: en el celular se apilan. */
+.cuotas-cuentas {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2);
+}

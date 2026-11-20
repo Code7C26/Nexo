@@ -8761,6 +8761,9 @@ app.get('/api/ventas', (req, res) => {
        FROM ventas
        JOIN clientes ON clientes.id = ventas.cliente_id
        WHERE ventas.organizacion_id = ?
+         -- Las cuotas de los socios no son ventas de productos: van en Socios →
+         -- Cuotas (hist. §208), como en los sistemas de gimnasios.
+         AND NOT EXISTS (SELECT 1 FROM cuotas_socio WHERE cuotas_socio.venta_id = ventas.id)
        ORDER BY ventas.id DESC`
     )
     .all(req.usuario.organizacion_id);
@@ -21704,6 +21707,76 @@ app.get('/api/socios', (req, res) => {
 
 // Quién entró hoy (el día local del servidor, que es el de la recepción).
 // Antes que /api/socios/:id, que si no tomaría "ingresos" como un id.
+// Las cuotas de un mes (hist. §208): un cobro por fila, con los planes que
+// lleva, como la lista de cobros de los sistemas de gimnasios (Gymdesk:
+// Billing → Payments, con su estado). Las cuotas no se listan en Ventas: un
+// gimnasio no vende cuotas como productos. `mes` es AAAA-MM (sin él, el de
+// hoy) y cuenta la cuota por el día en que empieza su período.
+app.get('/api/socios/cuotas', (req, res) => {
+  const organizacionId = req.usuario.organizacion_id;
+  const hoy = fechaDeHoy();
+  const mes = /^\d{4}-(0[1-9]|1[0-2])$/.test(req.query.mes ?? '') ? req.query.mes : hoy.slice(0, 7);
+  ponerCuotasAlDia(organizacionId);
+  const desde = `${mes}-01`;
+  const filas = db
+    .prepare(
+      `${SELECT_CUOTAS} WHERE socios.organizacion_id = ? AND cuotas_socio.desde >= ? AND cuotas_socio.desde < ?
+        ORDER BY cuotas_socio.desde, cuotas_socio.venta_id, cuotas_socio.id`
+    )
+    .all(organizacionId, desde, sumarMeses(desde, 1))
+    .map((c) => decorarCuota(cuotaDeSuRenglon(c)));
+  const socios = new Map(
+    db
+      .prepare('SELECT socios.id, socios.numero, clientes.nombre FROM socios JOIN clientes ON clientes.id = socios.cliente_id WHERE socios.organizacion_id = ?')
+      .all(organizacionId)
+      .map((s) => [s.id, s])
+  );
+  const porVenta = new Map();
+  for (const c of filas) {
+    const cobro = porVenta.get(c.venta_id);
+    if (cobro) {
+      cobro.planes.push(c.plan);
+      cobro.hasta = maxISO(cobro.hasta, c.hasta);
+      continue;
+    }
+    const socio = socios.get(c.socio_id);
+    const saldo = c.estado === 'bonificada' ? 0 : Math.max(0, redondear2(c.importe_venta - c.cobrado_venta));
+    let estado = c.estado;
+    if (estado !== 'bonificada' && estado !== 'sin_cargo') estado = saldo === 0 ? 'pagada' : c.cobrado_venta > 0 ? 'parcial' : 'pendiente';
+    porVenta.set(c.venta_id, {
+      venta_id: c.venta_id,
+      socio_id: c.socio_id,
+      numero: socio.numero,
+      socio: socio.nombre,
+      planes: [c.plan],
+      desde: c.desde,
+      hasta: c.hasta,
+      importe: redondear2(c.importe_venta),
+      cobrado: redondear2(c.cobrado_venta),
+      saldo,
+      estado
+    });
+  }
+  const cuotas = [...porVenta.values()];
+  const activas = cuotas.filter((c) => c.estado !== 'bonificada');
+  const suma = (lista, campo) => redondear2(lista.reduce((acc, c) => acc + c[campo], 0));
+  res.json({
+    mes,
+    cuotas,
+    totales: {
+      cuotas: activas.length,
+      importe: suma(activas, 'importe'),
+      cobrado: suma(activas, 'cobrado'),
+      por_cobrar: suma(activas, 'saldo'),
+      vencido: suma(
+        activas.filter((c) => c.desde < hoy),
+        'saldo'
+      ),
+      bonificadas: cuotas.length - activas.length
+    }
+  });
+});
+
 app.get('/api/socios/ingresos', (req, res) => {
   const inicioDelDia = inicioDeHoyUTC();
   const ingresos = db
@@ -22287,8 +22360,8 @@ app.patch('/api/socios/:id/planes/:inscripcionId', (req, res) => {
   res.json(detalleSocio(socio.id, organizacionId));
 });
 
-// Cobra todo lo que debe de cuotas, de la más vieja a la más nueva, en una
-// cuenta de tesorería: un cobro común por cada venta de cuotas (CLAUDE.md §9;
+// Cobra todo lo que debe de cuotas (o solo la de `venta_id`), de la más vieja
+// a la más nueva, en una cuenta de tesorería: un cobro común por cada venta de cuotas (CLAUDE.md §9;
 // una venta lleva los planes que empiezan el mismo día, hist. §208), en una
 // sola transacción.
 app.post('/api/socios/:id/cobros', (req, res) => {
@@ -22302,8 +22375,11 @@ app.post('/api/socios/:id/cobros', (req, res) => {
 
   ponerCuotasAlDia(organizacionId, socio.id);
   const [{ cuotas }] = sociosConSituacion(organizacionId, socio.id);
-  const impagas = cobrosDeCuotas(cuotas.filter((c) => c.saldo > 0));
-  if (impagas.length === 0) return res.status(400).json({ error: `${socio.nombre} no debe ninguna cuota.` });
+  const ventaPedida = req.body?.venta_id == null ? null : Number(req.body.venta_id);
+  const impagas = cobrosDeCuotas(cuotas.filter((c) => c.saldo > 0)).filter((c) => ventaPedida === null || c.venta_id === ventaPedida);
+  if (impagas.length === 0) {
+    return res.status(400).json({ error: ventaPedida === null ? `${socio.nombre} no debe ninguna cuota.` : 'Esa cuota no se debe.' });
+  }
 
   const total = withTransaction(() => {
     for (const cuota of impagas) {

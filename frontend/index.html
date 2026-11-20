@@ -127,6 +127,9 @@
           <a href="#" class="nav-item" data-view="socios">
             <svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#id-card"></use></svg> Socios
           </a>
+          <a href="#" class="nav-item" data-view="cuotas">
+            <svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#receipt-text"></use></svg> Cuotas
+          </a>
           <a href="#" class="nav-item" data-view="clases">
             <svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#calendar"></use></svg> Clases
           </a>
@@ -1722,6 +1725,67 @@
            una página de Configuración; ahora está en el menú, con Socios.
            Solo admin, porque son los precios. #/planes-socio son los planes
            y #/planes-socio/descuentos, los descuentos y combos. -->
+      <!-- Los cobros de las cuotas de un mes (hist. §208): lo maneja
+           dominios/cuotas.js. Un cobro por socio y por período, con sus planes;
+           las cuotas no se listan en Ventas. -->
+      <section class="view" data-view="cuotas" hidden>
+        <section class="ledger-strip" aria-label="Cuotas del mes">
+          <div class="ledger-item">
+            <span class="ledger-label"><span class="ledger-icono ledger-icono-azul"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#receipt-text"></use></svg></span>Cuotas del mes</span>
+            <span class="ledger-value mono" id="cuotasCantidad">0</span>
+          </div>
+          <div class="ledger-divider" aria-hidden="true"></div>
+          <div class="ledger-item">
+            <span class="ledger-label"><span class="ledger-icono ledger-icono-verde"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#circle-check"></use></svg></span>Cobrado</span>
+            <span class="ledger-value mono" id="cuotasCobrado">$0,00</span>
+          </div>
+          <div class="ledger-divider" aria-hidden="true"></div>
+          <div class="ledger-item">
+            <span class="ledger-label"><span class="ledger-icono ledger-icono-naranja"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#circle-alert"></use></svg></span>Por cobrar</span>
+            <span class="ledger-value mono" id="cuotasPorCobrar">$0,00</span>
+          </div>
+          <div class="ledger-divider" aria-hidden="true"></div>
+          <div class="ledger-item">
+            <span class="ledger-label">Vencido</span>
+            <span class="ledger-value mono ledger-warn" id="cuotasVencido">$0,00</span>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-head">
+            <h2 id="cuotasTitulo">Cuotas</h2>
+            <div class="cuotas-mes" role="group" aria-label="Mes">
+              <button type="button" class="btn btn-secundario btn-chico" id="btnCuotasMesAnterior" aria-label="Mes anterior"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#chevron-left"></use></svg></button>
+              <button type="button" class="btn btn-secundario btn-chico" id="btnCuotasMesSiguiente" aria-label="Mes siguiente"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#chevron-right"></use></svg></button>
+            </div>
+          </div>
+          <div class="socios-herramientas">
+            <input type="search" class="search" placeholder="Buscar por nombre o número" id="cuotasBuscar" aria-label="Buscar cuotas" />
+            <div class="segmentos" role="group" aria-label="Mostrar" id="cuotasFiltro">
+              <button type="button" class="segmento" data-filtro="todas" aria-pressed="true">Todas</button>
+              <button type="button" class="segmento" data-filtro="por_cobrar" aria-pressed="false">Por cobrar</button>
+              <button type="button" class="segmento" data-filtro="vencidas" aria-pressed="false">Vencidas</button>
+              <button type="button" class="segmento" data-filtro="pagadas" aria-pressed="false">Pagadas</button>
+            </div>
+          </div>
+          <div class="tabla-scroll">
+          <table class="ledger-table lista-movil">
+            <thead>
+              <tr>
+                <th scope="col">Socio</th>
+                <th scope="col">Planes</th>
+                <th scope="col">Período</th>
+                <th scope="col" class="align-right">Importe</th>
+                <th scope="col">Estado</th>
+                <th scope="col"><span class="visualmente-oculto">Acciones</span></th>
+              </tr>
+            </thead>
+            <tbody id="cuotasBody"></tbody>
+          </table>
+          </div>
+        </section>
+      </section>
+
       <section class="view" data-view="planes-socio" hidden>
         <div class="planes-vista">
           <nav class="segmentos planes-menu" aria-label="Planes y descuentos">

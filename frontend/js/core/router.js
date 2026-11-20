@@ -30,6 +30,7 @@ const MODULO_DE_VISTA = {
   ingreso: "socios",
   entrada: "socios",
   socios: "socios",
+  cuotas: "socios",
   "socio-detalle": "socios",
   "planes-socio": "socios",
   clases: "socios",
@@ -71,6 +72,8 @@ const VISTAS_CONSTRUIDAS = {
   // La que ve el socio en la puerta (hist. §144): ocupa toda la pantalla.
   entrada: { titulo: "Pantalla de entrada", dominio: "Socios", nav: "ingreso" },
   socios: { titulo: "Socios", dominio: "Socios" },
+  // Los cobros de las cuotas del mes (hist. §208): no van en Ventas.
+  cuotas: { titulo: "Cuotas", dominio: "Socios" },
   "planes-socio": { titulo: "Planes", dominio: "Socios" },
   // La grilla de clases (hist. §200): la ven todos, la arma el admin.
   clases: { titulo: "Clases", dominio: "Socios" },

@@ -105,3 +105,34 @@ test('dar de baja al que dejó de venir anula su cuota una sola vez, aunque teng
   assert.equal(baja.json.deuda, 0);
   assert.ok(baja.json.cuotas.every((c) => c.estado === 'bonificada'));
 });
+
+test('las cuotas no se listan en Ventas: van en Socios → Cuotas, una fila por cobro', async () => {
+  const alta = await admin.post('/api/socios', {
+    cliente: { nombre: 'Lista Cuotas', documento: '30111555' },
+    planes: [mensual(planes.BJJ), mensual(planes.MMA)]
+  });
+  assert.equal(alta.status, 201, alta.texto);
+  const ventaId = alta.json.cuotas[0].venta_id;
+  // Una venta de mostrador sí está en Ventas.
+  const guantes = (await admin.post('/api/productos', { nombre: 'Clase suelta', precio_venta: 15000, tipo: 'servicio' })).json.id;
+  const venta = await admin.post('/api/ventas', { cliente: 'Mostrador', items: [{ producto_id: guantes, cantidad: 1, precio_unitario: 15000 }] });
+  assert.equal(venta.status, 201, venta.texto);
+  const ventas = (await admin.get('/api/ventas')).json;
+  assert.ok(ventas.some((v) => v.id === venta.json.id), 'la del mostrador');
+  assert.ok(!ventas.some((v) => v.id === ventaId), 'la cuota no');
+
+  const lista = (await admin.get('/api/socios/cuotas')).json;
+  const fila = lista.cuotas.find((c) => c.venta_id === ventaId);
+  assert.deepEqual([fila.socio, fila.planes, fila.importe, fila.saldo, fila.estado], ['Lista Cuotas', ['BJJ', 'MMA'], 80000, 80000, 'pendiente']);
+  assert.ok(lista.totales.por_cobrar >= 80000);
+  assert.equal((await admin.get('/api/socios/cuotas?mes=2001-01')).json.cuotas.length, 0, 'otro mes');
+
+  // Cobrar solo esa cuota, desde la lista.
+  const cuenta = (await admin.get('/api/cuentas-tesoreria')).json[0];
+  const otra = await admin.post(`/api/socios/${alta.json.id}/cobros`, { cuenta_tesoreria_id: cuenta.id, venta_id: venta.json.id });
+  assert.equal(otra.status, 400, 'una venta que no es una cuota suya');
+  const cobro = await admin.post(`/api/socios/${alta.json.id}/cobros`, { cuenta_tesoreria_id: cuenta.id, venta_id: ventaId });
+  assert.equal(cobro.status, 201, cobro.texto);
+  const pagada = (await admin.get('/api/socios/cuotas')).json.cuotas.find((c) => c.venta_id === ventaId);
+  assert.deepEqual([pagada.estado, pagada.saldo, pagada.cobrado], ['pagada', 0, 80000]);
+});
