@@ -15050,3 +15050,14 @@ socio también hace BJJ, … o MMA" / "BJJ y MMA juntos cuestan $80.000 por
 mes". La ficha, la cotización y las cuotas muestran el combo de precio fijo
 con su precio, no con el porcentaje (`resumenDescuento` y las cuotas llevan
 `precio_combo`).
+
+## §205 — 19 de noviembre de 2026: eliminar un plan que nunca hizo nadie
+
+El usuario no podía borrar los planes de promo de Morro que pasaron a ser
+combos (solo se podían pausar). `DELETE /api/planes-socio/:id` (admin): si
+nunca lo hizo ningún socio (`planesDeLaEmpresa` suma `usado`) y no está en
+ningún combo, borra el plan, sus duraciones y su servicio del catálogo; si
+el servicio aparece en alguna operación (`productoEnUso` mira toda tabla con
+FK a productos), el servicio queda pausado. Uno que algún socio hizo no se
+borra: sus cuotas lo nombran, y se pausa como siempre. En Planes aparece
+"Eliminar" solo en los que se pueden borrar.

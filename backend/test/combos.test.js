@@ -128,3 +128,15 @@ test('parece que dejó: el dueño lo da de baja y borra la cuota del mes que no 
   assert.equal(vuelve.status, 200, vuelve.texto);
   assert.equal(vuelve.json.cuotas[0].desde, hoy);
 });
+
+// Eliminar planes (hist. §205): solo los que nunca hizo nadie y no están en
+// un combo. Los otros se pausan.
+test('se elimina un plan que nunca hizo nadie, con su servicio', async () => {
+  const prueba = (await admin.post('/api/planes-socio', { nombre: 'Promo vieja', opciones: [{ meses: 1, precio: 80000 }] })).json;
+  assert.equal((await admin.del(`/api/planes-socio/${planes.MMA.id}`)).status, 400, 'MMA lo hacen socios');
+  assert.equal((await admin.del(`/api/planes-socio/${planes.Funcional.id}`)).status, 400, 'está en un combo');
+  const r = await admin.del(`/api/planes-socio/${prueba.id}`);
+  assert.equal(r.status, 200, r.texto);
+  assert.ok(!(await admin.get('/api/planes-socio')).json.some((p) => p.id === prueba.id));
+  assert.ok(!(await admin.get('/api/productos')).json.some((p) => p.id === prueba.producto_id), 'su servicio también');
+});

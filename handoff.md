@@ -11,7 +11,7 @@
 
 - Al cerrar una etapa, se hacen tres cosas:
   - su relato completo se agrega al final de `docs/proyecto/handoff-historico.md` con el
-    siguiente número (hoy el último es §204);
+    siguiente número (hoy el último es §205);
   - acá se actualizan "Estado actual" y "Qué sigue";
   - si cambió alguna decisión vigente, se actualiza también esa lista.
 - Nunca apilar secciones "Última etapa" en este archivo: así fue como llegó a
@@ -33,6 +33,9 @@ PR #102, con el cargador de hist. §201).**
 - Test nuevo: `grilla`. `npm test`: 475 de 475. Probado en el navegador.
 - **Falta:** cargar la cuenta del dojo del profe (hist. §201: el usuario la
   crea y trae los datos; yo corro `npm run cargar`).
+
+**19 de noviembre, hist. §205:** en Planes se elimina un plan que nunca hizo
+nadie (con su servicio del catálogo); el que algún socio hizo solo se pausa.
 
 **19 de noviembre, hist. §204: "Parece que dejaron" y los combos dichos
 claro (publicado, PR #105).** Socios que hace un mes no vienen y deben la cuota de un mes que no

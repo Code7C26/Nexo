@@ -1461,6 +1461,7 @@ function renderPlanes() {
       <td data-label=""><div class="fila-acciones">
         ${botonEditarFila("btn-editar-plan", p.id, "plan")}
         <button type="button" class="btn-link btn-pausar-plan" data-id="${p.id}">${p.activo ? "Pausar" : "Activar"}</button>
+        ${p.usado ? "" : `<button type="button" class="btn-link btn-eliminar-plan" data-id="${p.id}">Eliminar</button>`}
       </div></td>
     </tr>`;
     })
@@ -1494,11 +1495,28 @@ async function pausarOActivarPlan(plan) {
   avisar(plan.activo ? `"${plan.nombre}" quedó pausado.` : `"${plan.nombre}" volvió a ofrecerse.`, "ok");
 }
 
+// Un plan que nunca hizo nadie se elimina (hist. §205); uno que alguien hizo,
+// solo se pausa (el botón no aparece).
+async function eliminarPlan(plan) {
+  const ok = await confirmar({
+    titulo: "Eliminar plan",
+    cuerpo: `"${plan.nombre}" se borra, con su servicio del catálogo. Nunca lo hizo ningún socio, así que no se pierde nada.`,
+    aceptar: "Eliminar",
+    destructivo: true
+  });
+  if (!ok) return;
+  await api(`/api/planes-socio/${plan.id}`, { method: "DELETE", error: "No se pudo eliminar el plan." });
+  await refrescar([cargarPlanes(), recargar("productos")]);
+  renderPlanes();
+  avisar(`"${plan.nombre}" quedó eliminado.`, "ok");
+}
+
 document.getElementById("planesSocioBody").addEventListener("click", (e) => {
-  const boton = e.target.closest(".btn-editar-plan, .btn-pausar-plan");
+  const boton = e.target.closest(".btn-editar-plan, .btn-pausar-plan, .btn-eliminar-plan");
   if (!boton) return;
   const plan = planes.find((p) => p.id === Number(boton.dataset.id));
   if (boton.classList.contains("btn-editar-plan")) editarPlan(plan);
+  else if (boton.classList.contains("btn-eliminar-plan")) eliminarPlan(plan);
   else pausarOActivarPlan(plan);
 });
 
