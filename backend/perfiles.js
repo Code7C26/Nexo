@@ -158,6 +158,7 @@ export function etapasCrmDelPreset(rubro) {
 // pantallazo (las cifras, la tendencia y los gráficos chicos) y abajo el
 // detalle (las tablas).
 export const PIEZAS_TABLERO = [
+  'gimnasio',
   'resultado',
   'tendencia',
   'cobros',
@@ -183,7 +184,8 @@ export const PERIODOS_TABLERO = ['hoy', '7', '30', 'mes', 'anio', 'todo'];
 // módulos; CLAUDE.md §29). Lo que no está en la lista nace oculto, y se suma
 // desde "Personalizar". El mostrador (carnicería, verdulería, kiosco) mira
 // cuándo se vende y por dónde entra la plata; la tienda online, por qué
-// canal; servicios y gimnasio, lo que les deben. En la compu las piezas van
+// canal; servicios y gimnasio, lo que les deben, y el gimnasio arranca por
+// sus socios y sus cuotas (hist. §208). En la compu las piezas van
 // de a dos o tres por fila: cada lista empareja las angostas (cobros,
 // pendiente, vendedores) con una ancha.
 const PANORAMA = ['resultado', 'tendencia', 'cobros', 'ventas'];
@@ -196,7 +198,7 @@ const TABLERO_DEL_RUBRO = {
   verduleria: [...PANORAMA, 'cuando', 'pendiente', 'productos', 'categorias', 'vendedores', 'clientes', 'evolucion', 'compras', 'iva'],
   kiosco: [...PANORAMA, 'cuando', 'pendiente', 'productos', 'categorias', 'vendedores', 'clientes', 'evolucion', 'compras', 'iva'],
   servicios: ['resultado', 'tendencia', 'pendiente', 'ventas', 'clientes', 'cobros', 'productos', 'categorias', 'evolucion', 'iva'],
-  gimnasio: ['resultado', 'tendencia', 'pendiente', 'ventas', 'cuando', 'cobros', 'productos', 'categorias', 'vendedores', 'clientes', 'evolucion', 'compras', 'iva']
+  gimnasio: ['gimnasio', 'resultado', 'tendencia', 'pendiente', 'ventas', 'cuando', 'cobros', 'productos', 'categorias', 'vendedores', 'clientes', 'evolucion', 'compras', 'iva']
 };
 
 // El Resumen del tipo: el orden completo (las del tipo primero y el resto

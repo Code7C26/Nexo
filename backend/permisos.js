@@ -358,6 +358,7 @@ export const RUTAS_PERMISOS = {
   'GET /api/reportes/stock': 'admin',
   // Las piezas nuevas del Resumen y cómo lo armó cada persona (hist. §136).
   'GET /api/reportes/tablero': 'admin',
+  'GET /api/reportes/socios': 'admin',
   // La página Venta online (hist. §138).
   'GET /api/reportes/canales': 'admin',
   'GET /api/tablero': 'admin',

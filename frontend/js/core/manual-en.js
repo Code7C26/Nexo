@@ -528,14 +528,17 @@ export const SECCIONES_EN = {
   socios: {
     titulo: "Members, fees and check-in",
     pantalla: "Members",
-    preguntas: ["how do i sign up a member", "how do i collect the fee", "how do i control who comes in", "which members owe", "how do i set up the gym plans"],
-    palabras: ["member", "members", "fee", "fees", "gym", "plan", "plans", "check-in", "entry", "front desk", "membership", "discount", "bundle"],
+    preguntas: ["how do i sign up a member", "how do i collect the fee", "how do i control who comes in", "which members owe", "how do i set up the gym plans", "where do i see this month's fees", "why aren't fees in sales", "how do i add a plan to a member"],
+    palabras: ["member", "members", "fee", "fees", "gym", "plan", "plans", "check-in", "entry", "front desk", "membership", "discount", "bundle", "payment", "month", "prorated"],
     bloques: [
       { pasos: [
         "Set up the plans in **Plans**: price and duration (monthly, quarterly, yearly), and if you want, discounts and bundles.",
         "In **Members**, sign up the person (new, or already a customer) with their plan.",
-        "The fee is due from the sign-up date and is collected like any sale."
+        "The fee is due from the sign-up date. If they do several plans, it is **a single fee** with all of them inside: one payment a month, not one per plan."
       ] },
+      "In **Fees** you see this month's: how much you collected, how much is left and how much is overdue, and you collect each one with a tap. Fees don't show up in **Sales**, which is for what you sell at the counter.",
+      "If you add a plan to a member mid-month, the first time they only pay the days left until their fee is due, and from then on it goes in the same fee.",
+      "On the **Dashboard**, the **Members and fees** piece shows active members, sign-ups and cancellations, fees collected apart from counter sales, check-ins per day and who stopped coming.",
       "In **Check-in**, the front desk looks up the member when they arrive: Nexo warns you if they owe the fee.",
       "A **bundle** lowers the price when a member combines plans: by a percentage, or with a **fixed monthly price** (BJJ + MMA for $80,000). It can also lower just one plan if the member also does one of several others: functional training at half price if they do a martial art.",
       "In **Members**, the **Not coming** filter shows active members who haven't come in for two weeks or more, so you can call them before they quit. For someone who was already coming, the sign-up form takes the last time they came.",

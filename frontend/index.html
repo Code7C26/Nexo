@@ -424,6 +424,52 @@
           </section>
         </div>
 
+        <div class="pieza" data-pieza="gimnasio" data-modulo="socios">
+        <!-- Socios y cuotas (hist. §208): lo que miran los sistemas de
+             gimnasios en su panel. Los socios, las cuotas del período (aparte
+             de lo que se vende en el mostrador) y la asistencia. -->
+        <section class="panel" aria-labelledby="gimnasioTitulo">
+          <div class="panel-head">
+            <h2 id="gimnasioTitulo">Socios y cuotas</h2>
+          </div>
+          <div class="pendiente-grilla gimnasio-grilla">
+            <a class="pendiente-item" href="#/socios">
+              <span class="pendiente-etiqueta">Socios activos</span>
+              <span class="pendiente-cifra mono" id="gimnasioActivos">0</span>
+              <span class="pendiente-detalle" id="gimnasioActivosDetalle"></span>
+            </a>
+            <a class="pendiente-item" href="#/cuotas">
+              <span class="pendiente-etiqueta">Cuotas cobradas</span>
+              <span class="pendiente-cifra mono" id="gimnasioCobrado">$0</span>
+              <span class="pendiente-medidor medidor-cobrado" aria-hidden="true"><span id="gimnasioCobradoMedidor"></span></span>
+              <span class="pendiente-detalle" id="gimnasioCobradoDetalle"></span>
+            </a>
+            <a class="pendiente-item" href="#/cuotas">
+              <span class="pendiente-etiqueta">Por socio</span>
+              <span class="pendiente-cifra mono" id="gimnasioPorSocio">$0</span>
+              <span class="pendiente-detalle">Lo cobrado de cuotas, por cada socio activo</span>
+            </a>
+            <a class="pendiente-item" href="#/ventas">
+              <span class="pendiente-etiqueta">Ventas del mostrador</span>
+              <span class="pendiente-cifra mono" id="gimnasioVentas">$0</span>
+              <span class="pendiente-detalle">Lo que vendiste aparte de las cuotas</span>
+            </a>
+            <a class="pendiente-item" href="#/ingreso">
+              <span class="pendiente-etiqueta">Entradas</span>
+              <span class="pendiente-cifra mono" id="gimnasioEntradas">0</span>
+              <span class="pendiente-detalle" id="gimnasioEntradasDetalle"></span>
+            </a>
+            <a class="pendiente-item" href="#/socios">
+              <span class="pendiente-etiqueta">No vienen</span>
+              <span class="pendiente-cifra mono" id="gimnasioNoVienen">0</span>
+              <span class="pendiente-detalle" id="gimnasioNoVienenDetalle"></span>
+            </a>
+          </div>
+          <h3 class="cuando-titulo gimnasio-titulo">Entradas por día</h3>
+          <div class="grafico columnas" id="graficoEntradas"></div>
+        </section>
+        </div>
+
         <div class="pieza" data-pieza="pendiente">
         <!-- Lo que hay que mirar hoy (hist. §136): lo que te deben, lo que
              debés y el stock a reponer. No depende del filtro de fecha. -->

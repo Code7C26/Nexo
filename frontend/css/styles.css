@@ -11250,3 +11250,14 @@ button.grilla-agenda-clase { cursor: pointer; }
   align-items: center;
   gap: var(--sp-2);
 }
+
+/* Socios y cuotas en el Resumen (hist. §208): seis cifras, de a dos en el
+   celular y de a tres en la compu (de a cinco quedaba una sola abajo), y el
+   gráfico de entradas abajo. */
+.gimnasio-grilla { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+@container resumen (min-width: 720px) {
+  .gimnasio-grilla { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+.gimnasio-titulo { margin-top: var(--sp-4); }
+/* Lo cobrado, en verde (en "Para mirar hoy" la barra es lo vencido, en rojo). */
+.medidor-cobrado span { background: var(--accent-ok); }

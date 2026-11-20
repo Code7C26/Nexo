@@ -1009,14 +1009,17 @@ const SECCIONES_ES = [
     titulo: "Socios, cuotas e ingreso",
     pantalla: ["#/socios", "Socios"],
     modulo: "socios",
-    preguntas: ["cómo doy de alta un socio", "cómo cobro la cuota", "cómo controlo quién entra", "qué socios deben", "cómo armo los planes del gimnasio"],
-    palabras: ["socio", "socios", "cuota", "cuotas", "gimnasio", "plan", "planes", "ingreso", "entrada", "recepcion", "membresia", "descuento", "combo"],
+    preguntas: ["cómo doy de alta un socio", "cómo cobro la cuota", "cómo controlo quién entra", "qué socios deben", "cómo armo los planes del gimnasio", "dónde veo las cuotas del mes", "por qué las cuotas no están en ventas", "cómo sumo un plan a un socio"],
+    palabras: ["socio", "socios", "cuota", "cuotas", "gimnasio", "plan", "planes", "ingreso", "entrada", "recepcion", "membresia", "descuento", "combo", "cobro", "mes", "proporcional"],
     bloques: [
       { pasos: [
         "Armá los planes en **Planes**: precio y duración (mensual, trimestral, anual), y si querés, descuentos y combos.",
         "En **Socios**, dá de alta a la persona (nueva, o que ya es cliente) con su plan.",
-        "La cuota vence desde la fecha de alta y se cobra como cualquier venta."
+        "La cuota vence desde la fecha de alta. Si hace varios planes, es **una sola cuota** con todos adentro: un cobro por mes, no uno por plan."
       ] },
+      "En **Cuotas** ves las del mes: cuánto cobraste, cuánto falta y cuánto está vencido, y cobrás cada una de un toque. Las cuotas no aparecen en **Ventas**, que queda para lo que vendés en el mostrador.",
+      "Si a un socio le sumás un plan a mitad de mes, la primera vez paga solo los días que faltan hasta el vencimiento de su cuota, y desde ahí va en la misma cuota.",
+      "En el **Resumen**, la pieza **Socios y cuotas** muestra los socios activos, las altas y las bajas, lo cobrado de cuotas aparte de las ventas del mostrador, las entradas por día y los que no vienen.",
       "En **Ingreso**, la recepción busca al socio cuando llega: Nexo avisa si debe la cuota.",
       "Un **combo** baja el precio cuando el socio combina planes: con un porcentaje, o con un **precio fijo por mes** (BJJ + MMA a $80.000). También puede bajar un solo plan si el socio hace además alguno de otros: el funcional a mitad de precio si hace alguna marcial.",
       "En **Socios**, el filtro **No vienen** muestra a los activos que hace dos semanas o más no entran, para llamarlos antes de que se den de baja. De alguien que ya venía, en el alta se carga la última vez que vino.",

@@ -5707,5 +5707,20 @@ export default {
   "{0} del {1} al {2}": "{0} from {1} to {2}",
   "{0} del socio N° {1}: {2}": "{0} of member No. {1}: {2}",
   "Primera cuota, por los días hasta el vencimiento de sus otros planes,": "First fee, for the days until their other plans are due,",
-  "Esa cuota no se debe.": "That fee is not owed."
+  "Esa cuota no se debe.": "That fee is not owed.",
+  "Cuotas cobradas": "Fees collected",
+  "Por socio": "Per member",
+  "Lo cobrado de cuotas, por cada socio activo": "Fees collected, per active member",
+  "Ventas del mostrador": "Counter sales",
+  "Lo que vendiste aparte de las cuotas": "What you sold besides fees",
+  "Entradas": "Check-ins",
+  "Entradas por día": "Check-ins per day",
+  "Socios activos, altas y bajas, cuotas cobradas, entradas y los que no vienen.": "Active members, sign-ups and cancellations, fees collected, check-ins and who stopped coming.",
+  "{0} altas y {1} bajas en el período ({2} % de bajas)": "{0} sign-ups and {1} cancellations in the period ({2} % churn)",
+  "No hubo cuotas en este período": "No fees in this period",
+  "{0} % de {1}; {2} vencido": "{0} % of {1}; {2} overdue",
+  "{0} por socio activo": "{0} per active member",
+  "Hace dos semanas o más; {0} parece que dejaron": "Two weeks or more; {0} seem to have quit",
+  "{0}: {1} entradas": "{0}: {1} check-ins",
+  "Nadie entró en estos días.": "Nobody checked in on these days."
 };

@@ -136,3 +136,25 @@ test('las cuotas no se listan en Ventas: van en Socios → Cuotas, una fila por 
   const pagada = (await admin.get('/api/socios/cuotas')).json.cuotas.find((c) => c.venta_id === ventaId);
   assert.deepEqual([pagada.estado, pagada.saldo, pagada.cobrado], ['pagada', 0, 80000]);
 });
+
+test('el Resumen del gimnasio: socios, cuotas aparte de las ventas y entradas (hist. §208)', async () => {
+  const r = await admin.get(`/api/reportes/socios?desde=${haceDias(100)}&hasta=${haceDias(0)}`);
+  assert.equal(r.status, 200, r.texto);
+  const { socios, cuotas, asistencia } = r.json;
+  // Peludo, Franco y Lista Cuotas siguen activos; "Se fue" se dio de baja.
+  assert.equal(socios.activos, 3);
+  assert.equal(socios.bajas, 1);
+  assert.equal(socios.altas, 4);
+  // Las cuotas del período, cada cobro una vez; la bonificada no cuenta.
+  assert.ok(cuotas.cantidad >= 4, `${cuotas.cantidad}`);
+  assert.ok(cuotas.cobrado >= 160000, `${cuotas.cobrado}`);
+  assert.equal(cuotas.ventas, 15000, 'la clase suelta del mostrador va aparte');
+  assert.ok(cuotas.tasa_cobro > 0 && cuotas.tasa_cobro <= 100);
+  assert.equal(asistencia.entradas, 0);
+
+  const socio = (await admin.get('/api/socios')).json.find((s) => s.nombre === 'Peludo');
+  assert.equal((await admin.post(`/api/socios/${socio.id}/ingresos`, {})).status, 201);
+  const despues = (await admin.get(`/api/reportes/socios?desde=${haceDias(100)}&hasta=${haceDias(0)}`)).json.asistencia;
+  assert.equal(despues.entradas, 1);
+  assert.deepEqual(despues.por_dia, [{ fecha: haceDias(0), cantidad: 1 }]);
+});

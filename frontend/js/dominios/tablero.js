@@ -30,6 +30,8 @@ import { LOCALE, formatear } from "../core/idioma.js";
 
 // Cómo se llama cada pieza en "Personalizar", y cuándo se puede elegir.
 const PIEZAS = {
+  // Lo que miran los sistemas de gimnasios (hist. §208).
+  gimnasio: { nombre: "Socios y cuotas", descripcion: "Socios activos, altas y bajas, cuotas cobradas, entradas y los que no vienen.", modulo: "socios" },
   resultado: { nombre: "Resultado", descripcion: "Ventas, ganancia, gastos y lo que quedó, con su línea." },
   tendencia: { nombre: "Ventas y ganancia", descripcion: "El gráfico grande: cómo vienen las ventas y lo que te dejan." },
   cobros: { nombre: "Dónde entró la plata", descripcion: "Lo cobrado en cada cuenta: la caja, el banco, Mercado Pago." },
@@ -113,6 +115,7 @@ const pesos = (n) => n.toLocaleString(LOCALE, { style: "currency", currency: "AR
 
 const dibujarDias = montarColumnas(document.getElementById("graficoDias"), { titulo: "Ventas por día de la semana" });
 const dibujarHoras = montarColumnas(document.getElementById("graficoHoras"), { titulo: "Ventas por hora del día" });
+const dibujarEntradas = montarColumnas(document.getElementById("graficoEntradas"), { titulo: "Entradas por día" });
 
 // Cada deuda con un medidor: la parte vencida en rojo, sobre el total.
 function pintarDeuda(id, deuda, quien) {
@@ -225,20 +228,66 @@ function pintarCanales({ canales, colores }) {
     .join("");
 }
 
+// Socios y cuotas (hist. §208). Las entradas, de los últimos 14 días del
+// período (como el gráfico de la semana de Gymdesk): en "todo" serían cientos
+// de columnas.
+const DIAS_ENTRADAS = 14;
+const fechaCorta = (iso) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}`;
+function pintarGimnasio({ hasta, socios, cuotas, asistencia }) {
+  const texto = (id, valor) => (document.getElementById(id).textContent = valor);
+  texto("gimnasioActivos", numero(socios.activos));
+  texto(
+    "gimnasioActivosDetalle",
+    formatear("{0} altas y {1} bajas en el período ({2} % de bajas)", numero(socios.altas), numero(socios.bajas), socios.tasa_bajas.toLocaleString(LOCALE))
+  );
+  texto("gimnasioCobrado", pesos(cuotas.cobrado));
+  document.getElementById("gimnasioCobrado").title = money(cuotas.cobrado);
+  // La parte cobrada, en verde: la tasa de cobro de la guía de Gymdesk.
+  document.getElementById("gimnasioCobradoMedidor").style.width = `${Math.min(100, cuotas.tasa_cobro ?? 0).toFixed(1)}%`;
+  texto(
+    "gimnasioCobradoDetalle",
+    cuotas.importe <= 0
+      ? "No hubo cuotas en este período"
+      : formatear("{0} % de {1}; {2} vencido", Math.round(cuotas.tasa_cobro).toLocaleString(LOCALE), pesos(cuotas.importe), pesos(cuotas.vencido))
+  );
+  texto("gimnasioPorSocio", pesos(cuotas.por_socio));
+  texto("gimnasioVentas", pesos(cuotas.ventas));
+  texto("gimnasioEntradas", numero(asistencia.entradas));
+  texto("gimnasioEntradasDetalle", formatear("{0} por socio activo", asistencia.por_socio.toLocaleString(LOCALE, { maximumFractionDigits: 1 })));
+  texto("gimnasioNoVienen", numero(asistencia.no_vienen));
+  texto(
+    "gimnasioNoVienenDetalle",
+    formatear("Hace dos semanas o más; {0} parece que dejaron", numero(asistencia.parece_que_dejaron))
+  );
+  const porDia = new Map(asistencia.por_dia.map((d) => [d.fecha, d.cantidad]));
+  const dias = Array.from({ length: DIAS_ENTRADAS }, (_, i) => {
+    const fecha = new Date(Date.parse(hasta) - (DIAS_ENTRADAS - 1 - i) * 86400000).toISOString().slice(0, 10);
+    return { fecha, cantidad: porDia.get(fecha) ?? 0 };
+  });
+  dibujarEntradas(dias, {
+    etiqueta: (d) => fechaCorta(d.fecha),
+    valor: (d) => d.cantidad,
+    leer: (d) => formatear("{0}: {1} entradas", fechaCorta(d.fecha), numero(d.cantidad)),
+    vacio: "Nadie entró en estos días."
+  });
+}
+
 // Lo llama cargarPanelResumen (app.js) con el mismo rango que el resto.
 export async function cargarTablero(rango) {
   if (!esAdmin()) return;
   const params = new URLSearchParams(rango).toString();
   const consulta = params ? "?" + params : "";
-  const [datos, canales] = await Promise.all([
+  const [datos, canales, gimnasio] = await Promise.all([
     api(`/api/reportes/tablero${consulta}`),
-    moduloActivo("canales") ? api(`/api/reportes/canales${consulta}`) : null
+    moduloActivo("canales") ? api(`/api/reportes/canales${consulta}`) : null,
+    moduloActivo("socios") ? api(`/api/reportes/socios${consulta}`) : null
   ]);
   pintarPendiente(datos.pendiente);
   pintarCuando(datos);
   pintarCobros(datos.cobros);
   pintarVendedores(datos.vendedores);
   if (canales) pintarCanales(canales);
+  if (gimnasio) pintarGimnasio(gimnasio);
 }
 
 async function guardar(cuerpo, { metodo = "PUT", aviso } = {}) {

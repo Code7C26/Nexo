@@ -16278,6 +16278,106 @@ app.get('/api/reportes/tablero', soloAdmin, (req, res) => {
   });
 });
 
+// El Resumen de un gimnasio (hist. §208): lo que miran los sistemas de
+// gimnasios en su panel (Gymdesk: cobros del mes y vencidos, asistencia de la
+// semana, los que dejaron de venir; su guía de indicadores: altas contra
+// bajas, tasa de cobro, ingreso por socio, bajas del mes; Glofox: lo que
+// entra todos los meses aparte de lo que se vende una vez). Del período:
+// - socios: activos hoy, altas y bajas, y las bajas sobre los que había al
+//   empezar (la tasa de bajas);
+// - cuotas: las que empiezan en el período, cada cobro una vez: su importe,
+//   lo cobrado, lo que falta y lo vencido; y aparte, lo vendido que no es
+//   cuota (el mostrador, la tienda);
+// - asistencia: las entradas por día, el promedio por socio activo, los que
+//   hace dos semanas no vienen y los que parece que dejaron.
+const DIAS_NO_VIENEN = 14;
+app.get('/api/reportes/socios', soloAdmin, (req, res) => {
+  const organizacionId = req.usuario.organizacion_id;
+  const hoy = fechaDeHoy();
+  const { primera } = SQL_LIMITES_OPERACIONES.get(organizacionId, organizacionId, organizacionId, organizacionId, organizacionId);
+  const desde = validarFecha(req.query.desde) ?? minISO(primera ?? hoy, hoy);
+  const hasta = validarFecha(req.query.hasta) ?? hoy;
+  ponerCuotasAlDia(organizacionId);
+  const socios = sociosConSituacion(organizacionId);
+  const activos = socios.filter((s) => s.situacion !== 'baja');
+  const altas = socios.filter((s) => s.fecha_alta >= desde && s.fecha_alta <= hasta).length;
+  const bajas = socios.filter((s) => s.situacion === 'baja' && s.fecha_baja >= desde && s.fecha_baja <= hasta).length;
+  const alEmpezar = activos.length - altas + bajas;
+
+  const cuotas = db
+    .prepare(
+      `SELECT ventas.id,
+              (SELECT MIN(cuotas_socio.desde) FROM cuotas_socio WHERE cuotas_socio.venta_id = ventas.id) AS desde,
+              (SELECT COALESCE(SUM(venta_items.cantidad * venta_items.precio_unitario), 0)
+                 FROM venta_items WHERE venta_items.venta_id = ventas.id) - ${SUBQUERY_DEVUELTO_VENTA} AS importe,
+              (SELECT COALESCE(SUM(cobros.importe), 0) FROM cobros WHERE cobros.venta_id = ventas.id) AS cobrado
+         FROM ventas
+        WHERE ventas.organizacion_id = ? AND ventas.estado = 'activa'
+          AND ventas.id IN (SELECT venta_id FROM cuotas_socio)
+          AND (SELECT MIN(cuotas_socio.desde) FROM cuotas_socio WHERE cuotas_socio.venta_id = ventas.id) BETWEEN ? AND ?`
+    )
+    .all(organizacionId, desde, hasta);
+  const suma = (lista, valor) => redondear2(lista.reduce((acc, c) => acc + valor(c), 0));
+  const saldo = (c) => Math.max(0, c.importe - c.cobrado);
+  const importe = suma(cuotas, (c) => c.importe);
+  const cobrado = suma(cuotas, (c) => Math.min(c.cobrado, c.importe));
+  const { ventas } = db
+    .prepare(
+      `SELECT COALESCE(SUM(venta_items.cantidad * venta_items.precio_unitario), 0) AS ventas
+         FROM ventas JOIN venta_items ON venta_items.venta_id = ventas.id
+        WHERE ventas.organizacion_id = ? AND ventas.estado = 'activa' AND ventas.fecha BETWEEN ? AND ?
+          AND ventas.saldo_inicial IS NULL
+          AND ventas.id NOT IN (SELECT venta_id FROM cuotas_socio)`
+    )
+    .get(organizacionId, desde, hasta);
+
+  const porDia = new Map();
+  for (const { fecha } of db
+    .prepare(
+      `SELECT ingresos_socio.fecha FROM ingresos_socio JOIN socios ON socios.id = ingresos_socio.socio_id
+        WHERE socios.organizacion_id = ? AND ingresos_socio.fecha >= ? AND ingresos_socio.fecha < ?`
+    )
+    .all(organizacionId, utcDeLocal(desde, '00:00'), utcDeLocal(sumarDias(hasta, 1), '00:00'))) {
+    const dia = fechaLocalDe(fecha);
+    porDia.set(dia, (porDia.get(dia) ?? 0) + 1);
+  }
+  const entradas = [...porDia.values()].reduce((acc, n) => acc + n, 0);
+  const limiteNoVienen = sumarDias(hoy, -DIAS_NO_VIENEN);
+  const noVienen = activos.filter((s) => s.situacion !== 'por_empezar' && (s.ultimo_ingreso ? fechaLocalDe(s.ultimo_ingreso) : s.fecha_alta) <= limiteNoVienen);
+
+  res.json({
+    desde,
+    hasta,
+    socios: {
+      activos: activos.length,
+      altas,
+      bajas,
+      tasa_bajas: alEmpezar > 0 ? redondear2((bajas / alEmpezar) * 100) : 0,
+      deben: activos.filter((s) => s.deuda > 0).length
+    },
+    cuotas: {
+      cantidad: cuotas.length,
+      importe,
+      cobrado,
+      por_cobrar: suma(cuotas, saldo),
+      vencido: suma(
+        cuotas.filter((c) => c.desde < hoy),
+        saldo
+      ),
+      tasa_cobro: importe > 0 ? redondear2((cobrado / importe) * 100) : null,
+      por_socio: activos.length ? redondear2(cobrado / activos.length) : 0,
+      ventas: redondear2(ventas)
+    },
+    asistencia: {
+      entradas,
+      por_socio: activos.length ? redondear2(entradas / activos.length) : 0,
+      por_dia: [...porDia].sort(([a], [b]) => a.localeCompare(b)).map(([fecha, cantidad]) => ({ fecha, cantidad })),
+      no_vienen: noVienen.length,
+      parece_que_dejaron: activos.filter((s) => s.parece_que_dejo).length
+    }
+  });
+});
+
 /* ---------- Reportes: venta online (hist. §138) ---------- */
 //
 // La página "Venta online": cuánto entra por cada canal y cuánto queda
