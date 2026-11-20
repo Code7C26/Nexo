@@ -254,3 +254,12 @@ test('una lista larga contra un catálogo grande no tarda', () => {
   assert.ok(Date.now() - desde < 10000, `tardó ${Date.now() - desde} ms`);
   assert.equal(asociados.length, 1000);
 });
+
+test('una lista grande pasa: la ruta tiene su propio límite y el parser global no la corta en 100 KB (hist. §207)', async () => {
+  // 3000 renglones son unos 150 KB: antes daba 413 sin llegar a leerse.
+  const texto = Array.from({ length: 3000 }, (_, i) => `Artículo de prueba número ${i + 1} ........ $ ${1000 + i}`).join('\n');
+  assert.ok(Buffer.byteLength(JSON.stringify({ texto })) > 100_000);
+  const r = await leer(tienda, { texto });
+  assert.equal(r.status, 200, r.texto);
+  assert.equal(r.json.renglones.length, 3000);
+});

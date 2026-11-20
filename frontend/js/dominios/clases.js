@@ -36,7 +36,7 @@ const PX_HORA = 64;
 
 const grilla = document.getElementById("grilla");
 const formClase = document.getElementById("formClase");
-const formActividad = document.getElementById("formActividad");
+const formActividad = document.getElementById("formActividadGrilla");
 const selectSucursal = document.getElementById("grillaSucursal");
 
 let datos = { actividades: [], clases: [], profes: [], colores: [] };

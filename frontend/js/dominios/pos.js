@@ -2115,7 +2115,7 @@ function pintarDeudaACuenta() {
   if (cliente?.deuda > CENTAVO && !formACuenta.importe.value) formACuenta.importe.value = String(redondear(cliente.deuda));
 }
 
-document.getElementById("btnPosACuenta").addEventListener("click", async () => {
+document.getElementById("btnPosCobrarACuenta").addEventListener("click", async () => {
   // La deuda de cada uno, al día: pudo haber cobros desde otra pantalla.
   fijarClientes(await api("/api/clientes", { error: "No se pudieron cargar los clientes." }));
   document.getElementById("posClientesDeuda").innerHTML = clientes
