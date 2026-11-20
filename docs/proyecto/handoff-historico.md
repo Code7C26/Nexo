@@ -15192,3 +15192,71 @@ porque el stock importado contaba como cargado. Lo que cambió:
 Lo vendido antes de cargar el costo queda con costo 0 (§8: el costo de la
 venta se congela). Test nuevo en `tiendanube.test.js` (traer el catálogo).
 `npm test`: 490 de 490. Sin probar en el navegador.
+
+## §211 — 20 de noviembre de 2026: traer productos, clientes y proveedores desde una planilla
+
+Punto 7 del plan para la presentación. Antes, cómo lo hace la competencia:
+Dux pide su propia plantilla en Excel 97-2003, sin fórmulas, y avisa los
+errores por mail después de importar ("un Excel propio no se puede importar
+directamente"); Tienda Nube solo lee CSV y pide elegir "modificar los que ya
+existen" para no duplicar; Square y Tienda Nube dejan decir qué es cada
+columna. Nexo lee el archivo que el negocio ya tiene, con sus columnas, y
+muestra renglón por renglón qué va a pasar **antes** de guardar.
+
+**Dónde:** Configuración › Lo que ya tenías › **Traer desde una planilla**
+(`#/configuracion/planilla`), con un atajo arriba de esa página y un botón
+**Desde una planilla** en Productos, Clientes y Proveedores (solo admin).
+Tres pasos en la misma página, sin modales: qué se trae y el archivo; qué es
+cada columna; revisar y traer.
+
+**Leer la planilla** (`frontend/js/core/planilla.js`, compartido con el
+servidor como `core/descuento.js`):
+- .xlsx sin librerías: el zip se abre a mano (directorio central al final,
+  `DecompressionStream("deflate-raw")`, que tienen el navegador y Node) y se
+  leen la primera hoja y los textos compartidos con expresiones regulares (sin
+  DOMParser, para que corra en Node y se pueda testear). Los números de Excel
+  quedan números. El .xls viejo y el .ods piden guardarlo como .xlsx o CSV.
+- CSV con `;`, `,` o tabulador (lo pegado de Excel), comillas de Excel, y
+  Latin-1 si no es UTF-8 (el CSV de Excel en Windows).
+- Los títulos pueden no estar en la primera fila (el nombre del negocio
+  arriba): se buscan en las diez primeras.
+- Cada columna se adivina por su título con sinónimos ("Cód.", "Rubro",
+  "PVP", "Cond. IVA"…), gana el más largo y cada campo va en una sola
+  columna. Sin "Nombre", la "Descripción" es el nombre. Los sinónimos van como
+  `"a|b|c"` para que `scripts/i18n.mjs` no los tome por frases.
+- Las celdas: "$ 1.234,50", "1.500" (mil quinientos), "21 %" o 0,21, "Kilos",
+  "Resp. Inscripto", "CF". Apellido aparte se suma al nombre, y la localidad a
+  la dirección.
+
+**El servidor** (`POST /api/importar/:tipo`, `productos|clientes|proveedores`,
+admin, hasta 5000 renglones, límite propio de 8 MB): sin `guardar` dice qué
+haría cada renglón (`crear`, `actualizar` con cada cambio antes → después,
+`igual` o el error); con `guardar` lo hace con la misma lógica. Cada renglón es
+su transacción (como `aplicarLote`): uno con error no frena a los demás. Una
+celda vacía no borra nada.
+- **Productos:** se reconocen por SKU (el suyo o el de una variante), después
+  por código de barras y después por nombre; un nombre que ya existe con otro
+  SKU es un error, no se pisa. Crea con `insertarProducto` (respeta el tope del
+  plan; la revisión avisa cuántos no entran) y edita con
+  `aplicarEdicionProducto`, que suma `{ enTransaccion, origen }` para correr
+  adentro de la transacción del renglón y auditar "desde una planilla". La
+  categoría se busca por nombre y, si no existe, se crea. El stock y el costo
+  van como en "Tu stock de hoy" (`aplicarStockInicial`, en el depósito
+  elegido): no inventan compras. Con stock, costo o código de barras nace como
+  producto aunque el tipo de negocio cree servicios. Una variante (por su SKU)
+  cambia su precio, su código de barras, su stock y su costo; un producto con
+  variantes sin el SKU de cada una no recibe stock.
+- **Clientes y proveedores:** por CUIT o DNI (solo los dígitos), por mail o
+  por nombre. Dos clientes pueden llamarse igual con distinto DNI; dos
+  proveedores no.
+
+Probado en el navegador (compu y celular) con un .xlsx de un almacén (fila del
+negocio arriba, "Cód.", "Descripción", "Rubro", un costo "consultar" que queda
+afuera) y un CSV de clientes en Latin-1 con `;`. Test nuevo: `importar` (8
+casos, incluido un .xlsx armado en el test). `npm test`: 498 de 498.
+Regresión contra HEAD sin diferencias. Manual (castellano e inglés):
+"desde-planilla".
+
+**Queda:** crear variantes nuevas desde la planilla (talle y color en
+columnas), precios por lista de precios (una columna por lista) y el saldo
+de cuenta corriente de cada cliente en la misma planilla.

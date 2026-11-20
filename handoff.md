@@ -11,7 +11,7 @@
 
 - Al cerrar una etapa, se hacen tres cosas:
   - su relato completo se agrega al final de `docs/proyecto/handoff-historico.md` con el
-    siguiente número (hoy el último es §210);
+    siguiente número (hoy el último es §211);
   - acá se actualizan "Estado actual" y "Qué sigue";
   - si cambió alguna decisión vigente, se actualiza también esa lista.
 - Nunca apilar secciones "Última etapa" en este archivo: así fue como llegó a
@@ -64,15 +64,25 @@ arrastrándola desde sus tres rayas (mouse y dedo, con scroll automático y
 flechas del teclado), en vez de los botones de subir y bajar; y "Por socio"
 pasa a "Promedio por socio" (pedidos del usuario).
 
-**20 de noviembre, hist. §210 (sin publicar):** la guía de primeros pasos va según el tipo
+**20 de noviembre, hist. §210 (publicado, PR #110):** la guía de primeros pasos va según el tipo
 de negocio y sus funciones (una tienda online con Socios prendido ya no ve
 "Creá tus planes"). El costo se carga a mano en Editar (y en Variantes), Tienda
 Nube trae el costo cuando lo tiene, y la guía avisa los productos con stock y
 sin costo. Arreglado el 500 al traer el catálogo de Tienda Nube. **Falta:**
-probarlo en el navegador y publicar.
+que el amigo del usuario lo pruebe con su tienda.
 
-**Lo que sigue: el punto 7** (la planilla de productos y clientes), sin
-empezar. Antes, ver cómo importan Dux, Contagram y Praxia.
+**20 de noviembre, hist. §211: traer desde una planilla (punto 7).**
+Configuración › Lo que ya tenías › **Traer desde una planilla** (y **Desde una
+planilla** en Productos, Clientes y Proveedores): productos con precio, costo,
+stock, categoría y códigos, clientes y proveedores, desde el .xlsx o el CSV que
+el negocio ya tenía, con sus columnas. Nexo adivina qué es cada columna, muestra
+renglón por renglón qué crea, qué cambia y qué no se trae, y recién ahí guarda.
+Lector propio sin librerías (`core/planilla.js`, compartido con el servidor) y
+`POST /api/importar/:tipo`. Test nuevo: `importar`. `npm test`: 498 de 498.
+**Falta:** variantes nuevas desde la planilla y precios por lista.
+
+**Lo que sigue: el punto 8** (logo y colores del negocio), sin empezar. Antes,
+ver cómo lo hace la competencia.
 
 **19 de noviembre, hist. §205 (publicado, PR #106):** en Planes se elimina un plan que nunca hizo
 nadie (con su servicio del catálogo); el que algún socio hizo solo se pausa.
@@ -2348,9 +2358,9 @@ asistencia por clase y los cinturones (`docs/investigaciones/investigacion-gymde
 quedan para cuando el dueño diga que los necesita. La seguridad del punto 12
 de `plan-para-vender.md` se hace recién si el gimnasio empieza a usarlo con
 datos reales; la demo no la necesita.
-7. **Cargar lo que ya tenías desde una planilla** (productos, clientes y stock
-   desde Excel o CSV). Hoy la carga inicial (`dominios/carga-inicial.js`) es
-   una grilla a mano y el CSV solo exporta.
+7. ~~**Cargar lo que ya tenías desde una planilla**~~ (hecho, hist. §211:
+   productos con su stock y su costo, clientes y proveedores, desde .xlsx o
+   CSV; faltan las variantes nuevas y los precios por lista).
 8. **Logo y colores del negocio:** en la factura, el ticket, el menú y la
    pantalla de entrada del gimnasio; la foto de perfil, en el mismo paso.
 9. **El resto de Praxia** (puntos 5 a 9): puntos y premios; mensajes de

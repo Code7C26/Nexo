@@ -86,6 +86,7 @@ import * as whatsapp from './whatsapp.js';
 // se importa el módulo del frontend, que es puro, en vez de copiarlo.
 import { ALCANCES_OFERTA, TIPOS_OFERTA, describirOferta, describirVigencia, mejorOferta } from '../frontend/js/core/ofertas.js';
 import { aplicarDescuento } from '../frontend/js/core/descuento.js';
+import { MAX_FILAS_PLANILLA, TIPOS_PLANILLA, interpretarFila } from '../frontend/js/core/planilla.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -154,8 +155,10 @@ app.use((req, res, next) => {
 // saltean: si este las leyera primero, cortaría en los 100 KB de siempre y el
 // límite de la ruta nunca llegaría a usarse (hist. §207). Son la foto de la
 // factura de un proveedor (hist. §151), la factura por mail con su PDF (hist.
-// §186) y la lista de precios de un proveedor, en foto y guardada (hist. §198).
+// §186), la lista de precios de un proveedor, en foto y guardada (hist. §198),
+// y la planilla de productos, clientes o proveedores (hist. §211).
 const RUTAS_CON_LIMITE_PROPIO = [
+  /^\/api\/importar\/[a-z]+$/,
   /^\/api\/compras\/leer-comprobante$/,
   /^\/api\/facturas\/\d+\/mail$/,
   /^\/api\/proveedores\/\d+\/lista\/leer$/,
@@ -6501,7 +6504,11 @@ function esAjustePorcentaje(valor) {
 // valor:N }, calculado sobre el precio ACTUAL de ese producto en esa lista
 // puntual (o sobre precio_venta como fallback si el producto todavía no
 // tiene precio propio en esa lista).
-function aplicarEdicionProducto(req, productoId, cambios, totalLote = 1) {
+//
+// `enTransaccion`: quien llama ya abrió la suya (la planilla de hist. §211
+// guarda el producto, su categoría y su stock juntos), y `origen` va en la
+// auditoría ("editado desde una planilla").
+function aplicarEdicionProducto(req, productoId, cambios, totalLote = 1, { enTransaccion = false, origen = null } = {}) {
   // organizacion_id en el WHERE (no solo en el INSERT del alta): CLAUDE.md
   // §28 exige que ninguna consulta cruce datos de dos empresas, así que un
   // id de otra organización tiene que dar 404, igual que "no existe".
@@ -6632,7 +6639,7 @@ function aplicarEdicionProducto(req, productoId, cambios, totalLote = 1) {
     'descripcion', 'duracion_minutos', 'alicuota_iva', 'codigo_barras', 'plu', 'mano_obra', 'mano_obra_por'
   ]);
 
-  withTransaction(() => {
+  const escribir = () => {
     // precio_costo queda deliberadamente fuera del UPDATE: es el promedio
     // ponderado que calculan las compras, editarlo a mano acá rompería la
     // trazabilidad del costo real.
@@ -6679,12 +6686,16 @@ function aplicarEdicionProducto(req, productoId, cambios, totalLote = 1) {
         entidad_id: productoId,
         valor_anterior: diff.anterior,
         valor_nuevo: diff.nuevo,
-        detalle: totalLote > 1
-          ? `Producto "${nuevo.nombre}" editado (edición en lote de ${totalLote})`
-          : `Producto "${nuevo.nombre}" editado`
+        detalle: origen
+          ? `Producto "${nuevo.nombre}" editado ${origen}`
+          : totalLote > 1
+            ? `Producto "${nuevo.nombre}" editado (edición en lote de ${totalLote})`
+            : `Producto "${nuevo.nombre}" editado`
       });
     }
-  });
+  };
+  if (enTransaccion) escribir();
+  else withTransaction(escribir);
 
   return { sinCambios: diff === null };
 }
@@ -27707,6 +27718,402 @@ app.post('/api/carga-inicial/ventas', soloAdmin, (req, res) => {
   }
   res.status(201).json({ id: ventaId });
 });
+
+/* ---------- Importar desde una planilla (hist. §211) ---------- */
+
+// Productos, clientes y proveedores desde la planilla que el negocio ya
+// tenía: core/planilla.js la lee, adivina las columnas y lee cada celda. Las
+// dos pasadas usan la misma lógica: sin `guardar` dice qué haría cada renglón
+// (crear, actualizar, igual o el error), y con `guardar` lo hace. Un renglón
+// con error no frena a los otros: cada uno es su transacción, como en las
+// ediciones en lote (aplicarLote). Una celda vacía no borra nada.
+// Un producto se reconoce por su SKU (el suyo o el de una variante), después
+// por su código de barras y después por su nombre; un cliente o un
+// proveedor, por su CUIT o DNI, su mail o su nombre.
+const ORIGEN_PLANILLA = 'desde una planilla';
+const claveCodigo = (texto) => String(texto ?? '').trim().toLowerCase();
+const soloDigitos = (texto) => String(texto ?? '').replace(/\D/g, '');
+
+function filasDePlanillaValidas(filas) {
+  return (
+    Array.isArray(filas) &&
+    filas.every(
+      (f) =>
+        f && typeof f === 'object' && Number.isInteger(f.numero) && f.campos && typeof f.campos === 'object' && !Array.isArray(f.campos) &&
+        Object.values(f.campos).every((v) => v === null || typeof v === 'string' || typeof v === 'number')
+    )
+  );
+}
+
+app.post('/api/importar/:tipo', soloAdmin, express.json({ limit: '8mb' }), (req, res) => {
+  const { tipo } = req.params;
+  if (!TIPOS_PLANILLA.includes(tipo)) return res.status(404).json({ error: 'Ruta no encontrada.' });
+  const filas = req.body?.filas;
+  if (!filasDePlanillaValidas(filas)) return res.status(400).json({ error: 'La planilla no es válida.' });
+  if (!filas.length) return res.status(400).json({ error: 'La planilla no tiene renglones.' });
+  if (filas.length > MAX_FILAS_PLANILLA) {
+    return res.status(400).json({ error: `Se pueden traer hasta ${MAX_FILAS_PLANILLA} renglones por vez: partí la planilla en dos.` });
+  }
+  const guardar = req.body.guardar === true;
+  const resultado =
+    tipo === 'productos'
+      ? importarProductos(req, filas, { deposito: depositoDeCargaInicial(req.body.deposito_id, req.usuario.organizacion_id), guardar })
+      : importarContactos(req, tipo, filas, { guardar });
+  const resumen = { crear: 0, actualizar: 0, igual: 0, error: 0 };
+  for (const r of resultado.filas) resumen[r.accion] += 1;
+  res.json({ ...resultado, resumen });
+});
+
+// Lo que cambia de un campo, para mostrarlo: { campo, antes, despues }.
+const cambioDe = (campo, antes, despues) => ({ campo, antes: antes ?? null, despues });
+
+function importarProductos(req, filas, { deposito, guardar }) {
+  const org = req.usuario.organizacion_id;
+  const productos = db
+    .prepare(
+      `SELECT id, nombre, sku, codigo_barras, tipo, activo, precio_venta, precio_costo, categoria_id, unidad, alicuota_iva,
+              stock_minimo, descripcion
+         FROM productos WHERE organizacion_id = ? ORDER BY activo DESC, id`
+    )
+    .all(org);
+  const variantes = db
+    .prepare('SELECT id, producto_id, sku, codigo_barras, precio_venta, precio_costo FROM producto_variantes WHERE organizacion_id = ? AND activo = 1')
+    .all(org);
+  const porId = new Map(productos.map((p) => [p.id, p]));
+  const porSku = new Map();
+  const porCodigo = new Map();
+  const porNombre = new Map();
+  for (const p of productos) {
+    if (p.sku) porSku.set(claveCodigo(p.sku), { producto: p, variante: null });
+    if (p.codigo_barras) porCodigo.set(p.codigo_barras, { producto: p, variante: null });
+    if (!porNombre.has(claveDeNombre(p.nombre))) porNombre.set(claveDeNombre(p.nombre), p);
+  }
+  for (const v of variantes) {
+    const producto = porId.get(v.producto_id);
+    if (v.sku) porSku.set(claveCodigo(v.sku), { producto, variante: v });
+    if (v.codigo_barras) porCodigo.set(v.codigo_barras, { producto, variante: v });
+  }
+  const conVariantes = new Set(variantes.map((v) => v.producto_id));
+  const categorias = new Map(
+    db.prepare('SELECT id, nombre FROM categorias WHERE organizacion_id = ?').all(org).map((c) => [claveDeNombre(c.nombre), c])
+  );
+  const nombreCategoria = (id) => [...categorias.values()].find((c) => c.id === id)?.nombre ?? null;
+  const planesDeSocios = new Set(db.prepare('SELECT DISTINCT producto_id FROM planes_socio WHERE organizacion_id = ?').all(org).map((f) => f.producto_id));
+  const stockProducto = db.prepare('SELECT cantidad FROM stock_por_deposito WHERE producto_id = ? AND deposito_id = ?');
+  const stockVariante = db.prepare('SELECT cantidad FROM stock_variante_por_deposito WHERE variante_id = ? AND deposito_id = ?');
+  const vistos = new Map();
+  const nuevosEnPlan = [];
+
+  const resultados = filas.map((fila) => {
+    const { datos, errores } = interpretarFila('productos', fila.campos);
+    const r = { numero: fila.numero, nombre: datos.nombre ?? datos.sku ?? datos.codigo_barras ?? null, accion: 'error' };
+    const fallar = (error) => ({ ...r, error });
+    if (errores.length) return fallar(errores.join(' '));
+
+    let encontrado = (datos.sku && porSku.get(claveCodigo(datos.sku))) || (datos.codigo_barras && porCodigo.get(datos.codigo_barras)) || null;
+    if (!encontrado && datos.nombre) {
+      const p = porNombre.get(claveDeNombre(datos.nombre));
+      if (p && datos.sku && p.sku) {
+        return fallar(`Ya tenés "${p.nombre}" con otro código (${p.sku}). Si es otro producto, cambiale el nombre en la planilla.`);
+      }
+      if (p) encontrado = { producto: p, variante: null };
+    }
+    const repetido = (clave) => {
+      if (vistos.has(clave)) return `Está repetido: ya va en el renglón ${vistos.get(clave)}.`;
+      vistos.set(clave, fila.numero);
+      return null;
+    };
+
+    // La categoría por su nombre; si no existe, se crea al guardar.
+    const categoria = datos.categoria ? (categorias.get(claveDeNombre(datos.categoria)) ?? { id: null, nombre: datos.categoria.slice(0, 80) }) : null;
+
+    if (!encontrado) {
+      if (!datos.nombre) {
+        return fallar(datos.sku ? `No tenés ningún producto con el código ${datos.sku}, y sin nombre no se puede crear.` : 'Falta el nombre.');
+      }
+      const yaVa = repetido(`n:${claveDeNombre(datos.nombre)}`) ?? (datos.sku ? repetido(`s:${claveCodigo(datos.sku)}`) : null) ??
+        (datos.codigo_barras ? repetido(`c:${datos.codigo_barras}`) : null);
+      if (yaVa) return fallar(yaVa);
+      // Con stock, costo o código de barras es mercadería, aunque el tipo de
+      // negocio cree servicios (un gimnasio que vende bebidas).
+      const tipo = datos.stock != null || datos.costo != null || datos.codigo_barras ? 'producto' : undefined;
+      const alta = {
+        nombre: datos.nombre,
+        sku: datos.sku ?? null,
+        codigo_barras: datos.codigo_barras ?? null,
+        precio_venta: datos.precio_venta ?? 0,
+        stock_minimo: datos.stock_minimo ?? 0,
+        unidad: datos.unidad,
+        alicuota_iva: datos.alicuota_iva,
+        descripcion: datos.descripcion ?? null,
+        tipo
+      };
+      const error = validarProducto(alta, org) ?? codigoDeBarrasOcupado(normalizarCodigoBarras(alta.codigo_barras), org);
+      if (error) return fallar(error);
+      nuevosEnPlan.push(fila.numero);
+      const cambios = [
+        ...['sku', 'codigo_barras', 'precio_venta', 'stock_minimo', 'unidad', 'alicuota_iva'].filter((c) => datos[c] != null).map((c) => cambioDe(c, null, datos[c])),
+        ...(categoria ? [cambioDe('categoria', null, categoria.nombre)] : []),
+        ...(datos.stock != null ? [cambioDe('stock', null, datos.stock)] : []),
+        ...(datos.costo != null ? [cambioDe('costo', null, datos.costo)] : [])
+      ];
+      return { ...r, accion: 'crear', cambios, alta, categoria, datos };
+    }
+
+    const { producto, variante } = encontrado;
+    r.nombre = variante ? `${producto.nombre} (${combinacionVariante(variante.id)})` : producto.nombre;
+    if (!producto.activo) return fallar(`"${producto.nombre}" está dado de baja: reactivalo en Productos para traerlo.`);
+    const yaVa = repetido(variante ? `v:${variante.id}` : `p:${producto.id}`);
+    if (yaVa) return fallar(yaVa);
+
+    // Lo del producto: con una variante, el nombre, el SKU, el código y el
+    // precio son de la variante.
+    const editar = {};
+    const cambios = [];
+    const camposProducto = ['unidad', 'alicuota_iva', 'stock_minimo', 'descripcion', ...(variante ? [] : ['nombre', 'sku', 'codigo_barras', 'precio_venta'])];
+    for (const campo of camposProducto) {
+      if (datos[campo] == null) continue;
+      const actual = producto[campo];
+      const igual = typeof datos[campo] === 'number' ? Math.abs((actual ?? 0) - datos[campo]) < 0.005 : String(actual ?? '') === String(datos[campo]);
+      if (campo === 'nombre' && claveDeNombre(actual) === claveDeNombre(datos.nombre)) continue;
+      if (campo === 'sku' && claveCodigo(actual) === claveCodigo(datos.sku)) continue;
+      if (igual) continue;
+      editar[campo] = datos[campo];
+      cambios.push(cambioDe(campo, actual, datos[campo]));
+    }
+    // Una categoría que todavía no existe (id null) siempre es un cambio.
+    if (categoria && (categoria.id === null || categoria.id !== producto.categoria_id)) {
+      cambios.push(cambioDe('categoria', nombreCategoria(producto.categoria_id), categoria.nombre));
+    }
+    if (editar.sku && porSku.has(claveCodigo(editar.sku))) return fallar(`El código ${editar.sku} ya es de otro producto.`);
+    if (planesDeSocios.has(producto.id) && editar.precio_venta != null) {
+      return fallar(`El precio de "${producto.nombre}" se cambia en Socios → Planes: cada duración tiene el suyo.`);
+    }
+    const errorProducto =
+      validarProducto({ ...producto, ...editar, categoria_id: null }, org) ??
+      (editar.codigo_barras ? codigoDeBarrasOcupado(normalizarCodigoBarras(editar.codigo_barras), org, { productoId: producto.id }) : null);
+    if (errorProducto) return fallar(errorProducto);
+
+    const variar = {};
+    if (variante) {
+      if (datos.precio_venta != null && Math.abs((variante.precio_venta ?? producto.precio_venta) - datos.precio_venta) >= 0.005) {
+        variar.precio_venta = datos.precio_venta;
+        cambios.push(cambioDe('precio_venta', variante.precio_venta ?? producto.precio_venta, datos.precio_venta));
+      }
+      if (datos.codigo_barras && datos.codigo_barras !== variante.codigo_barras) {
+        const ocupado = errorCodigoDeBarras(datos.codigo_barras) ?? codigoDeBarrasOcupado(datos.codigo_barras, org, { varianteId: variante.id });
+        if (ocupado) return fallar(ocupado);
+        variar.codigo_barras = datos.codigo_barras;
+        cambios.push(cambioDe('codigo_barras', variante.codigo_barras, datos.codigo_barras));
+      }
+    }
+
+    // El stock y el costo, en el depósito elegido, como la carga inicial.
+    let stock = null;
+    if (datos.stock != null || datos.costo != null) {
+      if (producto.tipo === 'servicio') return fallar(errorServicioSinStock(producto.nombre));
+      if (!variante && conVariantes.has(producto.id)) {
+        return fallar(`"${producto.nombre}" tiene variantes: poné el SKU de cada una para cargarle el stock y el costo.`);
+      }
+      const actual = (variante ? stockVariante.get(variante.id, deposito.id) : stockProducto.get(producto.id, deposito.id))?.cantidad ?? 0;
+      const costoActual = (variante ?? producto).precio_costo;
+      stock = { cantidad: datos.stock ?? actual, costo: datos.costo ?? costoActual };
+      if (datos.stock != null && Math.abs(actual - datos.stock) >= 0.0005) cambios.push(cambioDe('stock', actual, datos.stock));
+      if (datos.costo != null && Math.abs(costoActual - datos.costo) >= 0.005) cambios.push(cambioDe('costo', redondear2(costoActual), datos.costo));
+      if (!cambios.some((c) => c.campo === 'stock' || c.campo === 'costo')) stock = null;
+    }
+    if (!cambios.length) return { ...r, accion: 'igual' };
+    return { ...r, accion: 'actualizar', cambios, producto, variante, editar, variar, categoria, stock };
+  });
+
+  let aviso = null;
+  if (nuevosEnPlan.length) {
+    try {
+      exigirLugarEnPlan(org, 'productos', nuevosEnPlan.length);
+    } catch (err) {
+      if (!(err instanceof ErrorPlan)) throw err;
+      aviso = `${err.message} Se traen los que entran, en el orden de la planilla.`;
+    }
+  }
+  if (guardar) {
+    for (const r of resultados) {
+      if (r.accion !== 'crear' && r.accion !== 'actualizar') continue;
+      try {
+        withTransaction(() => guardarProductoDePlanilla(req, r, { deposito, categorias }));
+      } catch (err) {
+        r.accion = 'error';
+        r.error = mensajeDeError(err);
+      }
+    }
+  }
+  return { filas: resultados.map(({ numero, nombre, accion, cambios, error }) => ({ numero, nombre, accion, cambios, error })), aviso, deposito };
+}
+
+// Un renglón ya revisado, adentro de su transacción.
+function guardarProductoDePlanilla(req, r, { deposito, categorias }) {
+  const org = req.usuario.organizacion_id;
+  let categoriaId = r.categoria?.id ?? null;
+  if (r.categoria && !categoriaId) {
+    // Puede haberla creado un renglón anterior de la misma planilla.
+    const yaCreada = categorias.get(claveDeNombre(r.categoria.nombre));
+    categoriaId = yaCreada?.id ?? null;
+    if (!categoriaId) {
+      categoriaId = Number(db.prepare('INSERT INTO categorias (nombre, organizacion_id) VALUES (?, ?)').run(r.categoria.nombre, org).lastInsertRowid);
+      categorias.set(claveDeNombre(r.categoria.nombre), { id: categoriaId, nombre: r.categoria.nombre });
+      auditar(req, { accion: 'crear', entidad: 'categoria', entidad_id: categoriaId, detalle: `Categoría "${r.categoria.nombre}" creada ${ORIGEN_PLANILLA}` });
+    }
+  }
+  if (r.accion === 'crear') {
+    const id = insertarProducto({ ...r.alta, categoria_id: categoriaId }, org);
+    auditar(req, { accion: 'crear', entidad: 'producto', entidad_id: id, detalle: `Producto "${r.alta.nombre.trim()}" creado ${ORIGEN_PLANILLA}` });
+    if (r.datos.stock != null || r.datos.costo != null) {
+      aplicarStockInicial(req, {
+        producto: { id, nombre: r.alta.nombre.trim(), precio_costo: 0 },
+        varianteId: null,
+        deposito,
+        cantidad: r.datos.stock ?? 0,
+        costo: r.datos.costo ?? 0,
+        nota: `Stock inicial ${ORIGEN_PLANILLA}`
+      });
+    }
+    return;
+  }
+  const editar = { ...r.editar };
+  if (r.categoria && categoriaId !== r.producto.categoria_id) editar.categoria_id = categoriaId;
+  if (Object.keys(editar).length) aplicarEdicionProducto(req, r.producto.id, editar, 1, { enTransaccion: true, origen: ORIGEN_PLANILLA });
+  if (Object.keys(r.variar).length) {
+    const anterior = db.prepare('SELECT precio_venta, codigo_barras FROM producto_variantes WHERE id = ?').get(r.variante.id);
+    const nuevo = { ...anterior, ...r.variar };
+    db.prepare('UPDATE producto_variantes SET precio_venta = ?, codigo_barras = ? WHERE id = ?').run(nuevo.precio_venta, nuevo.codigo_barras, r.variante.id);
+    const diff = diffCampos(anterior, nuevo, ['precio_venta', 'codigo_barras']);
+    auditar(req, {
+      accion: 'editar',
+      entidad: 'producto',
+      entidad_id: r.producto.id,
+      valor_anterior: diff.anterior,
+      valor_nuevo: diff.nuevo,
+      detalle: `Variante "${r.nombre}" editada ${ORIGEN_PLANILLA}`
+    });
+  }
+  if (r.stock) {
+    const producto = db.prepare('SELECT id, nombre, precio_costo FROM productos WHERE id = ?').get(r.producto.id);
+    aplicarStockInicial(req, {
+      producto,
+      varianteId: r.variante?.id ?? null,
+      deposito,
+      cantidad: r.stock.cantidad,
+      costo: r.stock.costo,
+      nota: `Stock inicial ${ORIGEN_PLANILLA}`
+    });
+  }
+}
+
+const CAMPOS_CONTACTO = ['nombre', 'documento', 'condicion_iva', 'email', 'telefono', 'direccion', 'notas'];
+const MAX_CAMPO_CONTACTO = 300;
+
+// Clientes o proveedores: la misma planilla, cambia la tabla. Dos clientes
+// pueden llamarse igual (dos Juan Pérez, con su DNI); dos proveedores no.
+function importarContactos(req, tabla, filas, { guardar }) {
+  const org = req.usuario.organizacion_id;
+  const entidad = tabla === 'clientes' ? 'cliente' : 'proveedor';
+  const existentes = db.prepare(`SELECT id, ${CAMPOS_CONTACTO.join(', ')} FROM ${tabla} WHERE organizacion_id = ? ORDER BY id`).all(org);
+  const porDocumento = new Map();
+  const porMail = new Map();
+  const porNombre = new Map();
+  for (const e of existentes) {
+    if (soloDigitos(e.documento).length >= 7) porDocumento.set(soloDigitos(e.documento), e);
+    if (e.email) porMail.set(e.email.trim().toLowerCase(), e);
+    if (!porNombre.has(claveDeNombre(e.nombre))) porNombre.set(claveDeNombre(e.nombre), e);
+  }
+  const vistos = new Map();
+
+  const resultados = filas.map((fila) => {
+    const { datos, errores } = interpretarFila(tabla, fila.campos);
+    const r = { numero: fila.numero, nombre: datos.nombre ?? datos.email ?? datos.documento ?? null, accion: 'error' };
+    const fallar = (error) => ({ ...r, error });
+    if (errores.length) return fallar(errores.join(' '));
+    const largo = CAMPOS_CONTACTO.find((c) => datos[c]?.length > MAX_CAMPO_CONTACTO);
+    if (largo) return fallar(`Un dato es demasiado largo: hasta ${MAX_CAMPO_CONTACTO} letras.`);
+    if (datos.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(datos.email)) return fallar(`El mail "${datos.email}" no es válido.`);
+
+    const documento = soloDigitos(datos.documento);
+    let encontrado = (documento.length >= 7 && porDocumento.get(documento)) || (datos.email && porMail.get(datos.email)) || null;
+    if (!encontrado && datos.nombre) {
+      const mismo = porNombre.get(claveDeNombre(datos.nombre));
+      const otroDocumento = mismo && documento && soloDigitos(mismo.documento) && soloDigitos(mismo.documento) !== documento;
+      if (mismo && !otroDocumento) encontrado = mismo;
+      else if (mismo && tabla === 'proveedores') return fallar(`Ya tenés un proveedor "${mismo.nombre}" con otro CUIT (${mismo.documento}).`);
+    }
+    const clave = encontrado ? `e:${encontrado.id}` : documento.length >= 7 ? `d:${documento}` : datos.email ? `m:${datos.email}` : `n:${claveDeNombre(datos.nombre)}`;
+    if (vistos.has(clave)) return fallar(`Está repetido: ya va en el renglón ${vistos.get(clave)}.`);
+    vistos.set(clave, fila.numero);
+
+    if (!encontrado) {
+      if (!datos.nombre) return fallar('Falta el nombre.');
+      if (tabla === 'proveedores' && vistos.has(`n:${claveDeNombre(datos.nombre)}`) && clave !== `n:${claveDeNombre(datos.nombre)}`) {
+        return fallar(`Está repetido: ya va en el renglón ${vistos.get(`n:${claveDeNombre(datos.nombre)}`)}.`);
+      }
+      if (tabla === 'proveedores') vistos.set(`n:${claveDeNombre(datos.nombre)}`, fila.numero);
+      const cambios = CAMPOS_CONTACTO.filter((c) => c !== 'nombre' && datos[c] != null).map((c) => cambioDe(c, null, datos[c]));
+      return { ...r, accion: 'crear', cambios, datos };
+    }
+    r.nombre = encontrado.nombre;
+    const editar = {};
+    const cambios = [];
+    for (const campo of CAMPOS_CONTACTO) {
+      if (datos[campo] == null) continue;
+      if (campo === 'nombre' ? claveDeNombre(encontrado.nombre) === claveDeNombre(datos.nombre) : String(encontrado[campo] ?? '') === datos[campo]) continue;
+      if (campo === 'documento' && soloDigitos(encontrado.documento) === documento) continue;
+      editar[campo] = datos[campo];
+      cambios.push(cambioDe(campo, encontrado[campo], datos[campo]));
+    }
+    if (tabla === 'proveedores' && editar.nombre) {
+      const otro = porNombre.get(claveDeNombre(editar.nombre));
+      if (otro && otro.id !== encontrado.id) return fallar(`Ya tenés otro proveedor que se llama "${otro.nombre}".`);
+    }
+    if (!cambios.length) return { ...r, accion: 'igual' };
+    return { ...r, accion: 'actualizar', cambios, existente: encontrado, editar };
+  });
+
+  if (guardar) {
+    for (const r of resultados) {
+      if (r.accion !== 'crear' && r.accion !== 'actualizar') continue;
+      try {
+        withTransaction(() => {
+          if (r.accion === 'crear') {
+            const valores = CAMPOS_CONTACTO.map((c) => r.datos[c] ?? null);
+            const id = Number(
+              db
+                .prepare(`INSERT INTO ${tabla} (${CAMPOS_CONTACTO.join(', ')}, organizacion_id) VALUES (${CAMPOS_CONTACTO.map(() => '?').join(', ')}, ?)`)
+                .run(...valores, org).lastInsertRowid
+            );
+            auditar(req, { accion: 'crear', entidad, entidad_id: id, detalle: `${entidad === 'cliente' ? 'Cliente' : 'Proveedor'} "${r.datos.nombre}" creado ${ORIGEN_PLANILLA}` });
+            return;
+          }
+          const campos = Object.keys(r.editar);
+          db.prepare(`UPDATE ${tabla} SET ${campos.map((c) => `${c} = ?`).join(', ')} WHERE id = ? AND organizacion_id = ?`).run(
+            ...campos.map((c) => r.editar[c]),
+            r.existente.id,
+            org
+          );
+          const diff = diffCampos(r.existente, { ...r.existente, ...r.editar }, campos);
+          auditar(req, {
+            accion: 'editar',
+            entidad,
+            entidad_id: r.existente.id,
+            valor_anterior: diff.anterior,
+            valor_nuevo: diff.nuevo,
+            detalle: `${entidad === 'cliente' ? 'Cliente' : 'Proveedor'} "${r.existente.nombre}" editado ${ORIGEN_PLANILLA}`
+          });
+        });
+      } catch (err) {
+        r.accion = 'error';
+        r.error = mensajeDeError(err);
+      }
+    }
+  }
+  return { filas: resultados.map(({ numero, nombre, accion, cambios, error }) => ({ numero, nombre, accion, cambios, error })), aviso: null };
+}
 
 // Una ruta de API que no existe responde JSON, no el HTML por defecto de
 // Express. Va después de todas las rutas y de `autenticar`.

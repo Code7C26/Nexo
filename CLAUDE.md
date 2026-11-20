@@ -331,7 +331,9 @@ final, con IVA incluido; hist. §112). Código de barras en el producto y en
 cada variante, aparte del SKU y único por empresa entre los dos; el lector
 del punto de venta lo busca primero (hist. §127). Código de balanza (PLU)
 en lo que se pesa: el punto de venta lee la etiqueta de la balanza (hist.
-§132).
+§132). Productos, clientes y proveedores se traen desde la planilla que el
+negocio ya tenía (.xlsx o CSV, con sus columnas), revisando renglón por
+renglón antes de guardar (hist. §211).
 
 ---
 
