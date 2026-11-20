@@ -11,7 +11,7 @@
 
 - Al cerrar una etapa, se hacen tres cosas:
   - su relato completo se agrega al final de `docs/proyecto/handoff-historico.md` con el
-    siguiente número (hoy el último es §211);
+    siguiente número (hoy el último es §212);
   - acá se actualizan "Estado actual" y "Qué sigue";
   - si cambió alguna decisión vigente, se actualiza también esa lista.
 - Nunca apilar secciones "Última etapa" en este archivo: así fue como llegó a
@@ -71,7 +71,7 @@ Nube trae el costo cuando lo tiene, y la guía avisa los productos con stock y
 sin costo. Arreglado el 500 al traer el catálogo de Tienda Nube. **Falta:**
 que el amigo del usuario lo pruebe con su tienda.
 
-**20 de noviembre, hist. §211: traer desde una planilla (punto 7).**
+**20 de noviembre, hist. §211: traer desde una planilla (punto 7, publicado, PR #111).**
 Configuración › Lo que ya tenías › **Traer desde una planilla** (y **Desde una
 planilla** en Productos, Clientes y Proveedores): productos con precio, costo,
 stock, categoría y códigos, clientes y proveedores, desde el .xlsx o el CSV que
@@ -81,8 +81,13 @@ Lector propio sin librerías (`core/planilla.js`, compartido con el servidor) y
 `POST /api/importar/:tipo`. Test nuevo: `importar`. `npm test`: 498 de 498.
 **Falta:** variantes nuevas desde la planilla y precios por lista.
 
-**Lo que sigue: el punto 8** (logo y colores del negocio), sin empezar. Antes,
-ver cómo lo hace la competencia.
+**20 de noviembre, hist. §212: logo y colores del negocio y la foto de perfil (punto 8).**
+Configuración › Logo y colores: el logo va en el menú, la factura, el ticket
+(en grises) y la pantalla de entrada; el color reemplaza al azul de Nexo.
+Foto de perfil en Mi cuenta. Test nuevo: `marca`. `npm test`: 501 de 501.
+
+**Lo que sigue: el punto 9** (el resto de Praxia), sin empezar. Antes, ver
+cómo lo hace la competencia.
 
 **19 de noviembre, hist. §205 (publicado, PR #106):** en Planes se elimina un plan que nunca hizo
 nadie (con su servicio del catálogo); el que algún socio hizo solo se pausa.
@@ -2361,7 +2366,7 @@ datos reales; la demo no la necesita.
 7. ~~**Cargar lo que ya tenías desde una planilla**~~ (hecho, hist. §211:
    productos con su stock y su costo, clientes y proveedores, desde .xlsx o
    CSV; faltan las variantes nuevas y los precios por lista).
-8. **Logo y colores del negocio:** en la factura, el ticket, el menú y la
+8. ~~**Logo y colores del negocio:**~~ (hecho, hist. §212) en la factura, el ticket, el menú y la
    pantalla de entrada del gimnasio; la foto de perfil, en el mismo paso.
 9. **El resto de Praxia** (puntos 5 a 9): puntos y premios; mensajes de
    WhatsApp armados por situación y "quiénes deben", con el recordatorio

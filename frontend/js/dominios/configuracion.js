@@ -20,6 +20,7 @@ import { CONDICIONES_FISCALES, condicionFiscal, errorCuit, esCondicionFiscal, fo
 import { limpiarError, limpiarErrores, marcarError } from "../core/campos.js";
 import { aplicarTema, temaActual } from "../core/tema.js";
 import { cambiarIdioma, idioma } from "../core/idioma.js";
+import { achicarImagen, colorParaPapel, coloresDelLogo, variantesDeColor } from "../core/marca.js";
 
 // `negocio` queda en memoria para que armarHojaComprobante() no tenga que
 // hacer un fetch cada vez que se imprime: vive en core/negocio.js (lo lee
@@ -34,6 +35,7 @@ const formFunciones = document.getElementById("formConfigFunciones");
 const formCambiarTipo = document.getElementById("formConfigCambiarTipo");
 const formComprobantes = document.getElementById("formConfigComprobantes");
 const formApariencia = document.getElementById("formConfigApariencia");
+const formMarca = document.getElementById("formConfigMarca");
 const EMAIL_VALIDO = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 /* ---------- Guardar solo lo que cambió ---------- */
@@ -77,7 +79,7 @@ const actualizarBoton = (form) => {
 // Lo que no se guardó se conserva al cambiar de página (hist. §73), pero no
 // tiene que pasar desapercibido: la página lleva un punto en el menú, salir
 // de Configuración por el menú avisa, y cerrar o recargar la pestaña pregunta.
-const formularios = [formNegocio, formFunciones, formCambiarTipo, formComprobantes];
+const formularios = [formNegocio, formMarca, formFunciones, formCambiarTipo, formComprobantes];
 // La página del menú: "Cambiar el tipo" no tiene ítem propio y marca el de
 // Funciones.
 const itemDelMenu = (clave) => PAGINAS[clave]?.menu ?? clave;
@@ -121,13 +123,13 @@ for (const form of formularios) {
 
 // El servidor valida lo mismo que acá: si algo se escapa, su error llega como
 // aviso (api()) y el botón vuelve a quedar habilitado para reintentar.
-async function guardar(form, cuerpo, pintar) {
+async function guardar(form, cuerpo, pintar, ruta = "/api/negocio") {
   const boton = botonGuardar(form);
   const texto = boton.textContent;
   boton.disabled = true;
   boton.textContent = "Guardando…";
   try {
-    await api("/api/negocio", { method: "PUT", body: cuerpo, error: "No se pudieron guardar los cambios." });
+    await api(ruta, { method: "PUT", body: cuerpo, error: "No se pudieron guardar los cambios." });
   } catch (e) {
     boton.disabled = false;
     throw e;
@@ -166,6 +168,230 @@ formNegocio.addEventListener("submit", async (e) => {
     return;
   }
   await guardar(formNegocio, cambios(formNegocio), pintarNegocio);
+});
+
+/* ---------- Logo y colores (hist. §212) ---------- */
+
+// Como el "branding" de Square o de Gymdesk: un logo y un color, y Nexo los
+// lleva al menú, a lo que se imprime y a la pantalla de entrada. El logo se
+// achica acá (core/marca.js) y se guarda con el color, de una vez.
+const archivoLogo = document.getElementById("marcaArchivo");
+const estadoLogo = document.getElementById("marcaLogoEstado");
+const errorLogo = document.getElementById("marcaLogoError");
+const botonSubirLogo = document.getElementById("marcaSubirLogo");
+const botonSacarLogo = document.getElementById("marcaSacarLogo");
+
+// Para elegir sin saber de colores: distintos entre sí. core/marca.js los
+// aclara u oscurece lo justo para que se lean en los dos temas.
+const COLORES_DE_MARCA = [
+  ["#16a34a", "Verde"],
+  ["#0d9488", "Turquesa"],
+  ["#7c3aed", "Violeta"],
+  ["#db2777", "Rosa"],
+  ["#dc2626", "Rojo"],
+  ["#ea580c", "Naranja"],
+  ["#ca8a04", "Dorado"]
+];
+// El azul de Nexo, tal cual está en styles.css (sin color elegido).
+const AZUL_NEXO = {
+  oscuro: { accent: "#60A5FA", bg: "rgba(96, 165, 250, 0.14)", contrast: "#0A0A0A" },
+  claro: { accent: "#2563EB", bg: "#DBEAFE", contrast: "#FFFFFF" }
+};
+const HEX = /^#[0-9a-f]{6}$/i;
+
+// El logo elegido y todavía sin guardar: undefined es el de siempre, null es
+// sacarlo, y si no, el que se acaba de subir ({ tipo, datos, url }).
+let logoPendiente;
+let coloresDelLogoActual = [];
+
+const logoVisible = () => (logoPendiente === undefined ? negocio.logo : logoPendiente?.url) ?? null;
+
+function colorElegido() {
+  const { color, color_otro: otro } = valores(formMarca);
+  return color === "otro" ? otro : color;
+}
+
+// El mismo color con un par de puntos de diferencia: el que se lee del logo
+// guardado (en WebP) no sale idéntico al que se leyó del original.
+const casiIgual = (a, b) =>
+  HEX.test(a) && HEX.test(b) && [1, 3, 5].every((i) => Math.abs(parseInt(a.slice(i, i + 2), 16) - parseInt(b.slice(i, i + 2), 16)) <= 12);
+
+function pintarColores(elegido) {
+  const delLogo = coloresDelLogoActual
+    .map((hex) => (casiIgual(hex, elegido) ? elegido : hex))
+    .filter((hex) => !COLORES_DE_MARCA.some(([otro]) => otro === hex));
+  const opciones = [
+    ["", "Azul de Nexo", AZUL_NEXO.claro.accent],
+    ...delLogo.map((hex, i) => [hex, delLogo.length > 1 ? `De tu logo ${i + 1}` : "De tu logo", hex]),
+    ...COLORES_DE_MARCA.map(([hex, nombre]) => [hex, nombre, hex])
+  ];
+  // Un color guardado que no está en la lista es "Otro", con el suyo.
+  const propio = opciones.some(([valor]) => valor === elegido) ? "" : elegido;
+  document.getElementById("marcaColores").innerHTML =
+    opciones
+      .map(
+        ([valor, nombre, muestra]) => `
+      <label class="marca-color">
+        <input type="radio" name="color" value="${esc(valor)}"${valor === elegido ? " checked" : ""} />
+        <span class="marca-color-muestra" style="background: ${esc(muestra)}"></span>
+        <span class="marca-color-nombre">${esc(nombre)}</span>
+      </label>`
+      )
+      .join("") +
+    `
+      <label class="marca-color">
+        <input type="radio" name="color" value="otro"${propio ? " checked" : ""} />
+        <span class="marca-color-muestra${propio ? "" : " marca-color-arcoiris"}"${propio ? ` style="background: ${esc(propio)}"` : ""}></span>
+        <input type="color" name="color_otro" class="marca-color-otro" value="${esc(propio || "#1f2937")}" aria-label="Elegir otro color" />
+        <span class="marca-color-nombre">Otro</span>
+      </label>`;
+}
+
+// "Otro": la muestra redonda toma el color del selector del sistema, que
+// queda invisible encima de la tarjeta.
+function elegirColorPropio() {
+  const selector = formMarca.querySelector('input[name="color_otro"]');
+  formMarca.querySelector('input[name="color"][value="otro"]').checked = true;
+  const muestra = formMarca.querySelector(".marca-color-otro").previousElementSibling;
+  muestra.classList.remove("marca-color-arcoiris");
+  muestra.style.background = selector.value;
+}
+
+function pintarLogoMarca() {
+  const url = logoVisible();
+  const imagen = url ? `<img src="${esc(url)}" alt="Tu logo" />` : `<span class="marca-logo-vacio">Sin logo</span>`;
+  document.getElementById("marcaLogoFondos").innerHTML = `
+    <div class="marca-logo-fondo marca-logo-fondo-oscuro">${imagen}</div>
+    <div class="marca-logo-fondo marca-logo-fondo-claro">${imagen}</div>`;
+  botonSubirLogo.textContent = url ? "Cambiar el logo" : "Subir logo";
+  botonSacarLogo.hidden = !url;
+}
+
+// La vista previa toma el color elegido sin tocar el resto de la app: las
+// mismas variables de styles.css, solo adentro de la tarjeta.
+function pintarPreviaMarca() {
+  const hex = colorElegido();
+  const variantes = HEX.test(hex) ? variantesDeColor(hex) : AZUL_NEXO;
+  const delTema = variantes[temaActual() === "claro" ? "claro" : "oscuro"];
+  const previa = document.getElementById("marcaPrevia");
+  previa.style.setProperty("--accent", delTema.accent);
+  previa.style.setProperty("--accent-on-dark", variantes.oscuro.accent);
+  previa.style.setProperty("--accent-on-dark-ink", variantes.oscuro.contrast);
+  previa.style.setProperty("--sidebar-active", variantes.oscuro.bg);
+
+  const url = logoVisible();
+  const nombre = negocio.nombre || "Tu negocio";
+  const cuadradito = url
+    ? `<span class="negocio-inicial negocio-logo"><img src="${esc(url)}" alt="" /></span>`
+    : `<span class="negocio-inicial">${esc(([...nombre.trim()][0] ?? "N").toLocaleUpperCase("es-AR"))}</span>`;
+  document.getElementById("marcaPreviaNegocio").innerHTML = `${cuadradito}<span>${esc(nombre)}</span>`;
+  const papel = colorParaPapel(HEX.test(hex) ? hex : null) ?? "#0A0A0A";
+  document.getElementById("marcaPreviaPapel").innerHTML = `
+    ${url ? `<img class="membrete-previa-logo" src="${esc(url)}" alt="" />` : ""}
+    <p class="membrete-previa-nombre" style="color: ${esc(papel)}">${esc(nombre)}</p>
+    ${negocio.direccion ? `<p>${esc(negocio.direccion)}</p>` : ""}
+    <p>FACTURA B · N° 00001-00000152</p>`;
+}
+
+// Los colores de un logo ya guardado, para ofrecerlos: se leen de la imagen.
+function leerColoresDe(url) {
+  return new Promise((ok) => {
+    const img = new Image();
+    img.onload = () => {
+      const lienzo = document.createElement("canvas");
+      lienzo.width = img.naturalWidth;
+      lienzo.height = img.naturalHeight;
+      lienzo.getContext("2d").drawImage(img, 0, 0);
+      ok(coloresDelLogo(lienzo));
+    };
+    img.onerror = () => ok([]);
+    img.src = url;
+  });
+}
+
+function pintarMarca() {
+  logoPendiente = undefined;
+  coloresDelLogoActual = [];
+  estadoLogo.value = negocio.logo ? "actual" : "";
+  errorLogo.hidden = true;
+  pintarColores(negocio.color_marca ?? "");
+  pintarLogoMarca();
+  pintarPreviaMarca();
+  marcarSinCambios(formMarca);
+  if (!negocio.logo) return;
+  const url = negocio.logo;
+  leerColoresDe(url).then((colores) => {
+    if (logoPendiente !== undefined || negocio.logo !== url || !colores.length) return;
+    const sinTocar = !tieneCambios(formMarca);
+    coloresDelLogoActual = colores;
+    pintarColores(colorElegido());
+    if (sinTocar) marcarSinCambios(formMarca);
+  });
+}
+
+botonSubirLogo.addEventListener("click", () => archivoLogo.click());
+
+archivoLogo.addEventListener("change", async () => {
+  const archivo = archivoLogo.files[0];
+  archivoLogo.value = "";
+  if (!archivo) return;
+  errorLogo.hidden = true;
+  let imagen;
+  try {
+    imagen = await achicarImagen(archivo, { lado: 640 });
+  } catch (e) {
+    errorLogo.textContent = e.message;
+    errorLogo.hidden = false;
+    return;
+  }
+  logoPendiente = { tipo: imagen.tipo, datos: imagen.datos, url: imagen.url };
+  coloresDelLogoActual = coloresDelLogo(imagen.lienzo);
+  estadoLogo.value = `nuevo-${Date.now()}`;
+  // Sin un color elegido, el del logo: se ve enseguida en la vista previa y
+  // se puede volver al azul antes de guardar.
+  const elegido = colorElegido();
+  pintarColores(!elegido && coloresDelLogoActual[0] ? coloresDelLogoActual[0] : elegido);
+  pintarLogoMarca();
+  pintarPreviaMarca();
+  actualizarBoton(formMarca);
+});
+
+botonSacarLogo.addEventListener("click", () => {
+  logoPendiente = negocio.logo ? null : undefined;
+  coloresDelLogoActual = [];
+  estadoLogo.value = "";
+  pintarColores(colorElegido());
+  pintarLogoMarca();
+  pintarPreviaMarca();
+  actualizarBoton(formMarca);
+  botonSubirLogo.focus();
+});
+
+formMarca.addEventListener("input", (e) => {
+  // Mover el color de "Otro" ya es elegirlo.
+  if (e.target.name === "color_otro") elegirColorPropio();
+  pintarPreviaMarca();
+});
+// Tocar "Otro" lo elige, aunque se cierre el selector sin mover el color.
+formMarca.addEventListener("click", (e) => {
+  if (e.target.name !== "color_otro") return;
+  elegirColorPropio();
+  pintarPreviaMarca();
+  actualizarBoton(formMarca);
+});
+formMarca.addEventListener("change", pintarPreviaMarca);
+document.addEventListener("nexo:tema", () => {
+  if (!formMarca.closest(".config-pagina").hidden) pintarPreviaMarca();
+});
+
+formMarca.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  if (!tieneCambios(formMarca)) return;
+  const cuerpo = {};
+  const color = colorElegido() || null;
+  if (color !== (negocio.color_marca ?? null)) cuerpo.color = color;
+  if (logoPendiente !== undefined) cuerpo.logo = logoPendiente && { tipo: logoPendiente.tipo, datos: logoPendiente.datos };
+  await guardar(formMarca, cuerpo, pintarMarca, "/api/negocio/marca");
 });
 
 /* ---------- Funciones y tipo de negocio (hist. §88) ---------- */
@@ -304,8 +530,11 @@ function pintarMembrete() {
     negocio.telefono && `Tel: ${negocio.telefono}`,
     negocio.email
   ].filter(Boolean);
+  // Con el logo y el color del negocio (hist. §212), como sale impreso.
+  const color = colorParaPapel(negocio.color_marca);
   document.getElementById("configMembrete").innerHTML = `
-    <p class="membrete-previa-nombre">${esc(negocio.nombre || "Tu negocio")}</p>
+    ${negocio.logo ? `<img class="membrete-previa-logo" src="${esc(negocio.logo)}" alt="" />` : ""}
+    <p class="membrete-previa-nombre"${color ? ` style="color: ${esc(color)}"` : ""}>${esc(negocio.nombre || "Tu negocio")}</p>
     ${lineas.map((linea) => `<p>${esc(linea)}</p>`).join("")}
     ${pie ? `<p class="membrete-previa-pie">${esc(pie)}</p>` : ""}`;
 }
@@ -403,6 +632,7 @@ document.addEventListener("nexo:instalable", pintarInstalar);
 
 const PAGINAS = {
   negocio: { admin: true, form: formNegocio, alEntrar: pintarNegocio },
+  marca: { admin: true, form: formMarca, alEntrar: pintarMarca },
   // Lo que ya tenía el negocio al empezar con Nexo: dominios/carga-inicial.js
   // (handoff 8c). Cada parte es su página, y todas marcan el mismo ítem.
   "lo-que-tenias": { admin: true, alEntrar: () => invocar("pintar:carga-inicial", "lo-que-tenias") },

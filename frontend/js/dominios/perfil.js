@@ -13,6 +13,7 @@ import { avisar } from "../core/ui.js";
 import { alEntrarEnVista, registrar } from "../core/registro.js";
 import { mostrarVista } from "../core/router.js";
 import { codigoCompleto, esperarParaReenviar, prepararCampoCodigo } from "../core/codigo.js";
+import { achicarImagen } from "../core/marca.js";
 
 // Nombre y rol los escribió sesion.js en el DOM al arrancar (ver
 // data-usuario-nombre/data-usuario-rol en el pie de la sidebar): leerlos de
@@ -33,6 +34,48 @@ function pintarCuenta() {
 }
 registrar("pintar:cuenta", pintarCuenta);
 
+/* ---------- Foto de perfil (hist. §212) ---------- */
+
+// Se guarda apenas se elige, como en cualquier app: no hay nada que revisar.
+// Va también al círculo del pie del menú (que al arrancar pinta sesion.js).
+const archivoFoto = document.getElementById("perfilArchivoFoto");
+const botonSubirFoto = document.getElementById("perfilSubirFoto");
+const botonSacarFoto = document.getElementById("perfilSacarFoto");
+
+function pintarFoto(url) {
+  document.getElementById("perfilFoto").innerHTML = url ? `<img src="${esc(url)}" alt="Tu foto" />` : icono("user");
+  document.getElementById("btnPerfil").innerHTML = url ? `<img src="${esc(url)}" alt="" />` : icono("user");
+  botonSubirFoto.textContent = url ? "Cambiar la foto" : "Subir foto";
+  botonSacarFoto.hidden = !url;
+}
+
+async function guardarFoto(foto, boton) {
+  boton.disabled = true;
+  try {
+    const r = await api("/api/auth/foto", { method: "PUT", body: { foto }, error: "No se pudo guardar la foto." });
+    pintarFoto(r.foto);
+    avisar(r.foto ? "Listo: ya tenés tu foto." : "Sacamos tu foto.", "ok");
+  } finally {
+    boton.disabled = false;
+  }
+}
+
+botonSubirFoto.addEventListener("click", () => archivoFoto.click());
+archivoFoto.addEventListener("change", async () => {
+  const archivo = archivoFoto.files[0];
+  archivoFoto.value = "";
+  if (!archivo) return;
+  let imagen;
+  try {
+    imagen = await achicarImagen(archivo, { lado: 256, cuadrada: true });
+  } catch (e) {
+    avisar(e.message, "error");
+    return;
+  }
+  await guardarFoto({ tipo: imagen.tipo, datos: imagen.datos }, botonSubirFoto);
+});
+botonSacarFoto.addEventListener("click", () => guardarFoto(null, botonSacarFoto));
+
 /* ---------- Mail de la cuenta (hist. §102) ---------- */
 
 // El mail y si está confirmado salen del estado de la sesión: cambian desde
@@ -40,6 +83,7 @@ registrar("pintar:cuenta", pintarCuenta);
 async function pintarMail() {
   const { usuario } = await api("/api/auth/estado");
   const estadoEl = document.getElementById("perfilEmailEstado");
+  pintarFoto(usuario?.foto ?? null);
   document.getElementById("perfilEmail").textContent = usuario?.email ?? "—";
   estadoEl.hidden = !usuario?.email;
   estadoEl.textContent = usuario?.email_verificado ? "Confirmado" : "Sin confirmar";

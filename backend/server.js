@@ -156,8 +156,11 @@ app.use((req, res, next) => {
 // límite de la ruta nunca llegaría a usarse (hist. §207). Son la foto de la
 // factura de un proveedor (hist. §151), la factura por mail con su PDF (hist.
 // §186), la lista de precios de un proveedor, en foto y guardada (hist. §198),
-// y la planilla de productos, clientes o proveedores (hist. §211).
+// la planilla de productos, clientes o proveedores (hist. §211), y el logo
+// del negocio y la foto de perfil (hist. §212).
 const RUTAS_CON_LIMITE_PROPIO = [
+  /^\/api\/negocio\/marca$/,
+  /^\/api\/auth\/foto$/,
   /^\/api\/importar\/[a-z]+$/,
   /^\/api\/compras\/leer-comprobante$/,
   /^\/api\/facturas\/\d+\/mail$/,
@@ -419,7 +422,7 @@ function sesionValida(token) {
     .prepare(
       `SELECT usuarios.id, usuarios.usuario, usuarios.nombre, pertenencia.rol,
               usuarios.debe_cambiar_password, sesiones.organizacion_id,
-              usuarios.email, usuarios.email_verificado, usuarios.terminos_version, usuarios.edad,
+              usuarios.email, usuarios.email_verificado, usuarios.terminos_version, usuarios.edad, usuarios.foto_version,
               negocio.nombre AS negocio_nombre, negocio.baja_pedida, negocio.ejemplo, negocio.ejemplo_vence
          FROM sesiones
          JOIN usuarios ON usuarios.id = sesiones.usuario_id
@@ -520,6 +523,7 @@ function datosUsuario({
   email_verificado,
   terminos_version,
   edad,
+  foto_version,
   negocio_nombre,
   baja_pedida,
   ejemplo,
@@ -538,6 +542,8 @@ function datosUsuario({
     // los términos (ver "Probar sin registrarse").
     terminos_al_dia: !!ejemplo || terminos_version === TERMINOS_VERSION,
     edad: edad ?? null,
+    // La foto de perfil (hist. §212): su dirección, o null.
+    foto: urlFoto(foto_version),
     negocio_en_baja: baja_pedida ? { nombre: negocio_nombre, se_borra: fechaDeBorrado(baja_pedida) } : null,
     ejemplo: ejemplo ? { negocio: negocio_nombre, vence: ejemplo_vence } : null,
     plataforma: esAdminPlataforma({ email, email_verificado })
@@ -778,6 +784,8 @@ const RUTAS_DE_CAJA = [
   ['GET', /^\/caja$/],
   ['POST', /^\/caja\/(atender|bloquear|fichar)$/],
   ['GET', /^\/negocio$/],
+  // El logo, para el ticket y el menú (hist. §212).
+  ['GET', /^\/negocios\/\d+\/logo$/],
   ['GET', /^\/tesoreria$/],
   ['GET', /^\/turnos-caja$/],
   ['GET', /^\/turnos-caja\/\d+(\/detalle)?$/],
@@ -1107,7 +1115,7 @@ app.post('/api/auth/login', (req, res) => {
     .prepare(
       `SELECT usuarios.id, usuarios.usuario, usuarios.nombre, usuarios.password_hash, usuarios.password_salt,
               usuarios.debe_cambiar_password, usuarios.email, usuarios.email_verificado,
-              usuarios.terminos_version, usuarios.edad,
+              usuarios.terminos_version, usuarios.edad, usuarios.foto_version,
               pertenencia.organizacion_id, pertenencia.rol
          FROM usuarios
          LEFT JOIN usuario_organizaciones pertenencia
@@ -19098,7 +19106,8 @@ app.get('/api/negocio', (req, res) => {
   const negocio = db
     .prepare(
       `SELECT id, nombre, documento, direccion, telefono, email, condicion_iva, pie_comprobante,
-              razon_social, ingresos_brutos, inicio_actividades, arca_punto_venta, arca_verificado, balanza_formato
+              razon_social, ingresos_brutos, inicio_actividades, arca_punto_venta, arca_verificado, balanza_formato,
+              color_marca, logo_version
          FROM organizaciones
         WHERE id = ?`
     )
@@ -19115,9 +19124,17 @@ app.get('/api/negocio', (req, res) => {
   // sensible.
   // La factura electrónica, para los formularios (el punto de venta lo pone
   // ARCA) y para el comprobante impreso (la leyenda de prueba).
-  const { arca_punto_venta: arcaPuntoVenta, arca_verificado: arcaVerificado, balanza_formato: balanzaFormato, ...datos } = negocio;
+  const {
+    arca_punto_venta: arcaPuntoVenta,
+    arca_verificado: arcaVerificado,
+    balanza_formato: balanzaFormato,
+    logo_version: logoVersion,
+    ...datos
+  } = negocio;
   res.json({
     ...datos,
+    // El logo (hist. §212): su dirección, o null. color_marca va con datos.
+    logo: urlLogo(negocio.id, logoVersion),
     // Las etiquetas de la balanza (hist. §132): el punto de venta las lee.
     balanza: balanzaFormato ? JSON.parse(balanzaFormato) : null,
     factura_electronica: {
@@ -19319,6 +19336,122 @@ app.put('/api/negocio', soloAdmin, (req, res) => {
   res.json({ id });
 });
 
+/* ---------- El logo, el color del negocio y la foto de perfil (hist. §212) ---------- */
+
+// Las imágenes llegan ya achicadas por el navegador (core/marca.js), en
+// base64. Se mira que los primeros bytes sean de verdad de su tipo: un HTML o
+// un SVG disfrazado de PNG no se guarda, y lo que se sirve es siempre lo que
+// dice ser.
+const IMAGEN_MAX_BYTES = 600 * 1024;
+const FIRMA_PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+const FIRMAS_DE_IMAGEN = {
+  'image/png': (b) => b.subarray(0, 8).equals(FIRMA_PNG),
+  'image/jpeg': (b) => b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff,
+  'image/webp': (b) => b.toString('latin1', 0, 4) === 'RIFF' && b.toString('latin1', 8, 12) === 'WEBP'
+};
+
+function leerImagenSubida(imagen, que) {
+  if (!imagen || typeof imagen !== 'object' || typeof imagen.datos !== 'string' || !Object.hasOwn(FIRMAS_DE_IMAGEN, imagen.tipo ?? '')) {
+    return { error: `${que} tiene que ser una imagen PNG, JPG o WebP.` };
+  }
+  const bytes = Buffer.from(imagen.datos, 'base64');
+  if (bytes.length < 12 || !FIRMAS_DE_IMAGEN[imagen.tipo](bytes)) return { error: `${que} no es una imagen válida.` };
+  if (bytes.length > IMAGEN_MAX_BYTES) return { error: `${que} pesa demasiado. Probá con una imagen más chica.` };
+  return { tipo: imagen.tipo, bytes };
+}
+
+// La dirección lleva la versión: cambia con cada imagen nueva, así que la de
+// siempre se guarda en caché sin preguntar.
+const versionDeImagen = () => Date.now().toString(36);
+const urlLogo = (organizacionId, version) => (version ? `/api/negocios/${organizacionId}/logo?v=${version}` : null);
+const urlFoto = (version) => (version ? `/api/auth/foto?v=${version}` : null);
+
+function enviarImagen(res, tipo, bytes) {
+  res.set({ 'Content-Type': tipo, 'Cache-Control': 'private, max-age=31536000, immutable', 'X-Content-Type-Options': 'nosniff' });
+  res.send(Buffer.from(bytes));
+}
+
+const COLOR_VALIDO = /^#[0-9a-f]{6}$/i;
+
+// El logo y el color, juntos o de a uno: lo que no viene queda como estaba, y
+// null lo saca (el color vuelve al azul de Nexo).
+app.put('/api/negocio/marca', soloAdmin, express.json({ limit: '1mb' }), (req, res) => {
+  const id = req.usuario.organizacion_id;
+  const cuerpo = req.body ?? {};
+  let color;
+  let logo;
+  if (Object.hasOwn(cuerpo, 'color')) {
+    if (cuerpo.color !== null && (typeof cuerpo.color !== 'string' || !COLOR_VALIDO.test(cuerpo.color))) {
+      return res.status(400).json({ error: 'El color no es válido.' });
+    }
+    color = cuerpo.color?.toLowerCase() ?? null;
+  }
+  if (Object.hasOwn(cuerpo, 'logo') && cuerpo.logo !== null) {
+    logo = leerImagenSubida(cuerpo.logo, 'El logo');
+    if (logo.error) return res.status(400).json({ error: logo.error });
+  } else if (Object.hasOwn(cuerpo, 'logo')) {
+    logo = null;
+  }
+
+  const anterior = db.prepare('SELECT color_marca, logo_version FROM organizaciones WHERE id = ?').get(id);
+  withTransaction(() => {
+    if (color !== undefined && color !== anterior.color_marca) {
+      db.prepare('UPDATE organizaciones SET color_marca = ? WHERE id = ?').run(color, id);
+      auditar(req, {
+        accion: 'editar',
+        entidad: 'organizacion',
+        entidad_id: id,
+        valor_anterior: anterior.color_marca,
+        valor_nuevo: color,
+        detalle: color ? `Color de la marca: ${color}` : 'El color de la marca volvió al de Nexo'
+      });
+    }
+    if (logo) {
+      db.prepare('UPDATE organizaciones SET logo = ?, logo_tipo = ?, logo_version = ? WHERE id = ?').run(logo.bytes, logo.tipo, versionDeImagen(), id);
+      auditar(req, { accion: 'editar', entidad: 'organizacion', entidad_id: id, detalle: anterior.logo_version ? 'Cambió el logo' : 'Subió el logo' });
+    } else if (logo === null && anterior.logo_version) {
+      db.prepare('UPDATE organizaciones SET logo = NULL, logo_tipo = NULL, logo_version = NULL WHERE id = ?').run(id);
+      auditar(req, { accion: 'editar', entidad: 'organizacion', entidad_id: id, detalle: 'Sacó el logo' });
+    }
+  });
+  const ahora = db.prepare('SELECT color_marca, logo_version FROM organizaciones WHERE id = ?').get(id);
+  res.json({ color_marca: ahora.color_marca, logo: urlLogo(id, ahora.logo_version) });
+});
+
+// El logo de un negocio donde trabaja quien lo pide: el del menú, el de los
+// otros negocios del selector y el de lo que se imprime.
+app.get('/api/negocios/:id/logo', (req, res) => {
+  const id = Number(req.params.id);
+  const suyo =
+    id === req.usuario.organizacion_id ||
+    db.prepare('SELECT 1 FROM usuario_organizaciones WHERE usuario_id = ? AND organizacion_id = ? AND activo = 1').get(req.usuario.id, id);
+  const fila = suyo ? db.prepare('SELECT logo, logo_tipo FROM organizaciones WHERE id = ? AND baja_hecha IS NULL').get(id) : null;
+  if (!fila?.logo) return res.status(404).json({ error: 'Este negocio no tiene logo.' });
+  enviarImagen(res, fila.logo_tipo, fila.logo);
+});
+
+// La foto de perfil es de la cuenta, no de un negocio (va en /auth/): se sube
+// y se ve aunque la persona todavía no esté en ninguno.
+app.put('/api/auth/foto', express.json({ limit: '1mb' }), (req, res) => {
+  const id = req.usuario.id;
+  const tenia = db.prepare('SELECT foto_version FROM usuarios WHERE id = ?').get(id).foto_version;
+  if (req.body?.foto === null) {
+    if (tenia) db.prepare('UPDATE usuarios SET foto = NULL, foto_tipo = NULL, foto_version = NULL WHERE id = ?').run(id);
+    return res.json({ foto: null });
+  }
+  const foto = leerImagenSubida(req.body?.foto, 'La foto');
+  if (foto.error) return res.status(400).json({ error: foto.error });
+  const version = versionDeImagen();
+  db.prepare('UPDATE usuarios SET foto = ?, foto_tipo = ?, foto_version = ? WHERE id = ?').run(foto.bytes, foto.tipo, version, id);
+  res.json({ foto: urlFoto(version) });
+});
+
+app.get('/api/auth/foto', (req, res) => {
+  const fila = db.prepare('SELECT foto, foto_tipo FROM usuarios WHERE id = ?').get(req.usuario.id);
+  if (!fila?.foto) return res.status(404).json({ error: 'No tenés foto de perfil.' });
+  enviarImagen(res, fila.foto_tipo, fila.foto);
+});
+
 /* ---------- Varios negocios por cuenta (CLAUDE.md §28, hist. §77) ---------- */
 
 // Pasa la sesión a otro negocio del mismo usuario: solo cambia de dónde sale
@@ -19354,7 +19487,7 @@ app.get('/api/negocios', (req, res) => {
   const filas = db
     .prepare(
       `SELECT organizaciones.id, organizaciones.nombre, organizaciones.rubro, organizaciones.baja_pedida, pertenencia.rol,
-              organizaciones.plan, organizaciones.plan_vence, organizaciones.propietario_id,
+              organizaciones.plan, organizaciones.plan_vence, organizaciones.propietario_id, organizaciones.logo_version,
               (SELECT nombre FROM usuarios WHERE usuarios.id = organizaciones.propietario_id) AS propietario
          FROM usuario_organizaciones pertenencia
          JOIN organizaciones ON organizaciones.id = pertenencia.organizacion_id
@@ -19372,6 +19505,8 @@ app.get('/api/negocios', (req, res) => {
         tipo: PERFILES_RUBRO[rubro].nombre,
         rol: fila.rol,
         actual: fila.id === req.usuario.organizacion_id,
+        // El logo va en el cuadradito del selector, en vez de la inicial.
+        logo: urlLogo(fila.id, fila.logo_version),
         // El plan es de la cuenta que creó el negocio (hist. §168): lo mismo
         // para todos los suyos. De quién es, si no es de quien mira.
         es_propio: fila.propietario_id === req.usuario.id,
@@ -19698,7 +19833,8 @@ app.post('/api/auth/baja-cuenta', (req, res) => {
     db.prepare(
       `UPDATE usuarios
           SET nombre = 'Cuenta dada de baja', usuario = ?, email = NULL, email_verificado = NULL,
-              password_hash = ?, password_salt = ?, baja = datetime('now')
+              password_hash = ?, password_salt = ?, baja = datetime('now'),
+              foto = NULL, foto_tipo = NULL, foto_version = NULL
         WHERE id = ?`
     ).run(`baja-${id}`, hash, salt, id);
     for (const tabla of ['sesiones', 'tokens_cuenta', 'codigos_mail']) {

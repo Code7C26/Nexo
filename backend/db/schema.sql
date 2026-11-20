@@ -1406,7 +1406,15 @@ CREATE TABLE IF NOT EXISTS organizaciones (
   -- La cuenta que creó el negocio y a la que pertenece su plan (hist. §168):
   -- los negocios de un mismo propietario comparten plan. NULL = sin propietario
   -- (un negocio de ejemplo), que es su propia cuenta.
-  propietario_id INTEGER REFERENCES usuarios(id)
+  propietario_id INTEGER REFERENCES usuarios(id),
+  -- La marca del negocio (hist. §212): el color (#rrggbb, el acento de la app,
+  -- la factura y la pantalla de entrada; NULL = el azul de Nexo) y el logo,
+  -- como la foto de perfil de usuarios: la imagen ya achicada, su tipo y una
+  -- marca que cambia con cada logo nuevo (/api/negocios/:id/logo?v=).
+  color_marca TEXT,
+  logo_tipo TEXT,
+  logo_version TEXT,
+  logo BLOB
 );
 
 -- nombre queda separado de usuario (el de login) porque la columna
@@ -1457,7 +1465,15 @@ CREATE TABLE IF NOT EXISTS usuarios (
   -- entra con la cookie de la compu vinculada (nexo_caja). No va en
   -- usuario_organizaciones: no es una persona del negocio, no cuenta para el
   -- plan ni aparece en Usuarios. organizacion_id es su negocio.
-  caja_id INTEGER REFERENCES cuentas_tesoreria(id)
+  caja_id INTEGER REFERENCES cuentas_tesoreria(id),
+  -- La foto de perfil (hist. §212): la imagen ya achicada en el navegador
+  -- (cuadrada, PNG, JPEG o WebP), su tipo y una marca que cambia con cada foto
+  -- nueva, para que su dirección (/api/usuarios/:id/foto?v=) se pueda guardar
+  -- en caché. NULL = sin foto. Va al final de la fila: leer las otras columnas
+  -- no toca la imagen.
+  foto_tipo TEXT,
+  foto_version TEXT,
+  foto BLOB
 );
 -- SQLite compara texto case-sensitive por default: sin este índice sobre
 -- LOWER(usuario), "Admin" y "admin" podrían coexistir como dos cuentas

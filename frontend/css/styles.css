@@ -89,6 +89,9 @@
   /* El azul de acción, aclarado para leerse sobre negro. Es fijo en los
      dos temas, como la sidebar donde se usa. */
   --accent-on-dark: #60A5FA;
+  /* El texto sobre un botón lleno de ese color. Con el color del negocio
+     (hist. §212, core/marca.js) puede pasar a blanco. */
+  --accent-on-dark-ink: #0A0A0A;
 
   --accent-ok:     #4ADE80;   /* verde: a favor / cobrado */
   --accent-ok-bg:  rgba(74, 222, 128, 0.13);
@@ -394,6 +397,19 @@ button { font-family: inherit; cursor: pointer; }
 
 .negocio-inicial .ico { width: 16px; height: 16px; }
 
+/* El logo del negocio (hist. §212): sobre blanco, para que un logo oscuro se
+   vea en la barra negra, y entero, sin recortarlo. */
+.negocio-logo {
+  overflow: hidden;
+  padding: 2px;
+  background: #FFFFFF;
+}
+.negocio-logo img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
 .negocio-textos {
   display: flex;
   flex-direction: column;
@@ -607,6 +623,36 @@ button { font-family: inherit; cursor: pointer; }
 }
 
 .perfil-avatar:hover { filter: brightness(0.94); }
+
+/* Con foto de perfil (hist. §212), la foto llena el círculo. */
+.perfil-avatar img,
+.foto-perfil img {
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+  object-fit: cover;
+}
+.perfil-avatar:has(img) { overflow: hidden; }
+
+/* La foto en Mi cuenta: el mismo círculo, más grande. */
+.foto-perfil-fila {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-4);
+}
+.foto-perfil {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 72px;
+  height: 72px;
+  overflow: hidden;
+  border-radius: var(--r-full);
+  background: var(--surface-sunk);
+  color: var(--ink-muted);
+}
+.foto-perfil .ico { width: 28px; height: 28px; }
 
 /* Ocultar la sidebar para ver una vista en pantalla completa (solo
    desktop: en mobile la sidebar ya es un drawer aparte, con su propio
@@ -5608,6 +5654,228 @@ html[data-ejemplo] #btnCompraFactura { display: none; }
   color: #0A0A0A;
 }
 
+.membrete-previa-logo {
+  display: block;
+  max-width: 140px;
+  max-height: 48px;
+  margin-bottom: var(--sp-2);
+  object-fit: contain;
+}
+
+/* ---------- Logo y colores (hist. §212) ---------- */
+
+.marca-logo {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-4);
+}
+
+/* El logo sobre la barra negra y sobre el papel: así se ve si se lee en los
+   dos lugares donde va. */
+.marca-logo-fondos {
+  display: grid;
+  grid-template-columns: repeat(2, 120px);
+  gap: var(--sp-2);
+}
+
+.marca-logo-fondo {
+  display: grid;
+  place-items: center;
+  height: 88px;
+  padding: var(--sp-3);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+}
+.marca-logo-fondo-oscuro { background: #000000; color: #A1A1A1; }
+.marca-logo-fondo-claro { background: #FFFFFF; color: #6B6B6B; }
+
+.marca-logo-fondo img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+
+.marca-logo-vacio { font-size: var(--txt-xs); }
+
+.marca-logo-acciones {
+  display: flex;
+  flex: 1 1 220px;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+.marca-logo-acciones .form-note { margin: 0; }
+
+.marca-logo-botones {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-3);
+}
+
+.marca-colores {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(104px, 1fr));
+  gap: var(--sp-2);
+}
+
+/* Cada color es un radio: la muestra redonda con el nombre abajo. El radio
+   queda para el teclado y el lector de pantalla. */
+.marca-color {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: var(--sp-2) var(--sp-1);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  cursor: pointer;
+  transition: border-color var(--dur-1) ease, background var(--dur-1) ease;
+}
+.marca-color:hover { background: var(--surface-hover); }
+
+.marca-color input[type="radio"] {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.marca-color:has(input[type="radio"]:checked) {
+  border-color: var(--ink);
+  box-shadow: inset 0 0 0 1px var(--ink);
+}
+.marca-color:has(input[type="radio"]:focus-visible) {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.marca-color-muestra {
+  width: 32px;
+  height: 32px;
+  border-radius: var(--r-full);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.15);
+}
+
+/* "Otro": un arcoíris hasta que se elige el color. El selector del sistema
+   queda invisible encima de toda la tarjeta: tocarla lo abre. */
+.marca-color-arcoiris {
+  background: conic-gradient(#ef4444, #eab308, #22c55e, #06b6d4, #3b82f6, #a855f7, #ef4444);
+}
+.marca-color-otro {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  border: none;
+  opacity: 0;
+  cursor: pointer;
+}
+.marca-color:has(.marca-color-otro:focus-visible) {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.marca-color-nombre {
+  font-size: var(--txt-xs);
+  color: var(--ink-muted);
+  text-align: center;
+}
+
+.marca-previa {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+.marca-previa-cuerpo {
+  display: grid;
+  grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+  gap: var(--sp-3);
+}
+
+/* La app en chiquito: la barra negra con el negocio y una hoja del tema. */
+.marca-previa-app {
+  display: grid;
+  grid-template-columns: 150px minmax(0, 1fr);
+  min-height: 150px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: #000000;
+}
+
+.marca-previa-barra {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--sp-2);
+}
+
+.marca-previa-negocio {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-width: 0;
+  margin: 0 0 var(--sp-2);
+  font-size: var(--txt-xs);
+  font-weight: 600;
+  color: #EDEDED;
+}
+.marca-previa-negocio > span:last-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.marca-previa-negocio .negocio-inicial { width: 24px; height: 24px; font-size: 12px; }
+
+.marca-previa-item {
+  padding: 4px var(--sp-2);
+  border-radius: var(--r-xs);
+  font-size: var(--txt-xs);
+  color: #B5B5B5;
+}
+.marca-previa-item.is-active {
+  background: var(--sidebar-active);
+  color: #FFFFFF;
+  box-shadow: inset 2px 0 0 var(--accent-on-dark);
+}
+
+.marca-previa-hoja {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--sp-2);
+  margin: 6px 6px 6px 0;
+  padding: var(--sp-3);
+  border-radius: var(--r-xs);
+  background: var(--bg);
+}
+.marca-previa-titulo {
+  margin: 0;
+  font-family: var(--font-display);
+  font-weight: 700;
+  color: var(--ink);
+}
+.marca-previa-texto { margin: 0; font-size: var(--txt-xs); color: var(--ink-muted); }
+.marca-previa-enlace { color: var(--accent); font-weight: 600; }
+.marca-previa-boton {
+  margin-top: auto;
+  padding: 4px var(--sp-3);
+  border-radius: var(--r-sm);
+  font-size: var(--txt-xs);
+  font-weight: 600;
+  color: var(--accent-on-dark-ink);
+  background: var(--accent-on-dark);
+}
+
+@media (max-width: 640px) {
+  .marca-previa-cuerpo { grid-template-columns: 1fr; }
+  .marca-previa-app { grid-template-columns: 120px minmax(0, 1fr); }
+}
+
 .membrete-previa-hoja .membrete-previa-pie {
   margin-top: var(--sp-3);
   padding-top: var(--sp-2);
@@ -6198,6 +6466,16 @@ html[data-ejemplo] #btnCompraFactura { display: none; }
   letter-spacing: -0.02em;
 }
 
+/* El logo del negocio en lo que se imprime (hist. §212): entra en su caja
+   sin deformarse, sea cuadrado o apaisado. */
+.hoja-logo {
+  display: block;
+  max-width: 48mm;
+  max-height: 18mm;
+  margin-bottom: 6pt;
+  object-fit: contain;
+}
+
 .hoja-comprobante {
   text-align: right;
   white-space: nowrap;
@@ -6340,6 +6618,13 @@ html[data-ejemplo] #btnCompraFactura { display: none; }
 }
 .fac-emisor { border-right: 0.75pt solid #000000; }
 .fac-datos { padding-left: 34pt; }
+.fac-logo {
+  display: block;
+  max-width: 45mm;
+  max-height: 16mm;
+  margin: 0 auto 4pt;
+  object-fit: contain;
+}
 .fac-emisor-nombre {
   margin-bottom: 4pt !important;
   font-size: 12pt;
@@ -6513,6 +6798,16 @@ html[data-ejemplo] #btnCompraFactura { display: none; }
 .hoja-ticket p { margin: 0 0 1pt; }
 .tk-centro { text-align: center; }
 .tk-negocio { font-size: 12pt; font-weight: 800; }
+/* La impresora térmica imprime en negro: el logo va en grises, como pide
+   Square para sus tickets. */
+.tk-logo {
+  display: block;
+  max-width: 48mm;
+  max-height: 20mm;
+  margin: 0 auto 4pt;
+  object-fit: contain;
+  filter: grayscale(1) contrast(1.15);
+}
 .tk-titulo { font-size: 10.5pt; font-weight: 800; letter-spacing: 0.04em; }
 .tk-chico { font-size: 7.5pt; }
 .tk-raya { margin: 4pt 0; border-top: 1px dashed #000000; }
@@ -6961,6 +7256,18 @@ html[data-ejemplo] #btnCompraFactura { display: none; }
 .entrada-cuerpo[hidden],
 .entrada-resultado[hidden] { display: none; }
 
+/* El logo del negocio (hist. §212), en una placa blanca como en el menú:
+   un logo oscuro también se ve sobre el negro. */
+.entrada-logo {
+  max-width: min(60vw, 280px);
+  max-height: clamp(64px, 14vh, 120px);
+  padding: 10px 16px;
+  border-radius: var(--r-md);
+  background: #FFFFFF;
+  object-fit: contain;
+}
+.entrada-logo[hidden] { display: none; }
+
 .entrada-titulo {
   max-width: 20ch;
   margin: 0;
@@ -7016,7 +7323,7 @@ html[data-ejemplo] #btnCompraFactura { display: none; }
 
 .entrada-teclado .entrada-tecla-entrar {
   font-size: clamp(18px, 3vw, 22px);
-  color: #0A0A0A;
+  color: var(--accent-on-dark-ink);
   background: var(--accent-on-dark);
   border-color: transparent;
 }

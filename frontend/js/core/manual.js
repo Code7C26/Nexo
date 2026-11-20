@@ -1081,12 +1081,28 @@ const SECCIONES_ES = [
     pantalla: ["#/configuracion/negocio", "Configuración › Datos del negocio"],
     admin: true,
     preguntas: ["cómo cambio el nombre del negocio", "dónde pongo el cuit", "cómo cambio los datos que salen en la factura"],
-    palabras: ["negocio", "datos", "nombre", "cuit", "direccion", "telefono", "razon", "social", "comprobantes", "logo"],
+    palabras: ["negocio", "datos", "nombre", "cuit", "direccion", "telefono", "razon", "social", "comprobantes"],
     bloques: [
       "En **Configuración › Datos del negocio** van el nombre, la dirección, el teléfono y el mail. Salen en el encabezado de tus comprobantes.",
       "En **Configuración › Comprobantes y datos fiscales** van la razón social, el CUIT, tu condición frente al IVA (define qué factura podés hacer), los ingresos brutos, el inicio de actividades y un texto al pie, con una vista previa."
     ],
-    ver: ["iva", "facturar"]
+    ver: ["iva", "facturar", "logo-y-colores"]
+  },
+  {
+    id: "logo-y-colores",
+    grupo: "Tu cuenta y tu equipo",
+    titulo: "Tu logo y tu color",
+    pantalla: ["#/configuracion/marca", "Configuración › Logo y colores"],
+    admin: true,
+    preguntas: ["cómo pongo mi logo", "cómo cambio el color de nexo", "cómo pongo el logo en la factura", "cómo pongo mi foto de perfil"],
+    palabras: ["logo", "color", "colores", "marca", "imagen", "foto", "perfil", "ticket", "factura", "personalizar"],
+    bloques: [
+      "En **Configuración › Logo y colores** subís tu logo y elegís tu color. El logo va arriba del menú, en las facturas, los presupuestos, los tickets y la pantalla de entrada del gimnasio.",
+      "El color toma el lugar del azul de Nexo: la sección marcada del menú, los enlaces y lo que se destaca. Si subís el logo, Nexo te ofrece sus colores. Nexo lo aclara u oscurece lo justo para que se lea en el tema claro y en el oscuro.",
+      { nota: "Un PNG con el fondo transparente queda mejor. En el ticket el logo sale en grises: la impresora térmica imprime en negro." },
+      "Tu **foto de perfil** es de tu cuenta, no del negocio: se sube en **Configuración › Mi cuenta** y va en el círculo de abajo del menú."
+    ],
+    ver: ["datos-del-negocio"]
   },
   {
     id: "funciones",

@@ -569,10 +569,22 @@ export const SECCIONES_EN = {
     titulo: "Your business details",
     pantalla: "Settings › Business details",
     preguntas: ["how do i change the business name", "where do i enter the cuit", "how do i change the details on the invoice"],
-    palabras: ["business", "details", "name", "cuit", "address", "phone", "company", "receipts", "logo"],
+    palabras: ["business", "details", "name", "cuit", "address", "phone", "company", "receipts"],
     bloques: [
       "In **Settings › Business details** go the name, the address, the phone and the email. They appear at the top of your receipts.",
       "In **Settings › Receipts and tax details** go the company name, the CUIT, your VAT status (it defines which invoice you can issue), gross income (IIBB), the start of activities and a footer text, with a preview."
+    ]
+  },
+  "logo-y-colores": {
+    titulo: "Your logo and your color",
+    pantalla: "Settings › Logo and colors",
+    preguntas: ["how do i add my logo", "how do i change nexo's color", "how do i put the logo on the invoice", "how do i add my profile photo"],
+    palabras: ["logo", "color", "colors", "brand", "image", "photo", "profile", "receipt", "invoice", "customize"],
+    bloques: [
+      "In **Settings › Logo and colors** you upload your logo and choose your color. The logo goes at the top of the menu, on invoices, quotes, receipts and the gym's check-in screen.",
+      "The color takes the place of Nexo's blue: the selected menu section, links and highlights. If you upload your logo, Nexo offers its colors. Nexo lightens or darkens it just enough to read well in the light and dark themes.",
+      { nota: "A PNG with a transparent background looks best. On the receipt the logo prints in grayscale: thermal printers print in black." },
+      "Your **profile photo** belongs to your account, not the business: you upload it in **Settings › My account** and it goes in the circle at the bottom of the menu."
     ]
   },
   funciones: {

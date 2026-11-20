@@ -4,6 +4,8 @@
  * Movido tal cual desde app.js (CLAUDE.md §31, Etapa B / F2).
  */
 
+import { aplicarColor, cargarLogo } from "./marca.js";
+
 // Los carga cargarNegocio() (Configuración) y los lee core/comprobante.js para
 // el membrete. Un binding importado no se puede reasignar desde otro módulo,
 // así que el dueño del dato lo fija con fijarNegocio().
@@ -14,10 +16,15 @@ export let negocio = {};
 // menú y el router para no entrar a una vista apagada.
 //
 // También pone el nombre del catálogo en cada [data-termino] del HTML.
+//
+// Y la marca del negocio (hist. §212): su color en la app y su logo, listo
+// para lo que se imprime.
 export function fijarNegocio(datos) {
   negocio = datos;
   document.documentElement.dataset.modulos = (datos.modulos ?? []).join(" ");
   pintarTerminos();
+  aplicarColor(datos.color_marca);
+  cargarLogo(datos.logo ?? null);
 }
 
 // Qué tipos hay cargados en el catálogo ("producto", "servicio"): los fija

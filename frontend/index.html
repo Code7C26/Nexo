@@ -1616,6 +1616,7 @@
           <p class="entrada-hora mono" id="entradaHora"></p>
         </header>
         <div class="entrada-cuerpo" id="entradaCuerpo">
+          <img class="entrada-logo" id="entradaLogo" alt="" hidden />
           <h1 class="entrada-titulo">¡Hola! Ingresá tu DNI o tu número de socio</h1>
           <output class="entrada-codigo mono" id="entradaCodigo" aria-live="polite"></output>
           <div class="entrada-teclado" id="entradaTeclado">
@@ -4493,6 +4494,11 @@
                 <span class="config-item-texto"><span class="config-item-nombre">Datos del negocio</span><span class="config-item-desc">Nombre, dirección y contacto</span></span>
                 <svg class="ico config-item-chevron" aria-hidden="true"><use href="/img/iconos.svg#chevron-right"></use></svg>
               </a>
+              <a class="config-item" href="#/configuracion/marca" data-seccion="marca">
+                <span class="config-item-icono"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#image"></use></svg></span>
+                <span class="config-item-texto"><span class="config-item-nombre">Logo y colores</span><span class="config-item-desc">Tu marca en el menú, las facturas y los tickets</span></span>
+                <svg class="ico config-item-chevron" aria-hidden="true"><use href="/img/iconos.svg#chevron-right"></use></svg>
+              </a>
               <a class="config-item" href="#/configuracion/lo-que-tenias" data-seccion="lo-que-tenias">
                 <span class="config-item-icono"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#history"></use></svg></span>
                 <span class="config-item-texto"><span class="config-item-nombre">Lo que ya tenías</span><span class="config-item-desc">Stock, deudas y plata de antes de Nexo</span></span>
@@ -4678,6 +4684,65 @@
                 </div>
                 <div class="config-tarjeta-pie">
                   <p>La dirección y el contacto salen en el encabezado de tus comprobantes.</p>
+                  <button type="submit" class="btn btn-primary" disabled>Guardar cambios</button>
+                </div>
+              </form>
+            </section>
+
+            <!-- Logo y colores (hist. §212): la marca del negocio en el menú,
+                 lo que se imprime y la pantalla de entrada. El logo se achica
+                 en el navegador (core/marca.js) y se guarda junto con el
+                 color, con PUT /api/negocio/marca. -->
+            <section class="config-pagina col-admin" data-seccion="marca" aria-labelledby="configMarcaTitulo" hidden>
+              <header class="config-pagina-head">
+                <h2 id="configMarcaTitulo" tabindex="-1">Logo y colores</h2>
+                <p>Tu logo y tu color van en el menú, las facturas, los tickets y la pantalla de entrada.</p>
+              </header>
+              <form class="form config-tarjeta" id="formConfigMarca" novalidate>
+                <div class="config-tarjeta-cuerpo">
+                  <p class="config-tarjeta-titulo">Logo</p>
+                  <div class="marca-logo">
+                    <div class="marca-logo-fondos" id="marcaLogoFondos"></div>
+                    <div class="marca-logo-acciones">
+                      <div class="marca-logo-botones">
+                        <button type="button" class="btn btn-secundario" id="marcaSubirLogo">Subir logo</button>
+                        <button type="button" class="btn-link" id="marcaSacarLogo" hidden>Sacar el logo</button>
+                      </div>
+                      <p class="form-note">Un PNG con el fondo transparente queda mejor. Nexo le saca el margen vacío y lo achica solo.</p>
+                      <p class="form-note" id="marcaLogoError" hidden></p>
+                    </div>
+                    <input type="file" id="marcaArchivo" accept="image/png,image/jpeg,image/webp,image/svg+xml" hidden />
+                    <!-- Si el logo cambió y no se guardó: lo lee el control de
+                         "cambios sin guardar" de configuracion.js. -->
+                    <input type="text" name="logo" id="marcaLogoEstado" hidden />
+                  </div>
+                  <fieldset class="opciones">
+                    <legend>Color</legend>
+                    <p class="opciones-nota">Toma el lugar del azul de Nexo: la sección marcada del menú, los enlaces y lo que se destaca. El negro queda.</p>
+                    <div class="marca-colores" id="marcaColores"></div>
+                  </fieldset>
+                  <div class="marca-previa" id="marcaPrevia">
+                    <p class="membrete-previa-rotulo">Así se ve</p>
+                    <div class="marca-previa-cuerpo">
+                      <div class="marca-previa-app">
+                        <div class="marca-previa-barra">
+                          <p class="marca-previa-negocio" id="marcaPreviaNegocio"></p>
+                          <span class="marca-previa-item">Resumen</span>
+                          <span class="marca-previa-item is-active">Ventas</span>
+                          <span class="marca-previa-item">Clientes</span>
+                        </div>
+                        <div class="marca-previa-hoja">
+                          <p class="marca-previa-titulo">Ventas</p>
+                          <p class="marca-previa-texto">Venta #152 · <span class="marca-previa-enlace">Ver la factura</span></p>
+                          <span class="marca-previa-boton">Entrar</span>
+                        </div>
+                      </div>
+                      <div class="membrete-previa-hoja marca-previa-papel" id="marcaPreviaPapel"></div>
+                    </div>
+                  </div>
+                </div>
+                <div class="config-tarjeta-pie">
+                  <p>Se ve para todos los que trabajan en este negocio.</p>
                   <button type="submit" class="btn btn-primary" disabled>Guardar cambios</button>
                 </div>
               </form>
@@ -5923,6 +5988,25 @@
                 <h2 id="configCuentaTitulo" tabindex="-1">Mi cuenta</h2>
                 <p>Tu cuenta es la misma en todos tus negocios.</p>
               </header>
+              <!-- La foto de perfil (hist. §212): va en el círculo del pie del
+                   menú. Se achica en el navegador (core/marca.js) y se guarda
+                   en el momento, como en cualquier app. -->
+              <section class="config-tarjeta" aria-labelledby="perfilFotoTitulo">
+                <div class="config-tarjeta-cuerpo">
+                  <p class="config-tarjeta-titulo" id="perfilFotoTitulo">Foto de perfil</p>
+                  <div class="foto-perfil-fila">
+                    <span class="foto-perfil" id="perfilFoto"></span>
+                    <div class="marca-logo-acciones">
+                      <div class="marca-logo-botones">
+                        <button type="button" class="btn btn-secundario" id="perfilSubirFoto">Subir foto</button>
+                        <button type="button" class="btn-link" id="perfilSacarFoto" hidden>Sacar la foto</button>
+                      </div>
+                      <p class="form-note">Va en el círculo de abajo del menú, en todos tus negocios.</p>
+                    </div>
+                    <input type="file" id="perfilArchivoFoto" accept="image/png,image/jpeg,image/webp" hidden />
+                  </div>
+                </div>
+              </section>
               <!-- El mail de la cuenta (hist. §102): con él se entra y se
                    recupera la cuenta. Cambiarlo pide la contraseña y el
                    código que llega al mail nuevo (hist. §108): hasta
