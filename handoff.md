@@ -11,7 +11,7 @@
 
 - Al cerrar una etapa, se hacen tres cosas:
   - su relato completo se agrega al final de `docs/proyecto/handoff-historico.md` con el
-    siguiente número (hoy el último es §207);
+    siguiente número (hoy el último es §208);
   - acá se actualizan "Estado actual" y "Qué sigue";
   - si cambió alguna decisión vigente, se actualiza también esa lista.
 - Nunca apilar secciones "Última etapa" en este archivo: así fue como llegó a
@@ -34,19 +34,33 @@ PR #102, con el cargador de hist. §201).**
 - **Falta:** cargar la cuenta del dojo del profe (hist. §201: el usuario la
   crea y trae los datos; yo corro `npm run cargar`).
 
-**20 de noviembre, hist. §206 y §207:** el "Editar" de las actividades de
+**20 de noviembre, hist. §206 y §207 (publicado, PR #107):** el "Editar" de las actividades de
 Clases y el "Dejar en cuenta corriente" del mostrador no andaban por ids
 repetidos en `index.html` (arreglado, con un test que no deja repetir ids), y
 la lista de precios del proveedor en foto o larga daba 413 porque el parser
 global cortaba en 100 KB antes del límite de la ruta.
 
-**Pendiente de decisión del usuario (20 de noviembre): las cuotas de los
-socios.** No quiere un combo partido en dos ventas ni las cuotas en Ventas.
-Investigado en `docs/investigaciones/investigacion-cuotas-gimnasio.md`: un
-cobro por socio y por período con un renglón por plan, y las cuotas en Socios
-y aparte en el Resumen. Cambia el esquema: se explica la migración antes de
-tocarlo. **Después de eso sigue el punto 7** (la planilla de productos y
-clientes): sin empezar.
+**20 de noviembre, hist. §208: las cuotas de los socios, como en los
+sistemas de gimnasios** (pedido del usuario; investigado antes en
+`docs/investigaciones/investigacion-cuotas-gimnasio.md`).
+- **Un cobro por socio y por período:** los planes que empiezan el mismo día
+  van en una venta, un renglón por plan. Un plan que se suma a mitad de
+  período paga los días hasta el vencimiento de los otros
+  (`alinearConElSocio`) y desde ahí va en la misma cuota. Las cuotas que ya
+  existían no se juntan. Esquema: `cuotas_socio.venta_id` deja de ser UNIQUE
+  (rebuild en `db/index.js`; `verificar-migracion`: 24 de 24).
+- **Las cuotas salen de Ventas** y van en **Socios → Cuotas** (`#/cuotas`,
+  `dominios/cuotas.js`): las del mes, cobradas, por cobrar y vencidas, con
+  cobro de un toque.
+- **Resumen del gimnasio:** la pieza "Socios y cuotas" (`/api/reportes/socios`),
+  primera en el armado del gimnasio.
+- Test nuevo: `cuota-unica`. `npm test`: 489 de 489. Probado en el
+  navegador con Gimnasio Fuerza (compu y celular).
+- **Regla nueva del usuario:** antes de diseñar algo, averiguar cómo lo hace la
+  mejor competencia del rubro y anotarlo en `docs/investigaciones/`.
+
+**Lo que sigue: el punto 7** (la planilla de productos y clientes), sin
+empezar. Antes, ver cómo importan Dux, Contagram y Praxia.
 
 **19 de noviembre, hist. §205 (publicado, PR #106):** en Planes se elimina un plan que nunca hizo
 nadie (con su servicio del catálogo); el que algún socio hizo solo se pausa.

@@ -2606,6 +2606,45 @@ if (cobrosSinMedio) {
   );
 }
 
+// Un cobro por socio y por período (hist. §208): los planes de un socio que
+// empiezan el mismo día van en una sola venta, así que cuotas_socio.venta_id
+// deja de ser UNIQUE. SQLite no deja sacar un UNIQUE: la tabla se reconstruye
+// con su definición de schema.sql, con los mismos ids y las mismas filas, en
+// una transacción. Las cuotas que ya existían no se juntan: cada una sigue con
+// su venta. El índice de venta_id lo vuelve a crear indexarRelaciones().
+const ventaUnicaEnCuotas = db
+  .prepare("PRAGMA index_list('cuotas_socio')")
+  .all()
+  .some((indice) => {
+    if (!indice.unique) return false;
+    const columnas = db.prepare(`PRAGMA index_info("${indice.name}")`).all();
+    return columnas.length === 1 && columnas[0].name === 'venta_id';
+  });
+if (ventaUnicaEnCuotas) {
+  const definicion = /CREATE TABLE IF NOT EXISTS cuotas_socio \(([\s\S]*?)\n\);/.exec(schemaSql)?.[1];
+  if (!definicion || /venta_id[^,\n]*UNIQUE/.test(definicion)) throw new Error('schema.sql: cuotas_socio no tiene la forma esperada');
+  const columnas = 'id, inscripcion_id, opcion_id, venta_id, desde, hasta, meses, precio_lista, descuento_pct, descuento_id';
+  db.exec('PRAGMA foreign_keys = OFF');
+  db.exec('BEGIN');
+  try {
+    const antes = db.prepare('SELECT COUNT(*) AS n FROM cuotas_socio').get().n;
+    db.exec(`CREATE TABLE cuotas_socio_nueva (${definicion})`);
+    db.exec(`
+      INSERT INTO cuotas_socio_nueva (${columnas}) SELECT ${columnas} FROM cuotas_socio;
+      DROP TABLE cuotas_socio;
+      ALTER TABLE cuotas_socio_nueva RENAME TO cuotas_socio;
+    `);
+    if (db.prepare('SELECT COUNT(*) AS n FROM cuotas_socio').get().n !== antes) throw new Error('cuotas_socio: se perdieron filas');
+    const rotas = db.prepare('PRAGMA foreign_key_check(cuotas_socio)').all();
+    if (rotas.length) throw new Error(`cuotas_socio: ${rotas.length} fila(s) con FK rota, ej. ${JSON.stringify(rotas[0])}`);
+    db.exec('COMMIT');
+  } catch (err) {
+    db.exec('ROLLBACK');
+    throw err;
+  }
+  db.exec('PRAGMA foreign_keys = ON');
+}
+
 // Un índice por cada columna de relación (FOREIGN KEY) que no tenga uno, con
 // esa columna primero (hist. §161). SQLite no los crea solo, y sin ellos cada
 // consulta por organizacion_id o por venta_id recorre la tabla entera, la de

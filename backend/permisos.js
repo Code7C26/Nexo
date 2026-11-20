@@ -256,6 +256,7 @@ export const RUTAS_PERMISOS = {
   'PATCH /api/descuentos-socio/:id': 'admin',
   'GET /api/socios': 'ambos',
   'GET /api/socios/ingresos': 'ambos',
+  'GET /api/socios/cuotas': 'ambos',
   // La grilla de clases (hist. §200): la ve la recepción, la arma el admin.
   'GET /api/grilla': 'ambos',
   'POST /api/actividades': 'admin',
@@ -357,6 +358,7 @@ export const RUTAS_PERMISOS = {
   'GET /api/reportes/stock': 'admin',
   // Las piezas nuevas del Resumen y cómo lo armó cada persona (hist. §136).
   'GET /api/reportes/tablero': 'admin',
+  'GET /api/reportes/socios': 'admin',
   // La página Venta online (hist. §138).
   'GET /api/reportes/canales': 'admin',
   'GET /api/tablero': 'admin',

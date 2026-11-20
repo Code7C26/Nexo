@@ -15092,3 +15092,45 @@ dos ventas, y no quiere las cuotas en Ventas. Investigado en
 Wodify, GymAr): un cobro por socio y por período, y las cuotas aparte de las
 ventas del mostrador. Falta que el usuario elija; cambia el esquema
 (`cuotas_socio.venta_id` deja de ser UNIQUE).
+
+## §208 — 20 de noviembre de 2026: las cuotas de los socios, como en los gimnasios
+
+Pedido del usuario: un combo (BJJ + MMA) salía como dos ventas en Ventas, y no
+quería las cuotas listadas como ventas de productos. Se investigó primero
+(`docs/investigaciones/investigacion-cuotas-gimnasio.md`: Gymdesk, Glofox,
+Wodify, GymMaster, GymAr) y de ahí salió la regla nueva: antes de diseñar,
+averiguar cómo lo hace la mejor competencia.
+
+**Un cobro por socio y por período.** `generarCuotasDelSocio` reemplaza a
+`generarCuotasDe`: arma los períodos pendientes de todos los planes activos
+del socio y junta en una venta (`venderCuotas`) los que empiezan el mismo día,
+un renglón por plan. Cada fila de `cuotas_socio` sigue siendo de un plan (así
+se sabe hasta cuándo está cubierto), con el importe de su renglón y su parte de
+lo cobrado (`cuotaDeSuRenglon`); la deuda, el cobro (`/cobros`, uno por
+venta) y "dejó de venir" (anula la venta una vez) se cuentan por venta
+(`cobrosDeCuotas`). Un plan que se suma, o que vuelve, mientras el socio paga
+otro de la misma duración, paga los días hasta el vencimiento del otro y su
+ciclo arranca ese día (`alinearConElSocio`, como el "prorate adjustment" de
+GymMaster); con una fecha a futuro sigue su propio ciclo. Las cuotas viejas no
+se juntan. La ficha muestra un cobro por fila.
+
+**Migración:** `cuotas_socio.venta_id` deja de ser UNIQUE. Rebuild idempotente
+al final de `db/index.js` (se detecta por el índice único de una sola columna),
+con la definición de schema.sql, mismas filas e ids, controles de filas y FK, en
+una transacción. `verificar-migracion`: 24 de 24, la base real intacta.
+
+**Cuotas, aparte de Ventas.** `GET /api/ventas` deja afuera las ventas de
+cuotas de socios (las de abonos siguen). Página nueva **Socios → Cuotas**
+(`#/cuotas`, `dominios/cuotas.js`, `GET /api/socios/cuotas?mes=`): un cobro por
+fila con sus planes, totales del mes (cobrado, por cobrar, vencido), filtros, y
+cobro de un toque por cuenta (`/cobros` acepta `venta_id`). La ficha del socio
+se abre con `abrirFicha:socio`.
+
+**Resumen del gimnasio.** Pieza "Socios y cuotas" (`GET /api/reportes/socios`,
+admin): socios activos, altas y bajas con la tasa de bajas, cuotas cobradas con
+la tasa de cobro y lo vencido, lo cobrado por socio, las ventas del mostrador
+aparte de las cuotas (Glofox separa lo recurrente de lo de una vez), entradas
+con su gráfico de los últimos 14 días del período, y los que no vienen. Primera
+en el armado del gimnasio; los otros tipos la tienen oculta.
+
+Manual (castellano e inglés) actualizado. Test `cuota-unica.test.js`.

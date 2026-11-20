@@ -140,7 +140,7 @@ async function cargarIngresosHoy() {
 
 // Lo que cambia en el resto de Nexo cuando se cobra o se da de alta: la cuota
 // es una venta en la cuenta corriente del cliente, y el cobro entra a caja.
-const recargarOtrasVistas = () => recargar("ventas", "caja", "clientes", "cuentasCorrientes");
+const recargarOtrasVistas = () => recargar("ventas", "caja", "clientes", "cuentasCorrientes", "cuotas");
 
 /* ---------- Textos compartidos ---------- */
 
@@ -595,6 +595,23 @@ formAlta.addEventListener("submit", async (e) => {
 
 /* ---------- Ficha del socio ---------- */
 
+// Las cuotas de la ficha juntas por su venta: los planes que empiezan el
+// mismo día se cobran juntos (hist. §208), y la ficha muestra un cobro.
+function cuotasPorCobro(cuotas) {
+  const porVenta = new Map();
+  for (const c of cuotas) {
+    if (!porVenta.has(c.venta_id)) porVenta.set(c.venta_id, []);
+    porVenta.get(c.venta_id).push(c);
+  }
+  return [...porVenta.values()];
+}
+
+function detalleCuota(c) {
+  if (!c.descuento_pct) return c.duracion;
+  if (c.descuento_precio_combo != null) return `${c.duracion} · ${c.descuento}, ${money(c.descuento_precio_combo)} por mes`;
+  return `${c.duracion} · −${porcentaje(c.descuento_pct)} ${c.descuento ?? ""}`;
+}
+
 function badgeCuota(c) {
   if (c.estado === "pagada") return badge("status-cobrado", "Pagada").html;
   if (c.estado === "bonificada") return badge("", "Bonificada").html;
@@ -727,22 +744,24 @@ function pintarFicha(s) {
   cerrarSumar();
 
   const sinCuotas = s.situacion === "por_empezar" ? `La primera cuota se genera el ${fechaAR(s.empieza)}.` : "Todavía no tiene cuotas.";
+  const cobros = cuotasPorCobro(s.cuotas);
   document.getElementById("fichaSocioCuotas").innerHTML =
-    s.cuotas.length === 0
+    cobros.length === 0
       ? filaVacia(5, sinCuotas)
-      : s.cuotas
-          .map((c) => {
-            const detalle = !c.descuento_pct
-              ? c.duracion
-              : c.descuento_precio_combo != null
-                ? `${c.duracion} · ${c.descuento}, ${money(c.descuento_precio_combo)} por mes`
-                : `${c.duracion} · −${porcentaje(c.descuento_pct)} ${c.descuento ?? ""}`;
+      : cobros
+          .map((cuotas) => {
+            const [c] = cuotas;
+            const hasta = cuotas.map((x) => x.hasta).sort().at(-1);
+            // El combo de precio fijo es el mismo en sus planes: se dice una vez.
+            const detalle = [...new Set(cuotas.map(detalleCuota))].join(" · ");
+            const importe = cuotas.reduce((acc, x) => acc + x.importe, 0);
+            const saldo = cuotas.reduce((acc, x) => acc + x.saldo, 0);
             return `
     <tr>
-      <td data-label="Período">${esc(fechaAR(c.desde))} al ${esc(fechaAR(c.hasta))}</td>
-      <td data-label="Plan">${esc(c.plan)}<span class="celda-meta">${esc(detalle)}</span></td>
-      <td data-label="Importe" class="align-right mono">${money(c.importe)}</td>
-      <td data-label="Estado">${badgeCuota(c)}</td>
+      <td data-label="Período">${esc(fechaAR(c.desde))} al ${esc(fechaAR(hasta))}</td>
+      <td data-label="Plan">${esc(cuotas.map((x) => x.plan).join(" + "))}<span class="celda-meta">${esc(detalle)}</span></td>
+      <td data-label="Importe" class="align-right mono">${money(importe)}</td>
+      <td data-label="Estado">${badgeCuota({ ...c, saldo })}</td>
       <td data-label="Venta"><button type="button" class="btn-link" data-venta="${c.venta_id}">#${c.venta_id}</button></td>
     </tr>`;
           })
@@ -1050,6 +1069,8 @@ async function mostrarFicha(socio) {
 async function abrirFicha(id) {
   await mostrarFicha(await api(`/api/socios/${id}`, { error: "No se pudo cargar el socio." }));
 }
+// Desde la lista de cuotas (dominios/cuotas.js, hist. §208).
+registrar("abrirFicha:socio", abrirFicha);
 
 /* ---------- Ingreso (#/ingreso) ---------- */
 
@@ -1840,6 +1861,12 @@ registrar("nuevo:socio", (consulta) => {
   // Con el alta ya abierta el hash no cambia: se la vuelve a abrir a mano.
   if (location.hash === "#/socios/nuevo") abrirAlta();
   else location.hash = "#/socios/nuevo";
+});
+
+// Después de cobrar desde Cuotas (dominios/cuotas.js): la lista, al día.
+registrar("cargar:socios", async () => {
+  await cargarSocios();
+  renderLista();
 });
 
 alEntrarEnVista("socios", async (subruta) => {
