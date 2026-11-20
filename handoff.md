@@ -11,7 +11,7 @@
 
 - Al cerrar una etapa, se hacen tres cosas:
   - su relato completo se agrega al final de `docs/proyecto/handoff-historico.md` con el
-    siguiente número (hoy el último es §208);
+    siguiente número (hoy el último es §209);
   - acá se actualizan "Estado actual" y "Qué sigue";
   - si cambió alguna decisión vigente, se actualiza también esa lista.
 - Nunca apilar secciones "Última etapa" en este archivo: así fue como llegó a
@@ -58,6 +58,11 @@ sistemas de gimnasios** (pedido del usuario; investigado antes en
   navegador con Gimnasio Fuerza (compu y celular).
 - **Regla nueva del usuario:** antes de diseñar algo, averiguar cómo lo hace la
   mejor competencia del rubro y anotarlo en `docs/investigaciones/`.
+
+**20 de noviembre, hist. §209:** Personalizar del Resumen mueve cada pieza
+arrastrándola desde sus tres rayas (mouse y dedo, con scroll automático y
+flechas del teclado), en vez de los botones de subir y bajar; y "Por socio"
+pasa a "Promedio por socio" (pedidos del usuario).
 
 **Lo que sigue: el punto 7** (la planilla de productos y clientes), sin
 empezar. Antes, ver cómo importan Dux, Contagram y Praxia.

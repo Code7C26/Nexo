@@ -15134,3 +15134,17 @@ con su gráfico de los últimos 14 días del período, y los que no vienen. Prim
 en el armado del gimnasio; los otros tipos la tienen oculta.
 
 Manual (castellano e inglés) actualizado. Test `cuota-unica.test.js`.
+
+## §209 — 20 de noviembre de 2026: arrastrar las piezas del Resumen
+
+Pedido del usuario: en Personalizar, el ícono clásico para mover (las tres
+rayas) en vez de los botones de subir y bajar. El arrastre va con eventos de
+puntero (`tablero.js`), que andan con el mouse y con el dedo (el drag nativo de
+HTML no anda en el celular, por eso el embudo del CRM no sirvió de modelo):
+`touch-action: none` en el ícono, la fila sigue al dedo y cambia de lugar al
+pasar la mitad de otra, la lista se desplaza sola cerca del borde (14 piezas no
+entran en un celular), y con el foco en el ícono las flechas del teclado la
+mueven. El orden se lee de la pantalla al soltar; nada cambia hasta Guardar.
+Probado en el navegador (compu y celular, de la última a la primera, y guardado).
+También: "Por socio" pasa a "Promedio por socio", y las entradas dicen "En
+promedio".

@@ -253,7 +253,7 @@ function pintarGimnasio({ hasta, socios, cuotas, asistencia }) {
   texto("gimnasioPorSocio", pesos(cuotas.por_socio));
   texto("gimnasioVentas", pesos(cuotas.ventas));
   texto("gimnasioEntradas", numero(asistencia.entradas));
-  texto("gimnasioEntradasDetalle", formatear("{0} por socio activo", asistencia.por_socio.toLocaleString(LOCALE, { maximumFractionDigits: 1 })));
+  texto("gimnasioEntradasDetalle", formatear("En promedio, {0} por socio activo", asistencia.por_socio.toLocaleString(LOCALE, { maximumFractionDigits: 1 })));
   texto("gimnasioNoVienen", numero(asistencia.no_vienen));
   texto(
     "gimnasioNoVienenDetalle",
@@ -338,9 +338,12 @@ document.getElementById("resumenComparar").addEventListener("click", async (e) =
 
 /* ---------- Personalizar ---------- */
 //
-// Una lista con una casilla para mostrar u ocultar cada pieza y dos botones
-// para subirla o bajarla (arrastrar no se puede hacer bien con el dedo ni con
-// el teclado). Se trabaja sobre una copia: nada cambia hasta Guardar.
+// Una lista con una casilla para mostrar u ocultar cada pieza y el ícono de
+// siempre para arrastrarla a otro lugar (pedido del usuario). El arrastre va
+// con eventos de puntero, que andan igual con el mouse y con el dedo (el
+// arrastre nativo de HTML no anda en el celular); con el foco en el ícono,
+// las flechas del teclado la suben y la bajan. Se trabaja sobre una copia:
+// nada cambia hasta Guardar.
 
 const modal = document.getElementById("modalTablero");
 const lista = document.getElementById("tableroLista");
@@ -349,7 +352,7 @@ let borrador = null;
 function pintarLista() {
   const elegibles = borrador.orden.filter(disponible);
   lista.innerHTML = elegibles
-    .map((pieza, i) => {
+    .map((pieza) => {
       const info = PIEZAS[pieza];
       const visible = !borrador.ocultas.includes(pieza);
       return `
@@ -361,10 +364,8 @@ function pintarLista() {
             <small>${esc(info.descripcion)}</small>
           </span>
         </label>
-        <span class="tablero-mover">
-          <button type="button" class="btn-icon tablero-subir" data-mover="-1" ${i === 0 ? "disabled" : ""} aria-label="Subir ${esc(info.nombre)}">${icono("chevron-down")}</button>
-          <button type="button" class="btn-icon" data-mover="1" ${i === elegibles.length - 1 ? "disabled" : ""} aria-label="Bajar ${esc(info.nombre)}">${icono("chevron-down")}</button>
-        </span>
+        <button type="button" class="btn-icon tablero-arrastrar" data-arrastrar aria-label="Mover ${esc(info.nombre)}: arrastrala o usá las flechas"
+          aria-describedby="tableroAyudaMover" title="Arrastrá para cambiarla de lugar">${icono("menu")}</button>
       </li>`;
     })
     .join("");
@@ -377,23 +378,99 @@ lista.addEventListener("change", (e) => {
   e.target.closest("li").classList.toggle("is-oculta", !e.target.checked);
 });
 
-lista.addEventListener("click", (e) => {
-  const boton = e.target.closest("[data-mover]");
-  if (!boton) return;
-  const pieza = boton.closest("[data-pieza]").dataset.pieza;
-  const paso = Number(boton.dataset.mover);
-  // Se mueve entre las que se pueden elegir; las de un módulo apagado quedan
-  // al final, en el orden que tenían, por si se vuelve a prender.
-  const elegibles = borrador.orden.filter(disponible);
-  const i = elegibles.indexOf(pieza);
-  const j = i + paso;
-  if (j < 0 || j >= elegibles.length) return;
-  [elegibles[i], elegibles[j]] = [elegibles[j], elegibles[i]];
-  borrador.orden = [...elegibles, ...borrador.orden.filter((p) => !disponible(p))];
-  pintarLista();
-  // El foco sigue al botón de la pieza que se movió, para seguir moviéndola.
-  const destino = lista.querySelector(`[data-pieza="${pieza}"] [data-mover="${paso}"]`);
-  (destino && !destino.disabled ? destino : lista.querySelector(`[data-pieza="${pieza}"] input`))?.focus();
+// El orden de la lista es el de la pantalla. Las de un módulo apagado quedan
+// al final, en el orden que tenían, por si se vuelve a prender.
+function leerOrden() {
+  const enPantalla = [...lista.querySelectorAll("[data-pieza]")].map((li) => li.dataset.pieza);
+  borrador.orden = [...enPantalla, ...borrador.orden.filter((p) => !disponible(p))];
+}
+
+let arrastre = null;
+
+// Lo que tiene el scroll de la lista: el modal en la compu, la pantalla en el
+// celular. Con 14 piezas no entran todas, y para llevar una de abajo hasta
+// arriba la lista se desplaza sola mientras el dedo está cerca del borde.
+function conScroll(el) {
+  for (let nodo = el.parentElement; nodo; nodo = nodo.parentElement) {
+    const { overflowY } = getComputedStyle(nodo);
+    if ((overflowY === "auto" || overflowY === "scroll") && nodo.scrollHeight > nodo.clientHeight) return nodo;
+  }
+  return document.scrollingElement;
+}
+
+// La fila sigue al dedo y, al pasar la mitad de otra, cambia de lugar con ella.
+function moverA(y) {
+  const { fila } = arrastre;
+  const otras = [...lista.querySelectorAll("[data-pieza]")].filter((li) => li !== fila);
+  const antes = otras.find((li) => {
+    const caja = li.getBoundingClientRect();
+    return y < caja.top + caja.height / 2;
+  });
+  if (antes ? fila.nextElementSibling !== antes : lista.lastElementChild !== fila) {
+    const arriba = fila.getBoundingClientRect().top;
+    lista.insertBefore(fila, antes ?? null);
+    // La fila cambió de lugar en la lista: el desplazamiento sigue al dedo.
+    arrastre.y += fila.getBoundingClientRect().top - arriba;
+  }
+  fila.style.transform = `translateY(${y - arrastre.y}px)`;
+}
+
+const BORDE_SCROLL = 56;
+function desplazarSola() {
+  if (!arrastre) return;
+  const { scroll, ultimaY } = arrastre;
+  const caja = scroll === document.scrollingElement ? { top: 0, bottom: innerHeight } : scroll.getBoundingClientRect();
+  const paso = ultimaY < caja.top + BORDE_SCROLL ? -10 : ultimaY > caja.bottom - BORDE_SCROLL ? 10 : 0;
+  const antes = scroll.scrollTop;
+  if (paso) scroll.scrollTop += paso;
+  const corrido = scroll.scrollTop - antes;
+  if (corrido) {
+    // La lista subió o bajó debajo del dedo: la fila no.
+    arrastre.y -= corrido;
+    moverA(ultimaY);
+  }
+  arrastre.cuadro = requestAnimationFrame(desplazarSola);
+}
+
+lista.addEventListener("pointerdown", (e) => {
+  const asa = e.target.closest("[data-arrastrar]");
+  if (!asa || (e.pointerType === "mouse" && e.button !== 0)) return;
+  e.preventDefault();
+  const fila = asa.closest("[data-pieza]");
+  asa.setPointerCapture(e.pointerId);
+  arrastre = { fila, y: e.clientY, ultimaY: e.clientY, scroll: conScroll(lista) };
+  fila.classList.add("is-arrastrando");
+  arrastre.cuadro = requestAnimationFrame(desplazarSola);
+});
+
+lista.addEventListener("pointermove", (e) => {
+  if (!arrastre) return;
+  arrastre.ultimaY = e.clientY;
+  moverA(e.clientY);
+});
+
+function soltar() {
+  if (!arrastre) return;
+  cancelAnimationFrame(arrastre.cuadro);
+  arrastre.fila.classList.remove("is-arrastrando");
+  arrastre.fila.style.transform = "";
+  arrastre = null;
+  leerOrden();
+}
+lista.addEventListener("pointerup", soltar);
+lista.addEventListener("pointercancel", soltar);
+
+// Con el teclado: el foco en el ícono y las flechas.
+lista.addEventListener("keydown", (e) => {
+  const asa = e.target.closest("[data-arrastrar]");
+  if (!asa || (e.key !== "ArrowUp" && e.key !== "ArrowDown")) return;
+  e.preventDefault();
+  const fila = asa.closest("[data-pieza]");
+  const vecina = e.key === "ArrowUp" ? fila.previousElementSibling : fila.nextElementSibling;
+  if (!vecina) return;
+  lista.insertBefore(fila, e.key === "ArrowUp" ? vecina : vecina.nextElementSibling);
+  asa.focus();
+  leerOrden();
 });
 
 document.getElementById("btnPersonalizarResumen").addEventListener("click", () => {
