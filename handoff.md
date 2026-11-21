@@ -86,7 +86,7 @@ Configuración › Logo y colores: el logo va en el menú, la factura, el ticket
 (en grises) y la pantalla de entrada; el color reemplaza al azul de Nexo.
 Foto de perfil en Mi cuenta. Test nuevo: `marca`. `npm test`: 501 de 501.
 
-**21 de noviembre, hist. §213: "Para revisar" en el Resumen (punto 9, primera parte).**
+**21 de noviembre, hist. §213: "Para revisar" en el Resumen (punto 9, primera parte; publicado, PR #113).**
 Abajo de "Para mirar hoy": facturas sin CAE o rechazadas, faltantes de caja de
 $15.000 o más en un día, cajas que abrieron con otra plata o siguen abiertas
 desde otro día, "el costo subió y el precio no" y pagos de Mercado Pago para
@@ -101,14 +101,14 @@ Resumen, con lo que se pagó la última vez). Gastos › Gastos fijos los lista 
 la próxima vez, se editan para lo que viene y se dan de baja sin tocar lo
 anotado. Esquema aditivo: `gastos_fijos`, `gastos_fijos_salteados` y
 `gastos.gasto_fijo_id`/`periodo` (índice único). Test nuevo: `gastos-fijos`.
-`npm test`: 509 de 509. **Sin publicar** (§213 tampoco).
+`npm test`: 509 de 509. Publicado (PR #113).
 
 **21 de noviembre, hist. §215: las cuotas se cobran con los medios de cobro, y
 el logo se encuadra en el menú** (pedidos del usuario). Cuotas, la ficha del
 socio, la recepción y Abonos ofrecen los medios activos (Efectivo, Débito,
 Crédito, Transferencia…), nunca las cuentas (`core/cobro-medio.js`); en
 Logo y colores, **En el menú** acerca y corre el logo
-(`organizaciones.logo_encuadre`). **Sin publicar** (§213 y §214 tampoco).
+(`organizaciones.logo_encuadre`). Publicado (PR #113).
 
 **21 de noviembre, hist. §216: vender en cuotas con financiación propia**
 (pedido del usuario). Cada producto puede tener **Precio en cuotas** ("3 pagos
@@ -116,7 +116,7 @@ de $50.000"); al venderlo (Ventas o el mostrador) se elige el plan, lo que falta
 queda en la cuenta corriente con una cuota por mes, y solo lo que ya venció
 cuenta como vencido. Esquema aditivo: `producto_planes_pago`, `venta_cuotas`,
 `venta_items.plan_cuotas`. Test nuevo: `ventas-en-cuotas`. 514 de 514.
-**Sin publicar** (§213 a §216).
+Publicado (PR #113, con §213 a §215).
 
 **Lo que sigue:** el resto del punto 9: mensajes de WhatsApp armados y
 "quiénes deben" (que ya puede avisar de la cuota que vence), y puntos y
