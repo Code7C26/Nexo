@@ -173,6 +173,23 @@ export const SECCIONES_EN = {
       "You can also record it from the assistant: \"I sold 2 hoodies to Sole at 28 thousand each, she paid cash\"."
     ]
   },
+  "vender-en-cuotas": {
+    titulo: "Selling in installments (without a card)",
+    pantalla: "Products",
+    preguntas: ["how do i sell in installments", "how do i set up a payment plan", "how do i collect in installments without a card", "how do i set an installment price", "one payment of 100 thousand or three of 50 thousand", "how do i finance a sale"],
+    palabras: ["installments", "installment", "plan", "payments", "finance", "financing", "pay", "monthly", "account", "credit"],
+    bloques: [
+      "If you sell something in installments with your own financing (one payment of $100,000, two of $65,000 or three of $50,000), each product can have its plans. What's left to pay stays on the customer's account, one installment a month.",
+      { pasos: [
+        "In **Products**, edit the product and under **Price in installments** tap **Add a plan**: how many installments and how much each. Nexo shows the total and how much more it is than paying at once.",
+        "When you sell it (in **Sales › New sale** or at the counter), choose how they pay: **1 payment** or one of the plans. The price is the plan's.",
+        "Choose the customer: you can't sell in installments without one.",
+        "Collect what they pay today: the counter suggests the first installment."
+      ] },
+      "The first installment is due on the day of the sale and the rest every month. On the sale's page you see each installment with its due date and what's left; in **Accounts**, each installment shows its number (installment 2 of 3) and only the ones already due count as overdue.",
+      { nota: "A sale in installments can't be edited: if it needs changing, void it and enter it again. It doesn't take a manual discount: the price is the plan's." }
+    ]
+  },
   cobrar: {
     titulo: "Collecting a sale or a debt",
     pantalla: "Accounts",

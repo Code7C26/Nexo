@@ -11,7 +11,7 @@
 
 - Al cerrar una etapa, se hacen tres cosas:
   - su relato completo se agrega al final de `docs/proyecto/handoff-historico.md` con el
-    siguiente número (hoy el último es §215);
+    siguiente número (hoy el último es §216);
   - acá se actualizan "Estado actual" y "Qué sigue";
   - si cambió alguna decisión vigente, se actualiza también esa lista.
 - Nunca apilar secciones "Última etapa" en este archivo: así fue como llegó a
@@ -110,10 +110,17 @@ Crédito, Transferencia…), nunca las cuentas (`core/cobro-medio.js`); en
 Logo y colores, **En el menú** acerca y corre el logo
 (`organizaciones.logo_encuadre`). **Sin publicar** (§213 y §214 tampoco).
 
-**Lo que sigue:** las **cuotas por producto** que pidió el usuario (un pago de
-$100.000, dos de $65.000 o tres de $50.000, y lo que se debe queda en la
-cuenta corriente del cliente); después, el resto del punto 9: mensajes de
-WhatsApp armados y "quiénes deben", y puntos y premios.
+**21 de noviembre, hist. §216: vender en cuotas con financiación propia**
+(pedido del usuario). Cada producto puede tener **Precio en cuotas** ("3 pagos
+de $50.000"); al venderlo (Ventas o el mostrador) se elige el plan, lo que falta
+queda en la cuenta corriente con una cuota por mes, y solo lo que ya venció
+cuenta como vencido. Esquema aditivo: `producto_planes_pago`, `venta_cuotas`,
+`venta_items.plan_cuotas`. Test nuevo: `ventas-en-cuotas`. 514 de 514.
+**Sin publicar** (§213 a §216).
+
+**Lo que sigue:** el resto del punto 9: mensajes de WhatsApp armados y
+"quiénes deben" (que ya puede avisar de la cuota que vence), y puntos y
+premios.
 
 **19 de noviembre, hist. §205 (publicado, PR #106):** en Planes se elimina un plan que nunca hizo
 nadie (con su servicio del catálogo); el que algún socio hizo solo se pausa.

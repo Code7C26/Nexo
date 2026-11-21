@@ -6161,7 +6161,68 @@ app.get('/api/productos', (req, res) => {
   const preciosPorProducto = obtenerPreciosPorProducto(req.usuario.organizacion_id);
   const discrimina = discriminaIva(condicionIvaNegocio(req.usuario.organizacion_id));
   const materiales = costoMaterialesPorProducto(req.usuario.organizacion_id);
-  res.json(productos.map((p) => decorarProducto(p, preciosPorProducto[p.id], discrimina, materiales.get(p.id))));
+  const planes = planesPagoPorProducto(req.usuario.organizacion_id);
+  res.json(
+    productos.map((p) => ({ ...decorarProducto(p, preciosPorProducto[p.id], discrimina, materiales.get(p.id)), planes_pago: planes.get(p.id) ?? [] }))
+  );
+});
+
+// Los planes en cuotas de cada producto del negocio (hist. §216).
+function planesPagoPorProducto(organizacionId) {
+  const porProducto = new Map();
+  const filas = db
+    .prepare(
+      `SELECT producto_planes_pago.producto_id, producto_planes_pago.cuotas, producto_planes_pago.importe_cuota
+         FROM producto_planes_pago JOIN productos ON productos.id = producto_planes_pago.producto_id
+        WHERE productos.organizacion_id = ? ORDER BY producto_planes_pago.cuotas`
+    )
+    .all(organizacionId);
+  for (const fila of filas) {
+    if (!porProducto.has(fila.producto_id)) porProducto.set(fila.producto_id, []);
+    porProducto.get(fila.producto_id).push({ cuotas: fila.cuotas, importe_cuota: fila.importe_cuota });
+  }
+  return porProducto;
+}
+
+// Los planes en cuotas de un producto (hist. §216): se reemplazan enteros. Lo
+// ya vendido no cambia (cada renglón guarda su precio y su cronograma).
+app.put('/api/productos/:id/planes-pago', soloAdmin, (req, res) => {
+  const organizacionId = req.usuario.organizacion_id;
+  const producto = db.prepare('SELECT id, nombre FROM productos WHERE id = ? AND organizacion_id = ?').get(Number(req.params.id), organizacionId);
+  if (!producto) return res.status(404).json({ error: 'Producto no encontrado.' });
+  const planes = req.body?.planes;
+  if (!Array.isArray(planes) || planes.length > 12) return res.status(400).json({ error: 'Los planes en cuotas no son válidos.' });
+  const vistos = new Set();
+  for (const p of planes) {
+    const cuotas = Number(p?.cuotas);
+    const importe = Number(p?.importe_cuota);
+    if (!Number.isInteger(cuotas) || cuotas < 2 || cuotas > MAX_CUOTAS_PLAN) {
+      return res.status(400).json({ error: `Cada plan va de 2 a ${MAX_CUOTAS_PLAN} cuotas.` });
+    }
+    if (!(importe > 0)) return res.status(400).json({ error: 'Cada cuota tiene que tener un importe mayor a 0.' });
+    if (vistos.has(cuotas)) return res.status(400).json({ error: `Hay dos planes de ${cuotas} cuotas.` });
+    vistos.add(cuotas);
+  }
+  const anteriores = SQL_PLANES_PAGO.all(producto.id);
+  const nuevos = planes
+    .map((p) => ({ cuotas: Number(p.cuotas), importe_cuota: redondear2(Number(p.importe_cuota)) }))
+    .sort((a, b) => a.cuotas - b.cuotas);
+  if (JSON.stringify(anteriores) !== JSON.stringify(nuevos)) {
+    withTransaction(() => {
+      db.prepare('DELETE FROM producto_planes_pago WHERE producto_id = ?').run(producto.id);
+      const insertar = db.prepare('INSERT INTO producto_planes_pago (producto_id, cuotas, importe_cuota) VALUES (?, ?, ?)');
+      for (const p of nuevos) insertar.run(producto.id, p.cuotas, p.importe_cuota);
+      auditar(req, {
+        accion: 'editar',
+        entidad: 'producto',
+        entidad_id: producto.id,
+        valor_anterior: JSON.stringify(anteriores),
+        valor_nuevo: JSON.stringify(nuevos),
+        detalle: `Planes en cuotas de "${producto.nombre}"`
+      });
+    });
+  }
+  res.json({ planes_pago: nuevos });
 });
 
 // Lo que cuestan hoy los materiales de vender uno de cada producto
@@ -8844,7 +8905,7 @@ app.get('/api/ventas/:id', (req, res) => {
               venta_items.cantidad, venta_items.precio_unitario, venta_items.costo_unitario_historico,
               venta_items.costo_mano_obra, productos.tipo, productos.unidad,
               venta_items.alicuota_iva, venta_items.iva,
-              venta_items.oferta_id, ofertas.nombre AS oferta, venta_items.precio_lista, venta_items.descuento,
+              venta_items.oferta_id, ofertas.nombre AS oferta, venta_items.precio_lista, venta_items.descuento, venta_items.plan_cuotas,
               COALESCE((
                 SELECT SUM(devolucion_items.cantidad)
                   FROM devolucion_items JOIN devoluciones ON devoluciones.id = devolucion_items.devolucion_id
@@ -8882,8 +8943,11 @@ app.get('/api/ventas/:id', (req, res) => {
     )
     .all(ventaId);
 
+  // Sus cuotas (hist. §216), con lo que falta de cada una.
+  const cuotas = pendientePorCuota(SQL_CUOTAS_DE_VENTA.all(ventaId), redondear2(neto - cobrado));
   res.json({
     ...venta,
+    cuotas,
     costos_de_vender: costosDeVender,
     desglose_costos: desgloseDeLaVenta({ venta, items, consumos, costosDeVender, organizacionId: req.usuario.organizacion_id }),
     tiene_devolucion: Boolean(venta.tiene_devolucion),
@@ -9078,6 +9142,61 @@ function normalizarCanal(canal) {
 // una transacción — así la conversión de un presupuesto puede meter en la
 // misma transacción la venta y la marca del presupuesto, sin que quede
 // una venta creada con el presupuesto sin convertir.
+/* ---------- Ventas en cuotas (hist. §216) ---------- */
+
+// Financiación del negocio, no de una tarjeta: un producto puede tener planes
+// ("2 pagos de $65.000", "3 de $50.000"; producto_planes_pago) y lo que falta
+// pagar queda en la cuenta corriente del cliente, una cuota por mes, como el
+// plan de pagos de Odoo. La venta es una sola; sus cuotas (venta_cuotas) son
+// el cronograma, y lo cobrado salda de la más vieja a la más nueva.
+const SQL_PLANES_PAGO = db.prepare('SELECT cuotas, importe_cuota FROM producto_planes_pago WHERE producto_id = ? ORDER BY cuotas');
+const MAX_CUOTAS_PLAN = 36;
+
+// Los renglones con su plan: el precio pasa a ser el del plan (lo que se paga
+// en total), sin descuento ni oferta. Lanza ErrorBulk si el plan no existe.
+function preciosDeLosPlanes(items) {
+  return items.map((item) => {
+    if (item?.plan_cuotas == null || item.plan_cuotas === '') return item;
+    const cuotas = Number(item.plan_cuotas);
+    const plan = SQL_PLANES_PAGO.all(Number(item.producto_id)).find((p) => p.cuotas === cuotas);
+    if (!plan) throw new ErrorBulk('Ese producto no tiene un plan en esas cuotas.');
+    return { ...item, plan_cuotas: cuotas, importe_cuota: plan.importe_cuota, precio_unitario: redondear2(cuotas * plan.importe_cuota), descuento: 0 };
+  });
+}
+
+// El cronograma de una venta con algún renglón en cuotas: la cuota k vence
+// k - 1 meses después de la venta y lleva la cuota k de cada renglón en
+// cuotas; la primera, además, lo que no va en cuotas. La venta vence con la
+// última. Dentro de una transacción.
+function crearCuotasDeVenta(ventaId, fecha, items) {
+  const enCuotas = items.filter((i) => i.plan_cuotas);
+  if (enCuotas.length === 0) return;
+  const n = Math.max(...enCuotas.map((i) => i.plan_cuotas));
+  const contado = items.filter((i) => !i.plan_cuotas).reduce((acc, i) => acc + Number(i.cantidad) * Number(i.precio_unitario), 0);
+  const insertar = db.prepare('INSERT INTO venta_cuotas (venta_id, numero, vencimiento, importe) VALUES (?, ?, ?, ?)');
+  let ultima = fecha;
+  for (let k = 1; k <= n; k++) {
+    const importe =
+      enCuotas.filter((i) => i.plan_cuotas >= k).reduce((acc, i) => acc + Number(i.cantidad) * i.importe_cuota, 0) + (k === 1 ? contado : 0);
+    ultima = sumarMeses(fecha, k - 1);
+    insertar.run(ventaId, k, ultima, redondear2(importe));
+  }
+  db.prepare("UPDATE ventas SET condicion_pago = 'cuotas', fecha_vencimiento = ? WHERE id = ?").run(ultima, ventaId);
+}
+
+// Lo que falta de cada cuota, sabiendo lo que falta de la venta: lo cobrado (y
+// lo devuelto) salda de la más vieja a la más nueva.
+function pendientePorCuota(cuotas, pendiente) {
+  let saldado = Math.max(0, cuotas.reduce((acc, c) => acc + c.importe, 0) - pendiente);
+  return cuotas.map((c) => {
+    const cubre = Math.min(c.importe, saldado);
+    saldado -= cubre;
+    return { ...c, pendiente: redondear2(c.importe - cubre) };
+  });
+}
+
+const SQL_CUOTAS_DE_VENTA = db.prepare('SELECT numero, vencimiento, importe FROM venta_cuotas WHERE venta_id = ? ORDER BY numero');
+
 function crearVenta({
   cliente,
   cliente_id,
@@ -9097,6 +9216,8 @@ function crearVenta({
   canal
 }) {
   const canalVenta = normalizarCanal(canal);
+  // Los renglones en cuotas (hist. §216) llevan el precio de su plan.
+  items = preciosDeLosPlanes(items);
   // Resuelve el cliente igual que resolverCliente (presupuestos): id
   // directo si ya se eligió de la lista, si no por nombre, creándolo si no
   // existe. organizacion_id es obligatorio (CLAUDE.md §28): un cliente
@@ -9152,8 +9273,8 @@ function crearVenta({
   // ESA variante, no el del producto padre (costoDelRenglon).
   const insertItem = db.prepare(
     `INSERT INTO venta_items (venta_id, producto_id, variante_id, cantidad, precio_unitario, costo_unitario_historico, alicuota_iva, iva,
-                              oferta_id, precio_lista, costo_mano_obra, descuento)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+                              oferta_id, precio_lista, costo_mano_obra, descuento, plan_cuotas)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   );
   const condicionIva = condicionIvaNegocio(organizacion_id);
   // Las ofertas (hist. §133): la de cada renglón es la que ganaba el día de
@@ -9179,7 +9300,7 @@ function crearVenta({
     // El descuento a mano del mostrador (hist. §175) ya viene restado del
     // precio: la oferta se reconoce con el precio de antes.
     const descuento = Number(item.descuento) || 0;
-    const conOferta = ofertas.length
+    const conOferta = ofertas.length && !item.plan_cuotas
       ? ofertaDelRenglon(ofertas, { ...item, precio_unitario: Number(item.precio_unitario) + descuento }, varianteId, listaDeLaVenta, fechaVenta)
       : null;
     insertItem.run(
@@ -9194,7 +9315,8 @@ function crearVenta({
       conOferta?.oferta_id ?? null,
       conOferta?.precio_lista ?? null,
       costoActual.mano_obra,
-      descuento
+      descuento,
+      item.plan_cuotas ?? null
     );
     if (!carga_inicial) {
       registrarMovimientoStock({
@@ -9218,6 +9340,14 @@ function crearVenta({
   }
   if (!carga_inicial) {
     registrarConsumosVenta({ venta_id: nuevaVentaId, items, consumos, deposito_id: depositoResuelto, organizacion_id });
+  }
+  // En cuotas, lo que falta queda en la cuenta del cliente: tiene que ser uno
+  // de verdad, no "Consumidor final".
+  if (items.some((i) => i.plan_cuotas)) {
+    if (db.prepare('SELECT nombre FROM clientes WHERE id = ?').get(clienteRow.id)?.nombre === CONSUMIDOR_FINAL) {
+      throw new ErrorBulk('Para vender en cuotas, elegí el cliente: lo que falta pagar queda en su cuenta corriente.');
+    }
+    crearCuotasDeVenta(nuevaVentaId, fechaVenta, items);
   }
 
   // Toda venta aumenta la deuda del cliente; se salda con cobros. No
@@ -9365,6 +9495,11 @@ app.put('/api/ventas/:id', (req, res) => {
     return res
       .status(400)
       .json({ error: 'Esta venta tiene una devolución asociada, no se puede editar.' });
+  }
+  // Su cronograma sale de los renglones (hist. §216): para cambiarla, se anula
+  // y se carga de nuevo.
+  if (SQL_CUOTAS_DE_VENTA.get(ventaId) || (Array.isArray(items) && items.some((i) => i?.plan_cuotas))) {
+    return res.status(400).json({ error: 'Esta venta es en cuotas: para cambiarla, anulala y cargala de nuevo.' });
   }
   const errorItems = validarItemsVenta(items);
   if (errorItems) {
@@ -15144,7 +15279,7 @@ function tramoDeVencimiento(dias) {
 // consulta sumaría los dos juntos y se los adjudicaría a cualquiera de
 // los dos en vez de partirlos correctamente entre ambos.
 function saldosPorOperacion(tablaMovimientos, columnaEntidad, columnaOperacion, tablaOperacion, organizacionId) {
-  return db
+  const filas = db
     .prepare(
       `SELECT m.${columnaOperacion} AS operacion_id, m.${columnaEntidad} AS entidad_id,
               o.fecha AS fecha, COALESCE(o.fecha_vencimiento, o.fecha) AS vencimiento,
@@ -15156,6 +15291,28 @@ function saldosPorOperacion(tablaMovimientos, columnaEntidad, columnaOperacion, 
        HAVING ABS(SUM(m.importe)) > 0.005`
     )
     .all(organizacionId);
+  if (tablaOperacion !== 'ventas') return filas;
+  // Una venta en cuotas (hist. §216) debe cada cuota con su vencimiento: una
+  // fila por cuota que falta, así lo vencido es solo lo que ya venció.
+  const cronogramas = new Map();
+  const cuotas = db
+    .prepare(
+      `SELECT venta_cuotas.venta_id, venta_cuotas.numero, venta_cuotas.vencimiento, venta_cuotas.importe
+         FROM venta_cuotas JOIN ventas ON ventas.id = venta_cuotas.venta_id
+        WHERE ventas.organizacion_id = ? ORDER BY venta_cuotas.venta_id, venta_cuotas.numero`
+    )
+    .all(organizacionId);
+  for (const c of cuotas) {
+    if (!cronogramas.has(c.venta_id)) cronogramas.set(c.venta_id, []);
+    cronogramas.get(c.venta_id).push(c);
+  }
+  return filas.flatMap((fila) => {
+    const deLaVenta = cronogramas.get(fila.operacion_id);
+    if (!deLaVenta || fila.pendiente <= 0) return [fila];
+    return pendientePorCuota(deLaVenta, fila.pendiente)
+      .filter((c) => c.pendiente > 0.005)
+      .map((c) => ({ ...fila, vencimiento: c.vencimiento, pendiente: c.pendiente, cuota: c.numero, cuotas: deLaVenta.length }));
+  });
 }
 
 // Agrupa los saldos por operación (arriba) en uno por entidad: saldo total,
@@ -15185,6 +15342,9 @@ function agruparPorEntidad(saldos, tablaEntidad, hoy, organizacionId) {
           fecha: o.fecha,
           vencimiento: o.vencimiento,
           pendiente: o.pendiente,
+          // De una venta en cuotas (hist. §216): cuál es, de cuántas.
+          cuota: o.cuota ?? null,
+          cuotas: o.cuotas ?? null,
           dias: o.pendiente > 0 ? dias : null,
           tramo: o.pendiente > 0 ? tramoDeVencimiento(dias) : null
         };
@@ -20890,11 +21050,14 @@ app.get('/api/pos/catalogo', (req, res) => {
   }
   // Un servicio no tiene tope: stock null. La lista es la de las ofertas
   // (hist. §133): el mostrador vende con la predeterminada.
+  // Los planes en cuotas de cada producto (hist. §216), para elegir en el ticket.
+  const planes = planesPagoPorProducto(organizacionId);
   res.json(
     [...productos, ...variantes]
       .map((i) => ({
         ...i,
         lista_precio_id: listaId ?? null,
+        planes_pago: planes.get(i.producto_id) ?? [],
         en_otras: enOtras.get(i.variante_id ? `v${i.variante_id}` : `p${i.producto_id}`) ?? []
       }))
       .map((i) => (i.tipo === 'servicio' ? { ...i, stock: null } : i))
@@ -20960,6 +21123,16 @@ app.post('/api/pos/ventas', (req, res) => {
   }
   const errorItems = validarItemsVenta(items);
   if (errorItems) return res.status(400).json({ error: errorItems });
+  // En cuotas (hist. §216): el precio es el del plan, y el total y lo que queda
+  // en la cuenta salen de ahí. El descuento a mano no va con un plan.
+  if (items.some((i) => i?.plan_cuotas)) {
+    if (descuento !== null) return res.status(400).json({ error: 'Una venta con algo en cuotas no lleva descuento a mano.' });
+    try {
+      items = preciosDeLosPlanes(items);
+    } catch (err) {
+      return res.status(400).json({ error: mensajeDeError(err) });
+    }
+  }
   // El descuento a mano (hist. §175): los precios llegan sin él, y acá se
   // reparte entre los renglones con las mismas reglas que muestra la pantalla.
   let montoDescuento = 0;

@@ -2339,7 +2339,9 @@ for (const [tabla, columna] of [
   ['gastos', 'gasto_fijo_id INTEGER REFERENCES gastos_fijos(id)'],
   ['gastos', 'periodo TEXT'],
   // El encuadre del logo en el menú (hist. §215): NULL, entero y centrado.
-  ['organizaciones', 'logo_encuadre TEXT']
+  ['organizaciones', 'logo_encuadre TEXT'],
+  // En cuántas cuotas se vendió cada renglón (hist. §216): lo de antes, sin plan.
+  ['venta_items', 'plan_cuotas INTEGER']
 ]) {
   if (!db.prepare(`PRAGMA table_info(${tabla})`).all().some((col) => col.name === columna.split(' ')[0])) {
     db.exec(`ALTER TABLE ${tabla} ADD COLUMN ${columna}`);

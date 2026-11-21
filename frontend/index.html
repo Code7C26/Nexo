@@ -2354,6 +2354,27 @@
           </div>
         </section>
 
+        <!-- Las cuotas de una venta en cuotas (hist. §216): cuándo vence cada
+             una y cuánto falta. Lo cobrado salda de la más vieja a la más nueva. -->
+        <section class="panel" id="fichaVentaCuotasPanel" hidden>
+          <div class="panel-head">
+            <h2>Cuotas</h2>
+          </div>
+          <div class="tabla-scroll">
+          <table class="ledger-table">
+            <thead>
+              <tr>
+                <th scope="col">Cuota</th>
+                <th scope="col">Vence</th>
+                <th scope="col" class="align-right">Importe</th>
+                <th scope="col" class="align-right">Falta</th>
+              </tr>
+            </thead>
+            <tbody id="fichaVentaCuotas"></tbody>
+          </table>
+          </div>
+        </section>
+
         <!-- Lo que se usó al venderla (hist. §126): la caja, la bolsa. -->
         <section class="panel" id="fichaVentaConsumosPanel" hidden>
           <div class="panel-head">
@@ -7361,6 +7382,7 @@
             <option value="60">60 días</option>
             <option value="manual">Fecha puntual…</option>
           </select>
+          <span class="campo-ayuda" id="ventaCondicionCuotas" hidden>En cuotas vence una cuota por mes, desde hoy.</span>
         </label>
         <label id="ventaVencimientoWrap" hidden>Vence el
           <input type="date" name="fecha_vencimiento" id="ventaVencimiento" />
@@ -7974,6 +7996,15 @@
              input queda vacío y ese producto cae al fallback de
              precio_venta en esa lista (CLAUDE.md §18). -->
         <div id="preciosPorListaProducto" class="form-precios-lista"></div>
+        <!-- Precio en cuotas (hist. §216): financiación del negocio, no de una
+             tarjeta. Cada plan es "N pagos de $X"; el de un pago es el precio
+             de arriba. Se guarda aparte, con PUT /api/productos/:id/planes-pago. -->
+        <fieldset class="opciones col-admin" id="productoPlanesCampo">
+          <legend>Precio en cuotas</legend>
+          <p class="opciones-nota">Si lo vendés en cuotas con otro precio (2 pagos de $65.000, 3 de $50.000). Lo que falta pagar queda en la cuenta corriente del cliente, una cuota por mes. El de un pago es el precio de arriba.</p>
+          <div class="planes-pago" id="productoPlanes"></div>
+          <button type="button" class="btn btn-secundario btn-chico" id="btnProductoPlanSumar"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#plus"></use></svg> Sumar un plan</button>
+        </fieldset>
         <!-- Solo informativo/alerta: compara contra el margen real de la
              lista predeterminada, no sugiere ni fuerza ningún precio. -->
         <label>Margen objetivo (%)

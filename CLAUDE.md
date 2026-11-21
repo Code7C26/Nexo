@@ -519,7 +519,10 @@ IVA (es del fisco, no ingreso); para los demás no cambia nada.
 La ficha de cada venta muestra adónde fue la plata: mercadería, packaging,
 cada gasto de la venta (comisión con su porcentaje, envío, cuotas), IVA y lo
 que quedó, cada uno con su porcentaje contra el promedio del negocio (hist.
-§131).
+§131). En cuotas con financiación propia (hist. §216): el producto tiene sus
+planes ("3 pagos de $50.000"), el renglón toma el precio del plan y la venta
+lleva su cronograma (`venta_cuotas`, una por mes); lo que falta queda en la
+cuenta corriente y vence de a una cuota.
 
 ---
 

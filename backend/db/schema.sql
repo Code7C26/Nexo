@@ -278,6 +278,18 @@ CREATE TABLE IF NOT EXISTS productos (
   mano_obra_por TEXT
 );
 
+-- Los planes en cuotas de un producto (hist. §216): "2 pagos de $65.000",
+-- "3 de $50.000". Es financiación del negocio, no de una tarjeta: lo que falta
+-- pagar queda en la cuenta corriente del cliente, con una cuota por mes. El de
+-- un pago es el precio de siempre y no va acá. Hija de productos.
+CREATE TABLE IF NOT EXISTS producto_planes_pago (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  producto_id INTEGER NOT NULL REFERENCES productos(id),
+  cuotas INTEGER NOT NULL CHECK (cuotas BETWEEN 2 AND 36),
+  importe_cuota REAL NOT NULL CHECK (importe_cuota > 0),
+  UNIQUE (producto_id, cuotas)
+);
+
 -- Precio de un producto en una lista puntual. No todo producto tiene fila
 -- acá para toda lista: si falta, el precio de esa combinación cae al
 -- precio_venta del producto (que representa la lista predeterminada). El
@@ -516,7 +528,24 @@ CREATE TABLE IF NOT EXISTS venta_items (
   -- unidad, ya restado de precio_unitario (el precio de antes es la suma de
   -- los dos). Se reparte entre los renglones según su valor, así el total, el
   -- IVA y el margen ya lo cuentan sin mirar esta columna. 0 = sin descuento.
-  descuento REAL NOT NULL DEFAULT 0
+  descuento REAL NOT NULL DEFAULT 0,
+  -- En cuántas cuotas se vendió (hist. §216, producto_planes_pago): el precio
+  -- del renglón es el de ese plan. NULL = el precio de siempre.
+  plan_cuotas INTEGER
+);
+
+-- Las cuotas de una venta en cuotas (hist. §216, el "plan de pagos" de Odoo):
+-- una fila por vencimiento, la primera el día de la venta y las demás cada
+-- mes. Lo que se cobra salda de la más vieja a la más nueva, así el atraso se
+-- mide por cuota (saldosPorOperacion). Una venta sin plan no tiene filas: vence
+-- entera, como siempre. Hija de ventas.
+CREATE TABLE IF NOT EXISTS venta_cuotas (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  venta_id INTEGER NOT NULL REFERENCES ventas(id),
+  numero INTEGER NOT NULL CHECK (numero >= 1),
+  vencimiento TEXT NOT NULL,
+  importe REAL NOT NULL CHECK (importe >= 0),
+  UNIQUE (venta_id, numero)
 );
 
 -- Un presupuesto es una OFERTA, no una operación: no toca stock, no

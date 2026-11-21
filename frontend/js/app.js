@@ -101,7 +101,7 @@ import { htmlCapacidades, respuestaDeAyuda, respuestaDeCharla, respuestaDeConsul
 import { buscarEnManual, clasificarFrase, PUNTAJE_SEGURO } from "./core/buscar-ayuda.js";
 import "./core/barra-inferior.js";
 import "./core/combo.js";
-import { LOCALE, formatear } from "./core/idioma.js";
+import { LOCALE, formatear, t } from "./core/idioma.js";
 
 let facturas = [];
 
@@ -1800,6 +1800,7 @@ function agregarFilaItemVenta(contenedor, listaProductos, limitarStock = true) {
     <input type="text" class="item-producto" list="productosVenta" placeholder="Buscar ${termino("singular")}…" />
     <input type="hidden" class="item-producto-id" />
     <select class="item-variante-id" hidden><option value="">Elegí una variante…</option></select>
+    <select class="item-plan" hidden aria-label="Cómo paga"></select>
     <input type="number" class="item-cantidad" placeholder="Cant." step="1" min="1" />
     <input type="number" class="item-precio" placeholder="Precio unit." step="0.01" min="0" autocomplete="off" />
     <span class="item-subtotal mono">${money(0)}</span>
@@ -1811,6 +1812,9 @@ function agregarFilaItemVenta(contenedor, listaProductos, limitarStock = true) {
   const varianteSelect = fila.querySelector(".item-variante-id");
   const cantidad = fila.querySelector(".item-cantidad");
   const precio = fila.querySelector(".item-precio");
+  // En cuotas (hist. §216), solo en el alta de venta: si el producto tiene
+  // planes, se elige cómo paga, y el precio es el del plan (no se toca a mano).
+  const planSelect = fila.querySelector(".item-plan");
   // Variantes del producto resuelto en esta fila, para poder resolver el
   // precio sugerido de la variante elegida sin refetchear (variantesDeProducto
   // ya cachea por producto, esto solo evita recorrer la lista de nuevo).
@@ -1883,6 +1887,7 @@ function agregarFilaItemVenta(contenedor, listaProductos, limitarStock = true) {
     const buscado = productoInput.value.trim().toLowerCase();
     const producto = listaProductos.find((p) => p.nombre.trim().toLowerCase() === buscado);
     ajustarCantidadSegunUnidad(cantidad, producto);
+    ofrecerPlanes(producto);
     if (producto) {
       productoIdInput.value = producto.id;
       // Si el producto todavía no tiene precio configurado en la lista
@@ -1924,6 +1929,41 @@ function agregarFilaItemVenta(contenedor, listaProductos, limitarStock = true) {
     contenedor.dispatchEvent(new Event("item-change"));
   });
 
+  // Las opciones de "Cómo paga": un pago (el precio de la lista) o cada plan.
+  function ofrecerPlanes(producto) {
+    const planes = conOfertas ? producto?.planes_pago ?? [] : [];
+    planSelect.innerHTML =
+      `<option value="">${esc(t("1 pago"))}</option>` +
+      planes
+        .map((p) => `<option value="${esc(p.cuotas)}" data-importe="${esc(p.importe_cuota)}">${esc(formatear("{0} cuotas de {1}", p.cuotas, money(p.importe_cuota)))}</option>`)
+        .join("");
+    planSelect.hidden = planes.length === 0;
+    planSelect.value = "";
+    precio.readOnly = false;
+  }
+  function aplicarPlan() {
+    const opcion = planSelect.selectedOptions[0];
+    if (!planSelect.hidden && opcion?.value) {
+      precio.value = Math.round(Number(opcion.value) * Number(opcion.dataset.importe) * 100) / 100;
+      precio.readOnly = true;
+      precio.title = t("El precio del plan en cuotas");
+      delete fila.dataset.oferta;
+      delete fila.dataset.precioLista;
+      precio.classList.remove("item-precio-oferta");
+    } else if (precio.readOnly) {
+      precio.readOnly = false;
+      precio.removeAttribute("title");
+      const producto = listaProductos.find((p) => p.id === Number(productoIdInput.value));
+      precioTocado = false;
+      if (producto) sugerirPrecio(precioProductoEnLista(producto, listaPrecioDelFormulario(contenedor)));
+    }
+  }
+  planSelect.addEventListener("change", () => {
+    aplicarPlan();
+    actualizarSubtotalFila(fila);
+    contenedor.dispatchEvent(new Event("item-change"));
+  });
+
   varianteSelect.addEventListener("change", () => {
     // El tope de cantidad es el stock de LA VARIANTE elegida, no el
     // agregado del producto: puede sobrar de una variante hermana y faltar
@@ -1943,6 +1983,8 @@ function agregarFilaItemVenta(contenedor, listaProductos, limitarStock = true) {
       const variante = variantesFila.find((v) => v.id === Number(opcion.value));
       const producto = listaProductos.find((p) => p.id === Number(productoIdInput.value));
       sugerirPrecio(precioVarianteEnLista(variante, producto, listaPrecioDelFormulario(contenedor)));
+      // En cuotas, el precio sigue siendo el del plan.
+      if (planSelect.value) aplicarPlan();
       actualizarSubtotalFila(fila);
     }
     contenedor.dispatchEvent(new Event("item-change"));
@@ -2150,8 +2192,11 @@ function leerItemsVenta(contenedor) {
     const variante_id = !varianteSelect.hidden && varianteSelect.value ? Number(varianteSelect.value) : null;
     const cantidad = Number(fila.querySelector(".item-cantidad").value);
     const precio_unitario = Number(fila.querySelector(".item-precio").value);
+    // En cuotas (hist. §216): el plan elegido; el servidor pone su precio.
+    const plan = fila.querySelector(".item-plan");
+    const plan_cuotas = plan && !plan.hidden && plan.value ? Number(plan.value) : null;
     if (producto_id && cantidad > 0 && precio_unitario >= 0) {
-      items.push({ producto_id, variante_id, cantidad, precio_unitario });
+      items.push({ producto_id, variante_id, cantidad, precio_unitario, ...(plan_cuotas ? { plan_cuotas } : {}) });
     }
   });
   return items;
@@ -2937,6 +2982,65 @@ function poblarPreciosPorLista(producto) {
     .join("");
 }
 
+/* --- Precio en cuotas (hist. §216) --- */
+
+// Cada plan es "N pagos de $X": financiación del negocio. Al lado de cada uno,
+// cuánto se paga en total y cuánto más que de contado, para que se vea qué se
+// está cobrando por financiar.
+const planesProducto = document.getElementById("productoPlanes");
+let planesIniciales = "[]";
+
+function filaPlanPago(plan = {}) {
+  const fila = document.createElement("div");
+  fila.className = "plan-pago-fila";
+  fila.innerHTML = `
+    <input type="number" class="plan-pago-cuotas" min="2" max="36" step="1" inputmode="numeric" placeholder="Cuotas" aria-label="Cantidad de cuotas" value="${esc(plan.cuotas ?? "")}" />
+    <span class="plan-pago-de">${esc(t("pagos de"))}</span>
+    <input type="number" class="plan-pago-importe" min="0" step="0.01" inputmode="decimal" placeholder="Cada cuota" aria-label="Importe de cada cuota" value="${esc(plan.importe_cuota ?? "")}" />
+    <span class="plan-pago-total"></span>
+    <button type="button" class="item-row-remove" aria-label="Sacar el plan">${icono("x")}</button>`;
+  fila.querySelector(".item-row-remove").addEventListener("click", () => fila.remove());
+  planesProducto.append(fila);
+  pintarTotalesPlanes();
+}
+
+function leerPlanesProducto() {
+  return [...planesProducto.querySelectorAll(".plan-pago-fila")]
+    .map((fila) => ({
+      cuotas: Number(fila.querySelector(".plan-pago-cuotas").value),
+      importe_cuota: Number(fila.querySelector(".plan-pago-importe").value)
+    }))
+    .filter((p) => p.cuotas >= 2 && p.importe_cuota > 0)
+    .sort((a, b) => a.cuotas - b.cuotas);
+}
+
+function pintarTotalesPlanes() {
+  const contado = Number(document.getElementById("formProducto").precio_venta.value) || 0;
+  for (const fila of planesProducto.querySelectorAll(".plan-pago-fila")) {
+    const cuotas = Number(fila.querySelector(".plan-pago-cuotas").value);
+    const importe = Number(fila.querySelector(".plan-pago-importe").value);
+    const total = cuotas >= 2 && importe > 0 ? cuotas * importe : 0;
+    const mas = contado > 0 && total > contado ? Math.round(((total - contado) / contado) * 100) : 0;
+    fila.querySelector(".plan-pago-total").textContent = total
+      ? mas > 0
+        ? formatear("{0} en total, {1} % más", money(total), mas)
+        : formatear("{0} en total", money(total))
+      : "";
+  }
+}
+planesProducto.addEventListener("input", pintarTotalesPlanes);
+document.getElementById("formProducto").precio_venta.addEventListener("input", pintarTotalesPlanes);
+document.getElementById("btnProductoPlanSumar").addEventListener("click", () => {
+  filaPlanPago();
+  planesProducto.lastElementChild.querySelector("input").focus();
+});
+
+function pintarPlanesProducto(producto) {
+  planesProducto.innerHTML = "";
+  for (const plan of producto?.planes_pago ?? []) filaPlanPago(plan);
+  planesIniciales = JSON.stringify(leerPlanesProducto());
+}
+
 // `tipo` es con qué tipo nace uno nuevo: el de la pestaña, o si no hay
 // pestañas, el del tipo de negocio.
 function abrirModalProducto(producto = null, { tipo } = {}) {
@@ -2968,6 +3072,7 @@ function abrirModalProducto(producto = null, { tipo } = {}) {
   document.getElementById("productoIvaCampo").hidden = negocio.condicion_iva === "monotributo";
   mostrarCamposSegunTipo();
   poblarPreciosPorLista(producto);
+  pintarPlanesProducto(producto);
   modalProducto.hidden = false;
 }
 
@@ -3061,6 +3166,15 @@ document.getElementById("formProducto").addEventListener("submit", async (e) => 
     body: datos,
     error: `No se pudo guardar el ${terminoDeTipo(datos.tipo)}.`
   });
+  // Los planes en cuotas van aparte (hist. §216), solo si cambiaron.
+  const planes = leerPlanesProducto();
+  if (esAdmin() && JSON.stringify(planes) !== planesIniciales) {
+    await api(`/api/productos/${productoEditandoId ?? guardado.id}/planes-pago`, {
+      method: "PUT",
+      body: { planes },
+      error: "Se guardó, pero no se pudieron guardar los planes en cuotas."
+    });
+  }
   // El costo va aparte (POST /api/productos/:id/costo): queda en el historial
   // de stock, como el de "Lo que ya tenías".
   const costo = form.costo.value.trim();
@@ -4732,6 +4846,12 @@ function actualizarTotalVenta() {
 ventaItemsEl.addEventListener("item-change", () => {
   actualizarTotalVenta();
   consumosVenta.proponer(leerItemsVenta(ventaItemsEl));
+  // En cuotas (hist. §216) vence una cuota por mes: la condición no se elige.
+  const enCuotas = leerItemsVenta(ventaItemsEl).some((i) => i.plan_cuotas);
+  const condicion = document.getElementById("ventaCondicionPago");
+  condicion.disabled = enCuotas;
+  condicion.title = enCuotas ? t("En cuotas vence una cuota por mes, desde hoy.") : "";
+  document.getElementById("ventaCondicionCuotas").hidden = !enCuotas;
 });
 
 // Modo alta y modo edición comparten el mismo modal: sin venta se arranca
@@ -5097,7 +5217,8 @@ async function abrirFichaVenta(id) {
   // devolución quedaría apuntando a renglones que ya no existen. El
   // backend ya lo rechaza, esto es para no invitar a un click que va a
   // fallar.
-  document.getElementById("btnEditarVenta").hidden = venta.facturada || venta.tiene_devolucion;
+  // Una en cuotas tampoco (hist. §216): su cronograma sale de los renglones.
+  document.getElementById("btnEditarVenta").hidden = venta.facturada || venta.tiene_devolucion || venta.cuotas.length > 0;
   // Un saldo de antes de Nexo no tiene renglones: no hay ticket que imprimir.
   document.getElementById("btnTicketVenta").hidden = venta.saldo_inicial != null;
   // En el celular la fila de la lista no muestra "Cobrar": se cobra desde acá
@@ -5136,7 +5257,9 @@ async function abrirFichaVenta(id) {
     .map(
       (i) => `
         <tr>
-          <td data-label="Producto">${esc(i.producto)}${i.oferta ? `<span class="oferta-etiqueta">${esc(i.oferta)}</span>` : ""}</td>
+          <td data-label="Producto">${esc(i.producto)}${i.oferta ? `<span class="oferta-etiqueta">${esc(i.oferta)}</span>` : ""}${
+            i.plan_cuotas ? `<span class="oferta-etiqueta">${esc(formatear("En {0} cuotas", i.plan_cuotas))}</span>` : ""
+          }</td>
           <td data-label="Cantidad" class="align-right mono">${numero(i.cantidad)}</td>
           <td data-label="Precio unit." class="align-right mono">${
             i.oferta_id ? `<s class="precio-tachado">${money(i.precio_lista)}</s> ` : ""
@@ -5148,6 +5271,27 @@ async function abrirFichaVenta(id) {
           <td data-label="Ganancia" class="align-right mono col-admin">${money(i.ganancia)}</td>
         </tr>`
     )
+    .join("");
+
+  // Sus cuotas (hist. §216): el panel solo si es en cuotas.
+  document.getElementById("fichaVentaCuotasPanel").hidden = venta.cuotas.length === 0;
+  const hoy = hoyISO();
+  document.getElementById("fichaVentaCuotas").innerHTML = venta.cuotas
+    .map((c) => {
+      const estado =
+        c.pendiente <= 0.005
+          ? badge("status-cobrado", "Pagada").html
+          : c.vencimiento < hoy
+            ? badge("status-vencido", "Vencida").html
+            : "";
+      return `
+        <tr>
+          <td data-label="Cuota">${esc(formatear("{0} de {1}", c.numero, venta.cuotas.length))} ${estado}</td>
+          <td data-label="Vence">${esc(fechaAR(c.vencimiento))}</td>
+          <td data-label="Importe" class="align-right mono">${money(c.importe)}</td>
+          <td data-label="Falta" class="align-right mono">${c.pendiente > 0.005 ? money(c.pendiente) : "—"}</td>
+        </tr>`;
+    })
     .join("");
 
   // Lo que se usó al venderla (hist. §126): el panel solo si hubo algo.

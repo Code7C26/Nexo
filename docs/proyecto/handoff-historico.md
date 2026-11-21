@@ -15310,3 +15310,40 @@ Pedidos del usuario, con capturas de la cuenta de Morro.
   - Esquema: `organizaciones.logo_encuadre` (TEXT nulo, JSON `{zoom, x, y}`; aditivo). `PUT /api/negocio/marca` acepta `encuadre` (zoom 1–4, corrimiento ±150 %; entero = null); `GET /api/negocio` y `GET /api/negocios` lo devuelven.
   - Arreglado: en la página, la vista previa del logo se salía del recuadro (el alto en % dentro de la grilla no tenía de qué tomarse).
 - Tests: un caso nuevo en `cuota-unica` (cobrar la cuota con el débito) y otro en `marca` (el encuadre). `npm test`: 511 de 511. `verificar-migracion`: 24 de 24. Probado en el navegador (compu y celular). Manual (castellano e inglés) al día.
+
+## §216 — 21 de noviembre de 2026: vender en cuotas con financiación propia
+
+Pedido del usuario: "mi profe a veces vende conjuntos y ofrece un pago de
+100.000, dos pagos de 65.000 o tres pagos de 50.000 … que si se vende, queda en
+la cuenta corriente del cliente". Competencia en
+`docs/investigaciones/investigacion-cuotas-propias.md` (Odoo: una factura con
+un vencimiento por cuota; Dux: planes con recargo en la forma de pago).
+
+- **El producto** tiene **Precio en cuotas** (formulario de Productos, solo
+  admin): filas "N pagos de $X" (2 a 36), con el total y cuánto más que de
+  contado. El de un pago es el precio de siempre. `PUT /api/productos/:id/planes-pago`
+  los reemplaza enteros (auditado); `GET /api/productos` y `/api/pos/catalogo`
+  traen `planes_pago`.
+- **Al vender** (Ventas › Nueva venta y el mostrador) cada renglón con planes
+  ofrece **1 pago** o un plan. El servidor pone el precio del plan
+  (`preciosDeLosPlanes`: N × cuota, sin oferta ni descuento), exige un cliente
+  que no sea "Consumidor final" y arma el cronograma (`crearCuotasDeVenta`):
+  la cuota k vence k − 1 meses después de la venta y lleva la cuota k de cada
+  renglón en cuotas; la primera, además, lo que no va en cuotas. La venta queda
+  con `condicion_pago = 'cuotas'` y vence con la última. En el mostrador se
+  propone cobrar la primera cuota; un plan saca el descuento a mano.
+- **La deuda**: `saldosPorOperacion` reparte lo que falta de la venta entre
+  sus cuotas, de la más vieja a la más nueva (`pendientePorCuota`), y da una
+  fila por cuota pendiente con su vencimiento. Así Cuentas corrientes ("cuota 2
+  de 3"), el Resumen y las consultas solo cuentan como vencido lo que ya venció.
+  La ficha de la venta muestra el panel **Cuotas** (vence, importe, falta).
+- Una venta en cuotas **no se edita** (se anula y se carga de nuevo), como una
+  con devoluciones: su cronograma sale de los renglones.
+- **Esquema (aditivo):** tablas `producto_planes_pago` y `venta_cuotas`, columna
+  `venta_items.plan_cuotas`. `verificar-migracion`: 24 de 24.
+- Test nuevo: `ventas-en-cuotas` (3 casos). `npm test`: 514 de 514. Probado en
+  el navegador: planes en el producto, alta de venta en 3 cuotas, ficha,
+  cuenta corriente y el mostrador en 2 cuotas cobrando la primera. Manual
+  (castellano e inglés): "vender-en-cuotas".
+- **No se hizo:** recargo por mora, cuotas que no sean mensuales, planes por
+  variante, y editar el cronograma a mano.

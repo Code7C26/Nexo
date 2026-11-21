@@ -498,6 +498,8 @@ export const RUTAS_PERMISOS = {
   'GET /api/carga-inicial/stock': 'admin',
   'POST /api/carga-inicial/stock': 'admin',
   'POST /api/productos/:id/costo': 'admin',
+  // Los planes en cuotas del producto (hist. §216).
+  'PUT /api/productos/:id/planes-pago': 'admin',
   'GET /api/carga-inicial/saldos': 'admin',
   'POST /api/carga-inicial/saldos': 'admin',
   'GET /api/carga-inicial/ventas': 'admin',

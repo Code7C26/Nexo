@@ -11753,3 +11753,35 @@ button.grilla-agenda-clase { cursor: pointer; }
 .gimnasio-titulo { margin-top: var(--sp-4); }
 /* Lo cobrado, en verde (en "Para mirar hoy" la barra es lo vencido, en rojo). */
 .medidor-cobrado span { background: var(--accent-ok); }
+
+/* ---------- Ventas en cuotas (hist. §216) ---------- */
+
+/* Los planes del producto: "3 pagos de $50.000", con el total al lado. */
+.planes-pago { display: grid; gap: var(--sp-2); margin-bottom: var(--sp-2); }
+/* El total va abajo: el formulario es angosto y no entra en la misma línea. */
+.plan-pago-fila {
+  display: grid;
+  grid-template-columns: 72px auto minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: var(--sp-2);
+  row-gap: 2px;
+}
+.plan-pago-de { font-size: var(--txt-sm); color: var(--ink-muted); white-space: nowrap; }
+.plan-pago-total { grid-column: 1 / -1; grid-row: 2; font-size: var(--txt-xs); color: var(--ink-muted); }
+.plan-pago-total:empty { display: none; }
+
+/* En el ticket del mostrador: cómo paga cada renglón con planes. */
+.pos-renglon-plan {
+  margin-top: 4px;
+  max-width: 100%;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-sm);
+  padding: 4px 8px;
+  font: inherit;
+  font-size: var(--txt-xs);
+  color: var(--ink);
+  background: var(--surface);
+}
+
+/* En la cuenta corriente: de qué cuota es cada renglón. */
+.cc-cuota { font-size: var(--txt-xs); color: var(--ink-muted); white-space: nowrap; }

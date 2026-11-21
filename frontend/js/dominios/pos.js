@@ -27,6 +27,7 @@ import {
 import { limpiarError, limpiarErrores, marcarError } from "../core/campos.js";
 import { armarHojaFactura, armarReciboPago, cargarQr, imprimirComprobante, imprimirTicket, imprimirTicketDeVenta } from "../core/comprobante.js";
 import { alEntrarEnVista, recargar } from "../core/registro.js";
+import { formatear, t } from "../core/idioma.js";
 
 const CONSUMIDOR_FINAL = "Consumidor final";
 const MAX_RESULTADOS = 40;
@@ -662,7 +663,12 @@ function leerCarrito() {
   }
   carrito = (Array.isArray(guardado) ? guardado : [])
     .filter((r) => porClave.has(r.clave) && hayStock(porClave.get(r.clave)) && r.cantidad > 0)
-    .map((r) => ({ clave: r.clave, cantidad: Math.min(r.cantidad, tope(porClave.get(r.clave))) }));
+    .map((r) => ({
+      clave: r.clave,
+      cantidad: Math.min(r.cantidad, tope(porClave.get(r.clave))),
+      // El plan en cuotas (hist. §216), si el producto lo sigue teniendo.
+      ...(planDelRenglon({ clave: r.clave, plan: r.plan }) ? { plan: r.plan } : {})
+    }));
   try {
     descuento = carrito.length ? JSON.parse(leerGuardado(sessionStorage, claveDescuento()) ?? "null") : null;
   } catch {
@@ -673,10 +679,29 @@ function leerCarrito() {
   document.getElementById("posDescuentoValor").value = descuento?.valor ?? "";
 }
 
+// El plan en cuotas elegido para un renglón (hist. §216), o null.
+function planDelRenglon(r) {
+  if (!r.plan) return null;
+  return porClave.get(r.clave)?.planes_pago?.find((p) => p.cuotas === r.plan) ?? null;
+}
+
+// Lo que se paga hoy: la primera cuota de lo que va en cuotas, más lo demás.
+const primeraCuota = () =>
+  redondear(
+    carrito.reduce((acc, r) => {
+      const plan = planDelRenglon(r);
+      return acc + r.cantidad * (plan ? plan.importe_cuota : precioDelRenglon(r).precio);
+    }, 0) - montoDescuento()
+  );
+const hayCuotas = () => carrito.some((r) => planDelRenglon(r));
+
 // El precio de un renglón con su cantidad: el de la oferta que gana hoy, o el
-// de lista. promo es la promoción por cantidad que se gana llevando más.
+// de lista; en cuotas, el del plan. promo es la promoción por cantidad que se
+// gana llevando más.
 function precioDelRenglon(r) {
   const item = porClave.get(r.clave);
+  const plan = planDelRenglon(r);
+  if (plan) return { precio: redondear(plan.cuotas * plan.importe_cuota), oferta: null, promo: null, plan };
   const renglon = {
     producto_id: item.producto_id,
     categoria_id: item.categoria_id,
@@ -692,7 +717,14 @@ function precioDelRenglon(r) {
 const itemsDelCarrito = () =>
   carrito.map((r) => {
     const item = porClave.get(r.clave);
-    return { producto_id: item.producto_id, variante_id: item.variante_id, cantidad: r.cantidad, precio_unitario: precioDelRenglon(r).precio };
+    const plan = planDelRenglon(r);
+    return {
+      producto_id: item.producto_id,
+      variante_id: item.variante_id,
+      cantidad: r.cantidad,
+      precio_unitario: precioDelRenglon(r).precio,
+      ...(plan ? { plan_cuotas: plan.cuotas } : {})
+    };
   });
 
 const subtotalCarrito = () => redondear(carrito.reduce((acc, r) => acc + r.cantidad * precioDelRenglon(r).precio, 0));
@@ -720,8 +752,18 @@ function renderTicket() {
     posRenglones.innerHTML = carrito
       .map((r) => {
         const item = porClave.get(r.clave);
-        const { precio, oferta, promo } = precioDelRenglon(r);
+        const { precio, oferta, promo, plan } = precioDelRenglon(r);
         const nuevo = r.clave === ultimaAgregada ? " pos-renglon-nuevo" : "";
+        // En cuotas (hist. §216): si el producto tiene planes, se elige acá.
+        const planes = item.planes_pago ?? [];
+        const comoPaga = planes.length
+          ? `<select class="pos-renglon-plan" aria-label="Cómo paga ${esc(item.nombre)}">
+              <option value="">${esc(t("1 pago"))}</option>
+              ${planes
+                .map((p) => `<option value="${esc(p.cuotas)}" ${plan?.cuotas === p.cuotas ? "selected" : ""}>${esc(formatear("{0} cuotas de {1}", p.cuotas, money(p.importe_cuota)))}</option>`)
+                .join("")}
+            </select>`
+          : "";
         const tachado = oferta ? `<s class="precio-tachado">${money(item.precio)}</s> ` : "";
         const etiqueta = oferta ? `<span class="oferta-etiqueta">${esc(oferta.nombre)}</span>` : "";
         // La promoción por cantidad, antes de llegar a ella.
@@ -734,6 +776,7 @@ function renderTicket() {
               <span class="pos-renglon-nombre">${esc(item.nombre)}${etiqueta}</span>
               <span class="pos-renglon-precio mono">${tachado}${money(precio)} ${esc(porUnidad(item))}</span>
               ${proxima}
+              ${comoPaga}
             </div>
             <div class="pos-cantidad">
               <button type="button" class="pos-cantidad-btn" data-accion="menos" aria-label="Menos">${icono("minus")}</button>
@@ -835,6 +878,21 @@ posRenglones.addEventListener("click", (e) => {
 });
 
 posRenglones.addEventListener("change", (e) => {
+  const plan = e.target.closest(".pos-renglon-plan");
+  if (plan) {
+    const renglon = carrito.find((r) => r.clave === plan.closest(".pos-renglon").dataset.clave);
+    if (!renglon) return;
+    if (plan.value) renglon.plan = Number(plan.value);
+    else delete renglon.plan;
+    // El descuento a mano no va con algo en cuotas: el precio es el del plan.
+    if (renglon.plan && descuento) {
+      descuento = null;
+      editandoDescuento = false;
+      avisar(t("Con algo en cuotas no va el descuento a mano: lo saqué."), "atencion");
+    }
+    cambioElCarrito();
+    return;
+  }
   const input = e.target.closest(".pos-cantidad-input");
   if (input) fijarCantidad(input.closest(".pos-renglon").dataset.clave, Number(input.value));
 });
@@ -905,14 +963,22 @@ function abrirCobro() {
     avisar("No hay medios de cobro activos. El administrador los arma en Configuración → Medios de cobro.", "atencion");
     return;
   }
+  // En cuotas (hist. §216), lo que falta queda en la cuenta del cliente: tiene
+  // que haber uno. Se propone cobrar la primera cuota.
+  if (hayCuotas() && !cliente) {
+    avisar(t("Para vender en cuotas, elegí el cliente: lo que falta pagar queda en su cuenta corriente."), "atencion");
+    posCliente.focus();
+    return;
+  }
   const total = totalCarrito();
+  const hoyPaga = hayCuotas() ? primeraCuota() : total;
   // Arranca en efectivo: es lo que más se usa, y un toque lo cambia.
   const inicial = medioEfectivo() ?? medios[0];
   cobro = {
     total,
     cliente,
     facturar: sePuedeFacturar() && leerGuardado(localStorage, CLAVE_FACTURAR) === "1",
-    filas: [{ medio_id: inicial.id, cuotas: cuotasIniciales(inicial), cuenta_id: cuentaInicial(inicial), importe: total }]
+    filas: [{ medio_id: inicial.id, cuotas: cuotasIniciales(inicial), cuenta_id: cuentaInicial(inicial), importe: hoyPaga }]
   };
 
   document.getElementById("formPosCobro").hidden = false;

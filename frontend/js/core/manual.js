@@ -366,7 +366,27 @@ const SECCIONES_ES = [
       "En la ficha de la venta ves **Adónde fue la plata**: la mercadería, cada gasto de la venta (la comisión, el envío, las cuotas), el IVA y lo que te quedó. Si pagaste el envío, sumalo con **Sumar el envío**.",
       "También la podés cargar desde el asistente: \"vendí 2 buzos a Sole a 28 mil cada uno, pagó en efectivo\"."
     ],
-    ver: ["cobrar", "anular-venta", "facturar", "punto-de-venta"]
+    ver: ["cobrar", "vender-en-cuotas", "anular-venta", "facturar", "punto-de-venta"]
+  },
+  {
+    id: "vender-en-cuotas",
+    grupo: "Vender",
+    titulo: "Vender en cuotas (sin tarjeta)",
+    pantalla: ["#/productos", "Productos"],
+    preguntas: ["cómo vendo en cuotas", "cómo hago un plan de pagos", "cómo cobro en cuotas sin tarjeta", "cómo pongo un precio en cuotas", "un pago de 100 mil o tres de 50 mil", "cómo financio una venta"],
+    palabras: ["cuotas", "cuota", "plan", "pagos", "financiar", "financiacion", "pagar", "mensual", "cuenta corriente", "fiado"],
+    bloques: [
+      "Si vendés algo en cuotas con tu propia financiación (un pago de $100.000, dos de $65.000 o tres de $50.000), cada producto puede tener sus planes. Lo que falta pagar queda en la cuenta corriente del cliente, una cuota por mes.",
+      { pasos: [
+        "En **Productos**, editá el producto y en **Precio en cuotas** tocá **Sumar un plan**: cuántas cuotas y de cuánto cada una. Nexo te muestra el total y cuánto más es que de contado.",
+        "Al venderlo (en **Ventas › Nueva venta** o en el mostrador), elegí cómo paga: **1 pago** o uno de los planes. El precio es el del plan.",
+        "Elegí el cliente: sin cliente no se puede vender en cuotas.",
+        "Cobrá lo que paga hoy: el mostrador te propone la primera cuota."
+      ] },
+      "La primera cuota vence el día de la venta y las demás cada mes. En la ficha de la venta ves cada cuota con su vencimiento y cuánto falta; en **Cuentas corrientes**, cada cuota aparece con su número (cuota 2 de 3) y solo cuenta como vencida la que ya venció.",
+      { nota: "Una venta en cuotas no se edita: si hay que cambiarla, se anula y se carga de nuevo. No lleva descuento a mano: el precio es el del plan." }
+    ],
+    ver: ["registrar-venta", "cobrar", "punto-de-venta"]
   },
   {
     id: "cobrar",
