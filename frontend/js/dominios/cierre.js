@@ -180,4 +180,15 @@ for (const boton of botonesModo) {
 inputDia.addEventListener("change", cargar);
 inputMes.addEventListener("change", cargar);
 
-alEntrarEnVista("cierre", () => cargar());
+// #/cierre/AAAA-MM-DD abre el cierre de ese día (los avisos de "Para revisar"
+// del Resumen, hist. §213).
+alEntrarEnVista("cierre", (subruta) => {
+  if (/^\d{4}-\d{2}-\d{2}$/.test(subruta ?? "")) {
+    modo = "dia";
+    for (const b of botonesModo) b.setAttribute("aria-pressed", String(b.dataset.modo === "dia"));
+    inputDia.closest("label").hidden = false;
+    inputMes.closest("label").hidden = true;
+    inputDia.value = subruta;
+  }
+  cargar();
+});

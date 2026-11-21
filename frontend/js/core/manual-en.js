@@ -490,7 +490,7 @@ export const SECCIONES_EN = {
       "On the **Dashboard** you choose the period (today, 7 days, this month, the year or the dates you want) and you see:",
       { lista: [
         "what you sold, what it cost you, the profit, the expenses and the result, compared with the previous period or the same one last year;",
-        "what to look at today: what you're owed, what you owe and what to restock;",
+        "what to look at today: what you're owed, what you owe, what to restock and, under **To review**, what looked off this week (invoices without a CAE, cash shortfalls, products you bought at a higher cost without changing their price), each with a button to go fix it;",
         "when you sell, by day of the week and by hour;",
         "how the result is going month by month;",
         "what sells, by category, and the top customers;",

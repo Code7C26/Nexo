@@ -16225,6 +16225,128 @@ function deudaDelTablero(saldos, hoy) {
   };
 }
 
+// "Para revisar" (hist. §213, punto 7 de investigacion-praxia.md): lo que
+// salió raro y alguien tiene que mirar. No depende del período del Resumen:
+// mira la última semana. Van los datos de cada aviso; la frase y adónde se va
+// a arreglarlo las arma el Resumen (dominios/tablero.js).
+// - sin_cae / rechazada: facturas que ARCA no autorizó;
+// - faltante: $15.000 o más de faltante en los cierres de una caja en un día
+//   (el umbral de Praxia);
+// - apertura: una caja que abrió con otra plata que la que se dejó;
+// - abierta: una caja abierta desde otro día (nadie la cerró);
+// - costo: "el costo subió y el precio no": lo comprado en la última semana
+//   sale 5 % o más caro que en las cuatro anteriores y nadie tocó el precio
+//   desde esa compra (la regla de Praxia);
+// - mercado_pago: pagos que no entraron solos y nadie miró todavía.
+const FALTANTE_GRANDE = 15000;
+const SUBA_DE_COSTO = 0.05;
+
+const SQL_REVISAR_FACTURAS = db.prepare(
+  `SELECT id, arca_estado FROM facturas
+    WHERE organizacion_id = ? AND arca_estado IN ('pendiente', 'rechazado')
+    ORDER BY id`
+);
+const SQL_REVISAR_CIERRES = db.prepare(
+  `SELECT cuentas_tesoreria.nombre AS caja, fecha_local(turnos_caja.cerrado_en) AS fecha,
+          SUM(turnos_caja.contado_cierre - turnos_caja.esperado_cierre) AS diferencia
+     FROM turnos_caja
+     JOIN cuentas_tesoreria ON cuentas_tesoreria.id = turnos_caja.cuenta_tesoreria_id
+    WHERE turnos_caja.organizacion_id = ? AND turnos_caja.estado = 'cerrado'
+      AND fecha_local(turnos_caja.cerrado_en) >= ?
+    GROUP BY turnos_caja.cuenta_tesoreria_id, cuentas_tesoreria.nombre, fecha_local(turnos_caja.cerrado_en)
+   HAVING SUM(turnos_caja.contado_cierre - turnos_caja.esperado_cierre) <= ?
+    ORDER BY fecha DESC`
+);
+const SQL_REVISAR_APERTURAS = db.prepare(
+  `SELECT cuentas_tesoreria.nombre AS caja, fecha_local(turnos_caja.abierto_en) AS fecha,
+          turnos_caja.contado_apertura - turnos_caja.esperado_apertura AS diferencia
+     FROM turnos_caja
+     JOIN cuentas_tesoreria ON cuentas_tesoreria.id = turnos_caja.cuenta_tesoreria_id
+    WHERE turnos_caja.organizacion_id = ? AND fecha_local(turnos_caja.abierto_en) >= ?
+      AND ABS(turnos_caja.contado_apertura - turnos_caja.esperado_apertura) >= 1
+    ORDER BY turnos_caja.abierto_en DESC`
+);
+const SQL_REVISAR_ABIERTAS = db.prepare(
+  `SELECT cuentas_tesoreria.nombre AS caja, fecha_local(turnos_caja.abierto_en) AS fecha
+     FROM turnos_caja
+     JOIN cuentas_tesoreria ON cuentas_tesoreria.id = turnos_caja.cuenta_tesoreria_id
+    WHERE turnos_caja.organizacion_id = ? AND turnos_caja.estado = 'abierto'
+      AND fecha_local(turnos_caja.abierto_en) < ?
+    ORDER BY turnos_caja.abierto_en`
+);
+// El costo de cada producto en las compras de la última semana y en las cuatro
+// anteriores, ponderado por la cantidad, y desde cuándo vale el nuevo.
+const SQL_REVISAR_COSTOS = db.prepare(
+  `SELECT compra_items.producto_id AS id, productos.nombre,
+          SUM(CASE WHEN compras.fecha >= :reciente THEN compra_items.cantidad * compra_items.costo_real_unitario END)
+            / SUM(CASE WHEN compras.fecha >= :reciente THEN compra_items.cantidad END) AS costo_nuevo,
+          SUM(CASE WHEN compras.fecha < :reciente THEN compra_items.cantidad * compra_items.costo_real_unitario END)
+            / SUM(CASE WHEN compras.fecha < :reciente THEN compra_items.cantidad END) AS costo_antes,
+          MIN(CASE WHEN compras.fecha >= :reciente THEN compras.fecha END) AS desde
+     FROM compra_items
+     JOIN compras ON compras.id = compra_items.compra_id
+     JOIN productos ON productos.id = compra_items.producto_id
+    WHERE compras.organizacion_id = :organizacion AND compras.estado = 'activa'
+      AND compras.fecha >= :inicio AND compras.fecha <= :hoy
+      AND productos.activo = 1 AND productos.precio_venta > 0
+      AND compra_items.cantidad > 0 AND compra_items.costo_real_unitario > 0
+    GROUP BY compra_items.producto_id, productos.nombre`
+);
+// Si se tocó el precio del producto (o de una de sus variantes) desde esa compra.
+const SQL_PRECIO_TOCADO = db.prepare(
+  `SELECT 1 FROM auditoria
+    WHERE entidad = 'producto' AND entidad_id = ? AND organizacion_id = ?
+      AND accion = 'editar' AND valor_nuevo LIKE '%"precio_venta"%'
+      AND fecha_local(fecha) >= ?
+    LIMIT 1`
+);
+const SQL_REVISAR_PAGOS_MP = db.prepare(
+  `SELECT COUNT(*) AS n FROM integracion_pagos
+    WHERE organizacion_id = ? AND estado IN ('sin_asignar', 'devuelto', 'en_disputa') AND revisado_en IS NULL`
+);
+
+function paraRevisar(organizacionId, hoy) {
+  const semana = sumarDias(hoy, -6);
+  const avisos = [];
+
+  const facturas = SQL_REVISAR_FACTURAS.all(organizacionId);
+  for (const [clave, estado] of [['sin_cae', 'pendiente'], ['rechazada', 'rechazado']]) {
+    const ids = facturas.filter((f) => f.arca_estado === estado).map((f) => f.id);
+    if (ids.length) avisos.push({ clave, cantidad: ids.length, id: ids.length === 1 ? ids[0] : null });
+  }
+  for (const c of SQL_REVISAR_CIERRES.all(organizacionId, semana, -FALTANTE_GRANDE)) {
+    avisos.push({ clave: 'faltante', caja: c.caja, fecha: c.fecha, importe: redondear2(-c.diferencia) });
+  }
+  for (const a of SQL_REVISAR_APERTURAS.all(organizacionId, semana)) {
+    avisos.push({ clave: 'apertura', caja: a.caja, fecha: a.fecha, importe: redondear2(a.diferencia) });
+  }
+  for (const a of SQL_REVISAR_ABIERTAS.all(organizacionId, hoy)) {
+    avisos.push({ clave: 'abierta', caja: a.caja, fecha: a.fecha });
+  }
+
+  const costos = SQL_REVISAR_COSTOS.all({ reciente: semana, organizacion: organizacionId, inicio: sumarDias(hoy, -34), hoy })
+    .filter(
+      (p) =>
+        p.costo_antes > 0 &&
+        p.costo_nuevo >= p.costo_antes * (1 + SUBA_DE_COSTO) &&
+        !SQL_PRECIO_TOCADO.get(p.id, organizacionId, p.desde)
+    )
+    .map((p) => ({
+      clave: 'costo',
+      id: p.id,
+      nombre: p.nombre,
+      costo_antes: redondear2(p.costo_antes),
+      costo_nuevo: redondear2(p.costo_nuevo),
+      suba: Math.round((p.costo_nuevo / p.costo_antes - 1) * 1000) / 10
+    }))
+    .sort((a, b) => b.suba - a.suba);
+  avisos.push(...costos);
+
+  const pagos = SQL_REVISAR_PAGOS_MP.get(organizacionId).n;
+  if (pagos) avisos.push({ clave: 'mercado_pago', cantidad: pagos });
+  return avisos;
+}
+
 app.get('/api/reportes/tablero', soloAdmin, (req, res) => {
   const organizacionId = req.usuario.organizacion_id;
   const hoy = fechaDeHoy();
@@ -16293,7 +16415,8 @@ app.get('/api/reportes/tablero', soloAdmin, (req, res) => {
       por_pagar: porPagar,
       sin_stock: stock.filter((p) => p.estado_stock === 'sin_stock').length,
       stock_bajo: stock.filter((p) => p.estado_stock === 'bajo').length
-    }
+    },
+    revisar: paraRevisar(organizacionId, hoy)
   });
 });
 

@@ -9392,6 +9392,7 @@ registrar("abrirFicha:cliente", abrirFichaCliente);
 registrar("abrirFicha:proveedor", abrirFichaProveedor);
 registrar("abrirFicha:venta", abrirFichaVenta);
 registrar("abrirFicha:producto", abrirFichaProducto);
+registrar("abrirFicha:factura", abrirFichaFactura);
 registrar("abrirFicha:presupuesto", abrirFichaPresupuesto);
 registrar("cargar:presupuestos", cargarPresupuestos);
 // Las altas que salen de una consulta (dominios/crm.js, hist. §90).

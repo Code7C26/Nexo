@@ -10687,6 +10687,23 @@ a.asistente-guia-whatsapp:hover { border-color: var(--line-strong); }
 }
 .pendiente-medidor span { display: block; height: 100%; width: 0; background: var(--accent-danger); border-radius: inherit; }
 
+/* Para revisar (hist. §213): un renglón por aviso, con su botón. */
+.revisar { margin-top: var(--sp-4); }
+.revisar-titulo { margin: 0 0 var(--sp-2); font-size: var(--txt-sm); font-weight: 650; }
+.revisar-lista { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--line); }
+.revisar-aviso {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-3) 0;
+  border-bottom: 1px solid var(--line);
+}
+.revisar-aviso > .ico { flex: none; width: 18px; height: 18px; color: var(--accent-warn); }
+.revisar-texto { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.revisar-frase { font-size: var(--txt-sm); font-weight: 600; overflow-wrap: anywhere; }
+.revisar-detalle { font-size: var(--txt-xs); color: var(--ink-muted); }
+.revisar-aviso > .btn { flex: none; }
+
 /* ---------- Personalizar: una casilla y dos flechas por pieza ---------- */
 
 .tablero-lista {

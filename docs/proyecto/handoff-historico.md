@@ -15271,3 +15271,17 @@ de cuenta corriente de cada cliente en la misma planilla.
 - **Rutas:** `PUT /api/negocio/marca` (admin), `GET /api/negocios/:id/logo` (quien trabaja en ese negocio; también la caja), `PUT/GET /api/auth/foto`. Se valida la firma de los bytes (PNG/JPEG/WebP), máx. 600 KB; dirección con `?v=` y caché inmutable.
 - Test nuevo: `marca`. `npm test`: 501 de 501. Probado en el navegador (oscuro, claro, celular sin scroll horizontal, impreso, entrada, foto).
 - **Falta:** probarlo con una impresora térmica real; si el logo es blanco sobre transparente, en la placa blanca no se ve (se podría ofrecer el fondo de la placa).
+
+## §213 — 21 de noviembre de 2026: "Para revisar" en el Resumen (punto 9, primera parte)
+
+- **Competencia:** Praxia (punto 7 de `docs/investigaciones/investigacion-praxia.md`): avisos en el tablero con un botón a donde se arreglan; ventas sin CAE, faltantes de caja de más de $15.000 por día, turnos que arrancaron con otro vuelto, "el costo subió y los precios no" (la última semana contra las cuatro anteriores, 5 % o más, sin precio tocado).
+- **Dónde:** dentro de la pieza "Para mirar hoy" del Resumen, abajo de las tres cifras; sin avisos no se ve. Mira la última semana, no el período elegido.
+- **Avisos** (`paraRevisar` en `server.js`, campo `revisar` de `GET /api/reportes/tablero`; el servidor manda datos y `dominios/tablero.js` arma la frase, traducible):
+  - facturas pendientes de ARCA (sin CAE) y rechazadas → la ficha si es una, Facturas si son varias (`abrirFicha:factura` registrado en `app.js`);
+  - faltante del día en una caja de $15.000 o más (suma de los cierres) y una caja que abrió con otra plata que la del último cierre (≥ $1) → el Cierre de ese día (`#/cierre/AAAA-MM-DD`, nuevo en `cierre.js`);
+  - una caja abierta desde otro día → el punto de venta;
+  - "el costo subió y el precio no": costo real ponderado de las compras activas de los últimos 7 días contra los 28 anteriores, +5 % o más, sin un `editar` de `precio_venta` en la auditoría del producto (o de una variante) desde la primera compra cara → la ficha del producto. Se ven 5, y "Y N productos más";
+  - pagos de Mercado Pago sin asignar, devueltos o en disputa sin revisar → Configuración › Mercado Pago.
+- Sin esquema nuevo. Cambiar un precio solo en una lista de precios (no el general) no cuenta como "tocado": no se audita aparte.
+- No se hizo "cajas que no abrieron" de Praxia: un día de cierre del local la daría por falla.
+- Test nuevo: `revisar` (3 casos). `npm test`: 504 de 504. Probado en el navegador (compu y celular, los dos botones). Manual (castellano e inglés) actualizado.

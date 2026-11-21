@@ -11,7 +11,7 @@
 
 - Al cerrar una etapa, se hacen tres cosas:
   - su relato completo se agrega al final de `docs/proyecto/handoff-historico.md` con el
-    siguiente número (hoy el último es §212);
+    siguiente número (hoy el último es §213);
   - acá se actualizan "Estado actual" y "Qué sigue";
   - si cambió alguna decisión vigente, se actualiza también esa lista.
 - Nunca apilar secciones "Última etapa" en este archivo: así fue como llegó a
@@ -81,13 +81,20 @@ Lector propio sin librerías (`core/planilla.js`, compartido con el servidor) y
 `POST /api/importar/:tipo`. Test nuevo: `importar`. `npm test`: 498 de 498.
 **Falta:** variantes nuevas desde la planilla y precios por lista.
 
-**20 de noviembre, hist. §212: logo y colores del negocio y la foto de perfil (punto 8).**
+**20 de noviembre, hist. §212: logo y colores del negocio y la foto de perfil (punto 8, publicado, PR #112).**
 Configuración › Logo y colores: el logo va en el menú, la factura, el ticket
 (en grises) y la pantalla de entrada; el color reemplaza al azul de Nexo.
 Foto de perfil en Mi cuenta. Test nuevo: `marca`. `npm test`: 501 de 501.
 
-**Lo que sigue: el punto 9** (el resto de Praxia), sin empezar. Antes, ver
-cómo lo hace la competencia.
+**21 de noviembre, hist. §213: "Para revisar" en el Resumen (punto 9, primera parte).**
+Abajo de "Para mirar hoy": facturas sin CAE o rechazadas, faltantes de caja de
+$15.000 o más en un día, cajas que abrieron con otra plata o siguen abiertas
+desde otro día, "el costo subió y el precio no" y pagos de Mercado Pago para
+revisar, cada uno con su botón. Sin esquema nuevo. Test nuevo: `revisar`.
+`npm test`: 504 de 504.
+
+**Lo que sigue: el resto del punto 9**: gastos fijos que se repiten, mensajes
+de WhatsApp armados y "quiénes deben", y puntos y premios.
 
 **19 de noviembre, hist. §205 (publicado, PR #106):** en Planes se elimina un plan que nunca hizo
 nadie (con su servicio del catálogo); el que algún socio hizo solo se pausa.
@@ -2370,8 +2377,8 @@ datos reales; la demo no la necesita.
    pantalla de entrada del gimnasio; la foto de perfil, en el mismo paso.
 9. **El resto de Praxia** (puntos 5 a 9): puntos y premios; mensajes de
    WhatsApp armados por situación y "quiénes deben", con el recordatorio
-   listo; "Para revisar" en el Resumen (ventas sin CAE, faltantes de caja, "el
-   costo subió y los precios no"); gastos fijos que se repiten.
+   listo; ~~"Para revisar" en el Resumen~~ (hecho, hist. §213); gastos fijos
+   que se repiten.
 10. Si da: **el resumen del día** por WhatsApp o mail, y **vender sin
     conexión** (de Praxia; detalle en "Para más adelante": choca con §39 y
     sin internet no hay CAE).

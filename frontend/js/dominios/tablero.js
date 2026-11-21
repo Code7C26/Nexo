@@ -24,6 +24,7 @@ import { icono } from "../core/iconos.js";
 import { moduloActivo, negocio } from "../core/negocio.js";
 import { rangoDePeriodo } from "../core/periodos.js";
 import { invocar } from "../core/registro.js";
+import { mostrarVista } from "../core/router.js";
 import { avisar } from "../core/ui.js";
 import { logoDeCanal } from "../core/canales.js";
 import { LOCALE, formatear } from "../core/idioma.js";
@@ -37,7 +38,7 @@ const PIEZAS = {
   cobros: { nombre: "Dónde entró la plata", descripcion: "Lo cobrado en cada cuenta: la caja, el banco, Mercado Pago." },
   ventas: { nombre: "Qué se vende", descripcion: "Cuántas ventas, ticket promedio, unidades y lo cobrado." },
   cuando: { nombre: "Cuándo se vende", descripcion: "Por día de la semana y por hora." },
-  pendiente: { nombre: "Para mirar hoy", descripcion: "Lo que te deben, lo que debés y lo que hay que reponer." },
+  pendiente: { nombre: "Para mirar hoy", descripcion: "Lo que te deben, lo que debés, lo que hay que reponer y lo que salió raro." },
   productos: { nombre: "Lo más vendido", descripcion: "En barras, por ventas o por ganancia." },
   categorias: { nombre: "Ventas por categoría", descripcion: "En barras, por ventas o por ganancia." },
   vendedores: { nombre: "Quién vendió", descripcion: "Ventas y ticket promedio de cada persona." },
@@ -137,6 +138,91 @@ function pintarPendiente({ por_cobrar: cobrar, por_pagar: pagar, sin_stock: sinS
   document.getElementById("pendienteStockDetalle").textContent =
     reponer === 0 ? "Todo con stock" : `${numero(sinStock)} sin stock y ${numero(bajo)} con poco`;
 }
+
+// Para revisar (hist. §213): el servidor manda los datos de cada aviso
+// (paraRevisar en server.js); acá se arma la frase y adónde lleva el botón.
+const COSTOS_A_LA_VISTA = 5;
+const cuantas = (n, una, varias) => (n === 1 ? una : formatear(varias, numero(n)));
+const AVISOS = {
+  sin_cae: (a) => ({
+    frase: cuantas(a.cantidad, "Una factura sin CAE: ARCA no contestó", "{0} facturas sin CAE: ARCA no contestó"),
+    detalle: "Reintentala desde la factura para que salga con su CAE.",
+    boton: a.id ? "Ver factura" : "Ver facturas",
+    ir: a.id ? { ficha: "factura", id: a.id } : { vista: "facturas" }
+  }),
+  rechazada: (a) => ({
+    frase: cuantas(a.cantidad, "Una factura que ARCA rechazó", "{0} facturas que ARCA rechazó"),
+    detalle: "Mirá qué dijo ARCA: corregila y emitila de nuevo, o descartala.",
+    boton: a.id ? "Ver factura" : "Ver facturas",
+    ir: a.id ? { ficha: "factura", id: a.id } : { vista: "facturas" }
+  }),
+  faltante: (a) => ({
+    frase: formatear("Faltaron {0} en {1}", money(a.importe), a.caja),
+    detalle: formatear("En el cierre del {0}: lo contado no llegó a lo que tenía que haber.", fechaCorta(a.fecha)),
+    boton: "Ver el cierre",
+    ir: { vista: "cierre", subruta: a.fecha }
+  }),
+  apertura: (a) => ({
+    frase: formatear(a.importe > 0 ? "{0} abrió con {1} de más" : "{0} abrió con {1} de menos", a.caja, money(Math.abs(a.importe))),
+    detalle: formatear("El {0}: lo que se contó al abrir no es lo que quedó en el último cierre.", fechaCorta(a.fecha)),
+    boton: "Ver el cierre",
+    ir: { vista: "cierre", subruta: a.fecha }
+  }),
+  abierta: (a) => ({
+    frase: formatear("{0} sigue abierta desde el {1}", a.caja, fechaCorta(a.fecha)),
+    detalle: "Cerrala con su arqueo para que cada día cuadre.",
+    boton: "Ir a la caja",
+    ir: { vista: "pos" }
+  }),
+  costo: (a) => ({
+    frase: formatear("{0}: el costo subió y el precio no", a.nombre),
+    detalle: formatear("Lo compraste a {0}, un {1} % más que antes ({2}).", money(a.costo_nuevo), numero(a.suba), money(a.costo_antes)),
+    boton: "Ver producto",
+    ir: { ficha: "producto", id: a.id }
+  }),
+  mercado_pago: (a) => ({
+    frase: cuantas(a.cantidad, "Un pago de Mercado Pago para revisar", "{0} pagos de Mercado Pago para revisar"),
+    detalle: "No entraron solos como cobro: decidí qué hacer con cada uno.",
+    boton: "Ver pagos",
+    ir: { vista: "configuracion", subruta: "mercado-pago" }
+  })
+};
+
+const cajaRevisar = document.getElementById("paraRevisar");
+const listaRevisar = document.getElementById("paraRevisarLista");
+let destinos = [];
+
+function pintarRevisar(avisos = []) {
+  const costos = avisos.filter((a) => a.clave === "costo");
+  const aLaVista = avisos.filter((a) => AVISOS[a.clave] && (a.clave !== "costo" || costos.indexOf(a) < COSTOS_A_LA_VISTA));
+  const items = aLaVista.map((a) => AVISOS[a.clave](a));
+  destinos = items.map((i) => i.ir);
+  const resto = costos.length - COSTOS_A_LA_VISTA;
+  listaRevisar.innerHTML =
+    items
+      .map(
+        (i, n) => `<li class="revisar-aviso">
+          ${icono("triangle-alert")}
+          <span class="revisar-texto"><span class="revisar-frase">${esc(i.frase)}</span><span class="revisar-detalle">${esc(i.detalle)}</span></span>
+          <button type="button" class="btn btn-secundario btn-chico" data-ir="${n}">${esc(i.boton)}</button>
+        </li>`
+      )
+      .join("") +
+    (resto > 0
+      ? `<li class="revisar-aviso"><span class="revisar-texto"><span class="revisar-detalle">${esc(
+          cuantas(resto, "Y un producto más con el costo en suba.", "Y {0} productos más con el costo en suba.")
+        )}</span></span></li>`
+      : "");
+  cajaRevisar.hidden = items.length === 0;
+}
+
+listaRevisar.addEventListener("click", (e) => {
+  const boton = e.target.closest("[data-ir]");
+  if (!boton) return;
+  const ir = destinos[Number(boton.dataset.ir)];
+  if (ir.ficha) invocar(`abrirFicha:${ir.ficha}`, ir.id);
+  else mostrarVista(ir.vista, { subruta: ir.subruta ?? null });
+});
 
 function pintarCuando({ dias, horas, sin_hora: sinHora }) {
   dibujarDias(dias, {
@@ -283,6 +369,7 @@ export async function cargarTablero(rango) {
     moduloActivo("socios") ? api(`/api/reportes/socios${consulta}`) : null
   ]);
   pintarPendiente(datos.pendiente);
+  pintarRevisar(datos.revisar);
   pintarCuando(datos);
   pintarCobros(datos.cobros);
   pintarVendedores(datos.vendedores);

@@ -978,7 +978,7 @@ const SECCIONES_ES = [
       "En **Resumen** elegís el período (hoy, 7 días, este mes, el año o las fechas que quieras) y ves:",
       { lista: [
         "lo que vendiste, lo que te costó eso, la ganancia, los gastos y el resultado, comparado con el período anterior o con el mismo del año pasado;",
-        "lo que hay que mirar hoy: lo que te deben, lo que debés y lo que hay que reponer;",
+        "lo que hay que mirar hoy: lo que te deben, lo que debés, lo que hay que reponer y, en **Para revisar**, lo que salió raro esta semana (facturas sin CAE, faltantes de caja, productos que compraste más caros sin cambiarles el precio), cada uno con su botón para ir a arreglarlo;",
         "cuándo se vende, por día de la semana y por hora;",
         "cómo viene el resultado mes a mes;",
         "qué se vende, por categoría y los mejores clientes;",
