@@ -4,24 +4,25 @@
  * mes, uno por socio y por período, con los planes que lleva. Es la lista de
  * cobros de los sistemas de gimnasios (Gymdesk: Billing → Payments, con su
  * estado), y la razón por la que las cuotas ya no se listan en Ventas.
- * Cobrar es un toque por cuenta, como en la ficha del socio. Sobre
- * GET /api/socios/cuotas y POST /api/socios/:id/cobros (con venta_id).
+ * Cobrar es un toque por medio de cobro (hist. §215, core/cobro-medio.js),
+ * como en la ficha del socio. Sobre GET /api/socios/cuotas y
+ * POST /api/socios/:id/cobros (con venta_id). "Otro importe" abre el
+ * "Registrar cobro" de Ventas: un pago parcial o el QR de Mercado Pago.
  */
 
 import { badge, esc, fechaAR, hoyISO, money } from "../core/formato.js";
-import { avisar, confirmar, filaVacia, tablaCargando } from "../core/ui.js";
+import { avisar, filaVacia, tablaCargando } from "../core/ui.js";
 import { api, refrescar } from "../core/api.js";
-import { icono } from "../core/iconos.js";
 import { alEntrarEnVista, invocar, recargar, registrar } from "../core/registro.js";
 import { LOCALE } from "../core/idioma.js";
-
-const ICONO_TIPO_CUENTA = { efectivo: "banknote", banco: "building-2", mercadopago: "wallet", otro: "wallet" };
+import { botonesDeMedios, cargarMediosDeCobro, confirmarCobroConMedio } from "../core/cobro-medio.js";
 
 let mes = hoyISO().slice(0, 7);
 let datos = { cuotas: [], totales: {} };
 let cuentas = [];
+let medios = [];
 let filtro = "todas";
-// La fila que muestra los botones de cada cuenta en vez de "Cobrar".
+// La fila que muestra los botones de cada medio en vez de "Cobrar".
 let cobrando = null;
 
 const cuerpo = document.getElementById("cuotasBody");
@@ -63,16 +64,7 @@ function accionesCuota(c) {
   if (cobrando !== c.venta_id) {
     return `<div class="cuotas-cuentas">${botonFacturar(c)}<button type="button" class="btn btn-secundario btn-chico" data-cobrar="${c.venta_id}">Cobrar</button></div>`;
   }
-  // La de efectivo primero y resaltada, como en la recepción.
-  const orden = [...cuentas].sort((a, b) => Number(b.tipo === "efectivo") - Number(a.tipo === "efectivo"));
-  return `<div class="cuotas-cuentas">${orden
-    .map(
-      (cuenta, i) => `
-      <button type="button" class="btn ${i === 0 ? "btn-primary" : "btn-secundario"} btn-chico" data-cuenta="${cuenta.id}" data-venta="${c.venta_id}">
-        ${icono(ICONO_TIPO_CUENTA[cuenta.tipo] ?? "wallet")} ${esc(cuenta.nombre)}
-      </button>`
-    )
-    .join("")}<button type="button" class="btn-link" data-cancelar>Cancelar</button></div>`;
+  return `<div class="cuotas-cuentas">${botonesDeMedios(medios, `data-venta="${c.venta_id}"`)}<button type="button" class="btn-link" data-otro="${c.venta_id}">Otro importe</button><button type="button" class="btn-link" data-cancelar>Cancelar</button></div>`;
 }
 
 function pintar() {
@@ -113,8 +105,9 @@ async function cargarCuotas() {
 }
 
 async function cargarCuentas() {
-  const todas = await api("/api/cuentas-tesoreria", { error: "No se pudieron cargar las cuentas." });
+  const [todas, activos] = await Promise.all([api("/api/cuentas-tesoreria", { error: "No se pudieron cargar las cuentas." }), cargarMediosDeCobro()]);
   cuentas = todas.filter((c) => c.activa !== 0 && c.activa !== false);
+  medios = activos;
 }
 
 async function cambiarMes(n) {
@@ -127,22 +120,24 @@ async function cambiarMes(n) {
 
 async function cobrar(boton) {
   const cuota = datos.cuotas.find((c) => c.venta_id === Number(boton.dataset.venta));
-  const cuenta = cuentas.find((c) => c.id === Number(boton.dataset.cuenta));
-  if (!cuota || !cuenta) return;
-  const ok = await confirmar({
-    titulo: "Cobrar la cuota",
-    cuerpo: `¿Cobrarle ${money(cuota.saldo)} a ${cuota.socio} en ${cuenta.nombre}? Es la cuota de ${cuota.planes.join(" + ")}.`,
-    aceptar: `Cobrar ${money(cuota.saldo)}`
+  const medio = medios.find((m) => m.id === Number(boton.dataset.medio));
+  if (!cuota || !medio) return;
+  const como = await confirmarCobroConMedio({
+    medio,
+    cuentas,
+    importe: cuota.saldo,
+    quien: cuota.socio,
+    que: `la cuota de ${cuota.planes.join(" + ")}`
   });
-  if (!ok) return;
+  if (!como) return;
   boton.disabled = true;
   try {
     const resultado = await api(`/api/socios/${cuota.socio_id}/cobros`, {
       method: "POST",
-      body: { cuenta_tesoreria_id: cuenta.id, venta_id: cuota.venta_id },
+      body: { ...como, venta_id: cuota.venta_id },
       error: "No se pudo registrar el cobro."
     });
-    avisar(`Cobrado ${money(resultado.cobrado)} en ${cuenta.nombre}.`, "ok");
+    avisar(`Cobrado ${money(resultado.cobrado)} con ${resultado.en}.`, "ok");
   } catch {
     boton.disabled = false;
     return;
@@ -166,8 +161,14 @@ cuerpo.addEventListener("click", (e) => {
     cobrando = null;
     return pintar();
   }
-  const cuenta = e.target.closest("[data-cuenta]");
-  if (cuenta) cobrar(cuenta);
+  const otro = e.target.closest("[data-otro]");
+  if (otro) {
+    cobrando = null;
+    pintar();
+    return invocar("cobrar:venta", Number(otro.dataset.otro));
+  }
+  const medio = e.target.closest("[data-medio]");
+  if (medio) cobrar(medio);
 });
 
 document.getElementById("cuotasFiltro").addEventListener("click", (e) => {
@@ -180,6 +181,12 @@ document.getElementById("cuotasFiltro").addEventListener("click", (e) => {
 buscar.addEventListener("input", pintar);
 document.getElementById("btnCuotasMesAnterior").addEventListener("click", () => cambiarMes(-1));
 document.getElementById("btnCuotasMesSiguiente").addEventListener("click", () => cambiarMes(1));
+
+document.addEventListener("cobro-registrado", async () => {
+  if (document.querySelector('[data-view="cuotas"]')?.hidden) return;
+  await cargarCuotas();
+  pintar();
+});
 
 registrar("cargar:cuotas", async () => {
   await cargarCuotas();

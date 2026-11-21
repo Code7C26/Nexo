@@ -19,9 +19,9 @@ import { badge, camposFicha, celdaMovil, esAdmin, esc, fechaAR, hoyISO, money } 
 import { avisar, confirmar, filaVacia, tablaCargando } from "../core/ui.js";
 import { api, refrescar } from "../core/api.js";
 import { alEntrarEnVista, invocar, recargar, registrar } from "../core/registro.js";
-import { icono } from "../core/iconos.js";
 import { mostrarVista } from "../core/router.js";
 import { moduloActivo } from "../core/negocio.js";
+import { botonesDeMedios, cargarMediosDeCobro, confirmarCobroConMedio } from "../core/cobro-medio.js";
 
 const FILTROS = {
   activos: (a) => a.estado === "activo",
@@ -30,10 +30,11 @@ const FILTROS = {
   todos: () => true
 };
 
-const ICONO_TIPO_CUENTA = { efectivo: "banknote", banco: "building-2", mercadopago: "wallet", otro: "wallet" };
 
 let abonos = [];
 let cuentas = [];
+// Los medios de cobro activos, para cobrar las cuotas (hist. §215).
+let medios = [];
 let filtro = "activos";
 let fichaAbono = null;
 let editando = null;
@@ -187,21 +188,14 @@ function pintarCobro(a) {
   document.getElementById("fichaAbonoCobroTitulo").textContent = `Debe ${money(a.deuda)}`;
   document.getElementById("fichaAbonoCobroNota").textContent =
     a.cuotas_impagas === 1 ? "Una cuota sin pagar." : `${a.cuotas_impagas} cuotas sin pagar: se cobran todas juntas.`;
-  const orden = [...cuentas].sort((x, y) => Number(y.tipo === "efectivo") - Number(x.tipo === "efectivo"));
-  document.getElementById("fichaAbonoCobroCuentas").innerHTML = orden
-    .map(
-      (c, i) => `
-    <button type="button" class="btn ${i === 0 ? "btn-primary" : "btn-secundario"}" data-cobrar-en="${c.id}">
-      ${icono(ICONO_TIPO_CUENTA[c.tipo] ?? "wallet")} Cobrar en ${esc(c.nombre)}
-    </button>`
-    )
-    .join("");
+  document.getElementById("fichaAbonoCobroCuentas").innerHTML = botonesDeMedios(medios, "", { chicos: false });
 }
 
 async function abrirFicha(id) {
   if (cuentas.length === 0) {
-    const todas = await api("/api/cuentas-tesoreria", { error: "No se pudieron cargar las cuentas." });
+    const [todas, activos] = await Promise.all([api("/api/cuentas-tesoreria", { error: "No se pudieron cargar las cuentas." }), cargarMediosDeCobro()]);
     cuentas = todas.filter((c) => c.activa !== 0 && c.activa !== false);
+    medios = activos;
   }
   pintarFicha(await api(`/api/abonos/${id}`, { error: "No se pudo cargar el abono." }));
   mostrarVista("abono-detalle", { titulo: fichaAbono.servicio });
@@ -246,28 +240,25 @@ document.querySelector('[data-view="abono-detalle"]').addEventListener("click", 
 document.getElementById("btnVolverAbonos").addEventListener("click", () => mostrarVista("abonos"));
 
 document.getElementById("fichaAbonoCobroCuentas").addEventListener("click", async (e) => {
-  const boton = e.target.closest("[data-cobrar-en]");
+  const boton = e.target.closest("[data-medio]");
   if (!boton || !fichaAbono) return;
-  const cuenta = cuentas.find((c) => c.id === Number(boton.dataset.cobrarEn));
+  const medio = medios.find((m) => m.id === Number(boton.dataset.medio));
+  if (!medio) return;
   const cuotas = fichaAbono.cuotas_impagas === 1 ? "la cuota" : `las ${fichaAbono.cuotas_impagas} cuotas`;
-  const ok = await confirmar({
-    titulo: "Cobrar cuotas",
-    cuerpo: `¿Cobrarle ${money(fichaAbono.deuda)} a ${fichaAbono.cliente} en ${cuenta.nombre}? Salda ${cuotas}.`,
-    aceptar: `Cobrar ${money(fichaAbono.deuda)}`
-  });
-  if (!ok) return;
+  const como = await confirmarCobroConMedio({ medio, cuentas, importe: fichaAbono.deuda, quien: fichaAbono.cliente, que: `salda ${cuotas}` });
+  if (!como) return;
   boton.disabled = true;
   let resultado;
   try {
     resultado = await api(`/api/abonos/${fichaAbono.id}/cobros`, {
       method: "POST",
-      body: { cuenta_tesoreria_id: cuenta.id },
+      body: como,
       error: "No se pudo registrar el cobro."
     });
   } finally {
     boton.disabled = false;
   }
-  avisar(`Cobrado ${money(resultado.cobrado)} en ${cuenta.nombre}.`, "ok");
+  avisar(`Cobrado ${money(resultado.cobrado)} con ${resultado.en}.`, "ok");
   // El cobro entra en la caja y baja la cuenta corriente del cliente.
   await refrescar([cargarAbonos(), recargar("ventas", "caja", "clientes", "cuentasCorrientes")]);
   await abrirFicha(fichaAbono.id);

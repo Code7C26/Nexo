@@ -18,6 +18,7 @@ import { esAdmin, esc } from "../core/formato.js";
 import { icono } from "../core/iconos.js";
 import { alEntrarEnVista, registrar } from "../core/registro.js";
 import { avisar } from "../core/ui.js";
+import { atributosEncuadre } from "../core/marca.js";
 
 const selector = document.getElementById("negocioSelector");
 const boton = document.getElementById("negocioActual");
@@ -35,11 +36,13 @@ let negocios = [];
 const inicial = (nombre) => ([...nombre.trim()][0] ?? "N").toLocaleUpperCase("es-AR");
 
 // Con logo (hist. §212), el logo en vez de la letra, como un espacio de Dub
-// con su imagen.
-const cuadradito = (n) =>
-  n.logo
-    ? `<span class="negocio-inicial negocio-logo" aria-hidden="true"><img src="${esc(n.logo)}" alt="" /></span>`
-    : `<span class="negocio-inicial" aria-hidden="true">${esc(inicial(n.nombre))}</span>`;
+// con su imagen; encuadrado como lo dejó el admin (hist. §215).
+// Los atributos del encuadre son números que arma core/marca.js.
+function cuadradito(n) {
+  if (!n.logo) return `<span class="negocio-inicial" aria-hidden="true">${esc(inicial(n.nombre))}</span>`;
+  const encuadre = atributosEncuadre(n.logo_encuadre);
+  return `<span class="negocio-inicial negocio-logo" aria-hidden="true"><img src="${esc(n.logo)}" alt=""${encuadre} /></span>`;
+}
 
 /* ---------- Aviso después de recargar ---------- */
 

@@ -555,7 +555,7 @@ export const SECCIONES_EN = {
         "In **Members**, sign up the person (new, or already a customer) with their plan.",
         "The fee is due from the sign-up date. If they do several plans, it is **a single fee** with all of them inside: one payment a month, not one per plan."
       ] },
-      "In **Fees** you see this month's: how much you collected, how much is left and how much is overdue, and you collect each one with a tap. Fees don't show up in **Sales**, which is for what you sell at the counter.",
+      "In **Fees** you see this month's: how much you collected, how much is left and how much is overdue, and you collect each one with a tap with the method they pay with (cash, debit, credit, transfer: the ones in **Settings › Payment methods**). **Another amount** is for a partial payment or the Mercado Pago QR. Fees don't show up in **Sales**, which is for what you sell at the counter.",
       "If you add a plan to a member mid-month, the first time they only pay the days left until their fee is due, and from then on it goes in the same fee.",
       "On the **Dashboard**, the **Members and fees** piece shows active members, sign-ups and cancellations, fees collected apart from counter sales, check-ins per day and who stopped coming.",
       "In **Check-in**, the front desk looks up the member when they arrive: Nexo warns you if they owe the fee.",
@@ -603,6 +603,7 @@ export const SECCIONES_EN = {
       "In **Settings › Logo and colors** you upload your logo and choose your color. The logo goes at the top of the menu, on invoices, quotes, receipts and the gym's check-in screen.",
       "The color takes the place of Nexo's blue: the selected menu section, links and highlights. If you upload your logo, Nexo offers its colors. Nexo lightens or darkens it just enough to read well in the light and dark themes.",
       { nota: "A PNG with a transparent background looks best. On the receipt the logo prints in grayscale: thermal printers print in black." },
+      "If your logo looks small in the menu (a round badge with a lot of margin), under **In the menu** zoom in with the slider and drag it until the important part shows. What gets printed still carries the whole logo.",
       "Your **profile photo** belongs to your account, not the business: you upload it in **Settings › My account** and it goes in the circle at the bottom of the menu."
     ]
   },

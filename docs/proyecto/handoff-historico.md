@@ -15297,3 +15297,16 @@ de cuenta corriente de cada cliente en la misma planilla.
 - **Rutas:** `GET /api/gastos-fijos` (los dos roles), `POST`, `PUT /:id`, `POST /:id/saltear` y `POST /:id/baja` (admin); `POST /api/gastos` acepta `gasto_fijo_id` + `periodo` para cargar una vez (los dos roles; no deja dos veces la misma ni una que no es de la serie).
 - Test nuevo: `gastos-fijos` (5 casos). `npm test`: 509 de 509. Probado en el navegador (compu y celular: alta de los dos modos, cargar, editar, desde el Resumen; sin errores en la consola). Manual (castellano e inglés): "gastos-fijos".
 - **No se hizo** lo de Praxia de repartir un gasto en las semanas o los meses que cubre, ni los gastos pendientes o en cuotas: en Nexo un gasto se paga en el momento (CLAUDE.md §14); un gasto a pagar después es otra decisión.
+
+## §215 — 21 de noviembre de 2026: las cuotas se cobran con los medios de cobro, y el logo se encuadra en el menú
+
+Pedidos del usuario, con capturas de la cuenta de Morro.
+
+- **Cobrar cuotas con los medios** (el usuario ya lo había marcado: "no existe medio de pago banco ni mercado pago"). Cuotas, la ficha del socio, la recepción (#/ingreso) y la ficha del abono ofrecían un botón por **cuenta** (Efectivo, Banco, Mercado Pago). Ahora, uno por **medio de cobro activo** (Efectivo, Débito, Crédito, Transferencia…, los de Configuración › Medios de cobro), como el mostrador y "Registrar cobro" (hist. §171, §176). Lo que no está configurado no aparece.
+  - `core/cobro-medio.js` (nuevo): los botones y el diálogo `#modalCobroMedio`, que dice cuánto, a quién y adónde entra, y pregunta solo lo que el medio no dice (la caja si hay varias, la cuenta donde cayó la transferencia, las cuotas del crédito).
+  - Cuotas suma **Otro importe**, que abre "Registrar cobro" de Ventas (pago parcial, QR o link de Mercado Pago) y repinta con el evento `cobro-registrado`.
+  - Servidor: `POST /api/socios/:id/cobros` y `POST /api/abonos/:id/cobros` aceptan `medio_cobro_id` (+ `cuotas`, `cuenta_tesoreria_id`) con `destinoDeCobro` (las mismas `medioDelCobro` y `cuentaDelMedio` de Ventas); cada cuota pasa por `cobrarCuota`, que guarda el medio y anota sus costos (comisión, cuotas) como gastos de la venta. Sin medio, la cuenta suelta como antes. Responden `en` (el medio o la cuenta).
+- **El logo en el menú** ("se ve muy poco"): en Configuración › Logo y colores, **En el menú** muestra el cuadradito en grande para acercar el logo (barra de 1 a 4) y arrastrarlo con el dedo o el mouse (o las flechas); **Entero y centrado** lo deja como estaba. Se guarda con la marca y se aplica con CSS (`atributosEncuadre` en `core/marca.js`: `translate` + `scale`) en el selector de negocios y la vista previa. Lo impreso lleva el logo entero.
+  - Esquema: `organizaciones.logo_encuadre` (TEXT nulo, JSON `{zoom, x, y}`; aditivo). `PUT /api/negocio/marca` acepta `encuadre` (zoom 1–4, corrimiento ±150 %; entero = null); `GET /api/negocio` y `GET /api/negocios` lo devuelven.
+  - Arreglado: en la página, la vista previa del logo se salía del recuadro (el alto en % dentro de la grilla no tenía de qué tomarse).
+- Tests: un caso nuevo en `cuota-unica` (cobrar la cuota con el débito) y otro en `marca` (el encuadre). `npm test`: 511 de 511. `verificar-migracion`: 24 de 24. Probado en el navegador (compu y celular). Manual (castellano e inglés) al día.

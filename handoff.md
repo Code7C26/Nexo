@@ -11,7 +11,7 @@
 
 - Al cerrar una etapa, se hacen tres cosas:
   - su relato completo se agrega al final de `docs/proyecto/handoff-historico.md` con el
-    siguiente número (hoy el último es §214);
+    siguiente número (hoy el último es §215);
   - acá se actualizan "Estado actual" y "Qué sigue";
   - si cambió alguna decisión vigente, se actualiza también esa lista.
 - Nunca apilar secciones "Última etapa" en este archivo: así fue como llegó a
@@ -103,8 +103,17 @@ anotado. Esquema aditivo: `gastos_fijos`, `gastos_fijos_salteados` y
 `gastos.gasto_fijo_id`/`periodo` (índice único). Test nuevo: `gastos-fijos`.
 `npm test`: 509 de 509. **Sin publicar** (§213 tampoco).
 
-**Lo que sigue: el resto del punto 9**: mensajes de WhatsApp armados y
-"quiénes deben", y puntos y premios.
+**21 de noviembre, hist. §215: las cuotas se cobran con los medios de cobro, y
+el logo se encuadra en el menú** (pedidos del usuario). Cuotas, la ficha del
+socio, la recepción y Abonos ofrecen los medios activos (Efectivo, Débito,
+Crédito, Transferencia…), nunca las cuentas (`core/cobro-medio.js`); en
+Logo y colores, **En el menú** acerca y corre el logo
+(`organizaciones.logo_encuadre`). **Sin publicar** (§213 y §214 tampoco).
+
+**Lo que sigue:** las **cuotas por producto** que pidió el usuario (un pago de
+$100.000, dos de $65.000 o tres de $50.000, y lo que se debe queda en la
+cuenta corriente del cliente); después, el resto del punto 9: mensajes de
+WhatsApp armados y "quiénes deben", y puntos y premios.
 
 **19 de noviembre, hist. §205 (publicado, PR #106):** en Planes se elimina un plan que nunca hizo
 nadie (con su servicio del catálogo); el que algún socio hizo solo se pausa.

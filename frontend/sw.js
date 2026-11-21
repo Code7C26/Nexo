@@ -75,6 +75,7 @@ const PRECACHE = [
   "/js/core/buscar-ayuda.js",
   "/js/core/campos.js",
   "/js/core/canales.js",
+  "/js/core/cobro-medio.js",
   "/js/core/codigo.js",
   "/js/core/combo.js",
   "/js/core/descarga-datos.js",

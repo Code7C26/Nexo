@@ -2337,7 +2337,9 @@ for (const [tabla, columna] of [
   // Gastos fijos (hist. §214): el gasto fijo del que salió cada gasto y la vez
   // que paga. Los de antes, de ninguno.
   ['gastos', 'gasto_fijo_id INTEGER REFERENCES gastos_fijos(id)'],
-  ['gastos', 'periodo TEXT']
+  ['gastos', 'periodo TEXT'],
+  // El encuadre del logo en el menú (hist. §215): NULL, entero y centrado.
+  ['organizaciones', 'logo_encuadre TEXT']
 ]) {
   if (!db.prepare(`PRAGMA table_info(${tabla})`).all().some((col) => col.name === columna.split(' ')[0])) {
     db.exec(`ALTER TABLE ${tabla} ADD COLUMN ${columna}`);

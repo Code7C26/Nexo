@@ -5983,5 +5983,21 @@ export default {
   "Gasto fijo \"{0}\": el del {1} no se paga": "Recurring expense \"{0}\": the one of {1} is skipped",
   "Este gasto fijo ya está dado de baja.": "This recurring expense is already cancelled.",
   "Gasto fijo \"{0}\" dado de baja": "Recurring expense \"{0}\" cancelled",
-  "Próxima: {0}": "Next: {0}"
+  "Próxima: {0}": "Next: {0}",
+  "¿En cuántas cuotas?": "In how many installments?",
+  "Cobrar con {0}": "Collect with {0}",
+  "Cobrado {0} con {1}.": "Collected {0} with {1}.",
+  "Otro importe": "Another amount",
+  "la cuota de {0}": "the fee for {0}",
+  "Pagó {0} con {1}. Al día hasta el {2}.": "Paid {0} with {1}. Up to date until {2}.",
+  "Cobro #{0} de ${1} de {2} ({3})": "Payment #{0} of ${1} for {2} ({3})",
+  "la cuota del socio N° {0}": "the fee of member No. {0}",
+  "la cuota del abono #{0}": "the fee of subscription #{0}",
+  "En el menú": "In the menu",
+  "El logo en el menú: arrastralo, o movelo con las flechas": "The logo in the menu: drag it, or move it with the arrow keys",
+  "Acercar": "Zoom in",
+  "Arrastralo con el dedo o el mouse para que se vea lo importante. Lo que se imprime lleva el logo entero.": "Drag it with your finger or the mouse so the important part shows. What gets printed carries the whole logo.",
+  "Entero y centrado": "Whole and centered",
+  "El encuadre del logo no es válido.": "The logo framing isn’t valid.",
+  "Encuadró el logo del menú": "Framed the menu logo"
 };

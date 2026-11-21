@@ -4750,6 +4750,24 @@
                          "cambios sin guardar" de configuracion.js. -->
                     <input type="text" name="logo" id="marcaLogoEstado" hidden />
                   </div>
+                  <!-- El encuadre del menú (hist. §215): el logo se acerca y se
+                       corre a mano dentro del cuadradito, para que se vea grande.
+                       Lo impreso lleva el logo entero. -->
+                  <fieldset class="opciones marca-encuadre" id="marcaEncuadre" hidden>
+                    <legend>En el menú</legend>
+                    <div class="marca-encuadre-cuerpo">
+                      <div class="marca-encuadre-cuadro" id="marcaEncuadreCuadro" tabindex="0" role="img" aria-label="El logo en el menú: arrastralo, o movelo con las flechas"></div>
+                      <div class="marca-encuadre-controles">
+                        <label>Acercar
+                          <input type="range" name="encuadre_zoom" id="marcaEncuadreZoom" min="1" max="4" step="0.05" value="1" />
+                        </label>
+                        <p class="form-note">Arrastralo con el dedo o el mouse para que se vea lo importante. Lo que se imprime lleva el logo entero.</p>
+                        <button type="button" class="btn-link" id="marcaEncuadreCentrar">Entero y centrado</button>
+                      </div>
+                    </div>
+                    <input type="text" name="encuadre_x" id="marcaEncuadreX" hidden />
+                    <input type="text" name="encuadre_y" id="marcaEncuadreY" hidden />
+                  </fieldset>
                   <fieldset class="opciones">
                     <legend>Color</legend>
                     <p class="opciones-nota">Toma el lugar del azul de Nexo: la sección marcada del menú, los enlaces y lo que se destaca. El negro queda.</p>
@@ -8678,6 +8696,30 @@
   <!-- Modal de confirmación genérico — reemplaza confirm() nativo. Ver
        confirmar() en app.js: se completa título/cuerpo/botón según el
        caso y resuelve una Promise<boolean> con el botón que se apriete. -->
+  <!-- Cobrar cuotas con un medio de cobro (hist. §215, core/cobro-medio.js):
+       dice cuánto y adónde entra, y pregunta solo lo que el medio no dice. -->
+  <div class="modal" id="modalCobroMedio" role="dialog" aria-modal="true" aria-labelledby="cobroMedioTitulo" hidden>
+    <div class="modal-card">
+      <div class="modal-head">
+        <h3 id="cobroMedioTitulo">Cobrar</h3>
+      </div>
+      <form id="formCobroMedio" class="form">
+        <p class="form-note" id="cobroMedioCuerpo"></p>
+        <label id="cobroMedioCuotasCampo" hidden>¿En cuántas cuotas?
+          <select name="cuotas"></select>
+        </label>
+        <label id="cobroMedioCuentaCampo" hidden><span id="cobroMedioCuentaEtiqueta">¿A qué cuenta entra?</span>
+          <select name="cuenta_tesoreria_id"></select>
+        </label>
+        <p class="campo-ayuda" id="cobroMedioDestino" hidden></p>
+        <div class="panel-acciones confirmar-acciones">
+          <button type="button" class="btn btn-secundario" id="cobroMedioCancelar">Cancelar</button>
+          <button type="submit" class="btn btn-primary" id="cobroMedioAceptar">Cobrar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <div class="modal" id="modalConfirmar" role="dialog" aria-modal="true" aria-labelledby="modalConfirmarTitulo" hidden>
     <div class="modal-card">
       <div class="modal-head">

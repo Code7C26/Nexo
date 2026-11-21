@@ -13894,6 +13894,45 @@ function medioDelCobro(cobro, medios) {
   return { medio, plan };
 }
 
+// Adónde entra un cobro de cuotas (de socios o de un abono, hist. §215): con
+// un medio de cobro, como "Registrar cobro" de Ventas (el medio dice la
+// cuenta, las cuotas y lo que cuesta); sin medio, la cuenta suelta, como antes.
+// Devuelve { medio, plan, cuentaId, en } o { error }; `en` es lo que se dice
+// al cobrar ("Débito", o la cuenta).
+function destinoDeCobro(body, organizacionId) {
+  if (body?.medio_cobro_id != null) {
+    const delCobro = medioDelCobro(body, mediosDeCobro(organizacionId, { soloActivos: true }));
+    if (delCobro.error) return delCobro;
+    const destino = cuentaDelMedio(delCobro.medio, body.cuenta_tesoreria_id ?? null, organizacionId);
+    if (destino.error) return destino;
+    return { ...delCobro, cuentaId: destino.cuentaId, en: delCobro.medio.nombre };
+  }
+  const cuenta = db
+    .prepare('SELECT id, nombre FROM cuentas_tesoreria WHERE id = ? AND organizacion_id = ?')
+    .get(Number(body?.cuenta_tesoreria_id), organizacionId);
+  if (!cuenta) return { error: 'Elegí en qué cuenta entra la plata.' };
+  return { medio: null, plan: null, cuentaId: cuenta.id, en: cuenta.nombre };
+}
+
+// Cobra el saldo de una cuota (una venta) con ese destino, con su auditoría y
+// los costos del medio. Dentro de una transacción.
+function cobrarCuota(req, { ventaId, clienteId, saldo, destino, nota, que }) {
+  const { medio, plan, cuentaId, en } = destino;
+  const organizacionId = req.usuario.organizacion_id;
+  const cobroId = registrarCobro(ventaId, clienteId, saldo, cuentaId, nota, organizacionId, medio ? { id: medio.id, cuotas: plan?.cuotas ?? null } : null);
+  anotarEmpleado(req, 'cobros', cobroId);
+  auditar(req, {
+    accion: 'crear',
+    entidad: 'cobro',
+    entidad_id: cobroId,
+    operacion_tipo: 'venta',
+    operacion_id: ventaId,
+    detalle: `Cobro #${cobroId} de $${saldo} de ${que} (${en})`
+  });
+  if (medio) registrarCostosDelMedio({ ventaId, medio, plan, importe: saldo, cuentaId, organizacionId });
+  return cobroId;
+}
+
 function mediosDeCobro(organizacionId, { soloActivos = false } = {}) {
   const medios = db
     .prepare(
@@ -19603,7 +19642,7 @@ app.get('/api/negocio', (req, res) => {
     .prepare(
       `SELECT id, nombre, documento, direccion, telefono, email, condicion_iva, pie_comprobante,
               razon_social, ingresos_brutos, inicio_actividades, arca_punto_venta, arca_verificado, balanza_formato,
-              color_marca, logo_version
+              color_marca, logo_version, logo_encuadre
          FROM organizaciones
         WHERE id = ?`
     )
@@ -19625,12 +19664,15 @@ app.get('/api/negocio', (req, res) => {
     arca_verificado: arcaVerificado,
     balanza_formato: balanzaFormato,
     logo_version: logoVersion,
+    logo_encuadre: logoEncuadre,
     ...datos
   } = negocio;
   res.json({
     ...datos,
     // El logo (hist. §212): su dirección, o null. color_marca va con datos.
     logo: urlLogo(negocio.id, logoVersion),
+    // Cómo se encuadra en el cuadradito del menú (hist. §215).
+    logo_encuadre: leerEncuadre(logoEncuadre),
     // Las etiquetas de la balanza (hist. §132): el punto de venta las lee.
     balanza: balanzaFormato ? JSON.parse(balanzaFormato) : null,
     factura_electronica: {
@@ -19871,11 +19913,38 @@ const COLOR_VALIDO = /^#[0-9a-f]{6}$/i;
 
 // El logo y el color, juntos o de a uno: lo que no viene queda como estaba, y
 // null lo saca (el color vuelve al azul de Nexo).
+// El encuadre del logo en el cuadradito del menú (hist. §215), o null.
+function leerEncuadre(texto) {
+  try {
+    const e = JSON.parse(texto ?? 'null');
+    return e && typeof e === 'object' ? e : null;
+  } catch {
+    return null;
+  }
+}
+
 app.put('/api/negocio/marca', soloAdmin, express.json({ limit: '1mb' }), (req, res) => {
   const id = req.usuario.organizacion_id;
   const cuerpo = req.body ?? {};
   let color;
   let logo;
+  // undefined = no se toca; null = entero y centrado.
+  let encuadre;
+  if (Object.hasOwn(cuerpo, 'encuadre')) {
+    const e = cuerpo.encuadre;
+    if (e === null) {
+      encuadre = null;
+    } else {
+      const zoom = Number(e?.zoom);
+      const x = Number(e?.x);
+      const y = Number(e?.y);
+      if (!(zoom >= 1 && zoom <= 4) || !(Math.abs(x) <= 150) || !(Math.abs(y) <= 150)) {
+        return res.status(400).json({ error: 'El encuadre del logo no es válido.' });
+      }
+      const redondo = (n) => Math.round(n * 100) / 100;
+      encuadre = zoom === 1 && x === 0 && y === 0 ? null : JSON.stringify({ zoom: redondo(zoom), x: redondo(x), y: redondo(y) });
+    }
+  }
   if (Object.hasOwn(cuerpo, 'color')) {
     if (cuerpo.color !== null && (typeof cuerpo.color !== 'string' || !COLOR_VALIDO.test(cuerpo.color))) {
       return res.status(400).json({ error: 'El color no es válido.' });
@@ -19889,8 +19958,19 @@ app.put('/api/negocio/marca', soloAdmin, express.json({ limit: '1mb' }), (req, r
     logo = null;
   }
 
-  const anterior = db.prepare('SELECT color_marca, logo_version FROM organizaciones WHERE id = ?').get(id);
+  const anterior = db.prepare('SELECT color_marca, logo_version, logo_encuadre FROM organizaciones WHERE id = ?').get(id);
   withTransaction(() => {
+    if (encuadre !== undefined && encuadre !== anterior.logo_encuadre) {
+      db.prepare('UPDATE organizaciones SET logo_encuadre = ? WHERE id = ?').run(encuadre, id);
+      auditar(req, {
+        accion: 'editar',
+        entidad: 'organizacion',
+        entidad_id: id,
+        valor_anterior: anterior.logo_encuadre,
+        valor_nuevo: encuadre,
+        detalle: 'Encuadró el logo del menú'
+      });
+    }
     if (color !== undefined && color !== anterior.color_marca) {
       db.prepare('UPDATE organizaciones SET color_marca = ? WHERE id = ?').run(color, id);
       auditar(req, {
@@ -19910,8 +19990,8 @@ app.put('/api/negocio/marca', soloAdmin, express.json({ limit: '1mb' }), (req, r
       auditar(req, { accion: 'editar', entidad: 'organizacion', entidad_id: id, detalle: 'Sacó el logo' });
     }
   });
-  const ahora = db.prepare('SELECT color_marca, logo_version FROM organizaciones WHERE id = ?').get(id);
-  res.json({ color_marca: ahora.color_marca, logo: urlLogo(id, ahora.logo_version) });
+  const ahora = db.prepare('SELECT color_marca, logo_version, logo_encuadre FROM organizaciones WHERE id = ?').get(id);
+  res.json({ color_marca: ahora.color_marca, logo: urlLogo(id, ahora.logo_version), logo_encuadre: leerEncuadre(ahora.logo_encuadre) });
 });
 
 // El logo de un negocio donde trabaja quien lo pide: el del menú, el de los
@@ -19984,6 +20064,7 @@ app.get('/api/negocios', (req, res) => {
     .prepare(
       `SELECT organizaciones.id, organizaciones.nombre, organizaciones.rubro, organizaciones.baja_pedida, pertenencia.rol,
               organizaciones.plan, organizaciones.plan_vence, organizaciones.propietario_id, organizaciones.logo_version,
+              organizaciones.logo_encuadre,
               (SELECT nombre FROM usuarios WHERE usuarios.id = organizaciones.propietario_id) AS propietario
          FROM usuario_organizaciones pertenencia
          JOIN organizaciones ON organizaciones.id = pertenencia.organizacion_id
@@ -20003,6 +20084,7 @@ app.get('/api/negocios', (req, res) => {
         actual: fila.id === req.usuario.organizacion_id,
         // El logo va en el cuadradito del selector, en vez de la inicial.
         logo: urlLogo(fila.id, fila.logo_version),
+        logo_encuadre: leerEncuadre(fila.logo_encuadre),
         // El plan es de la cuenta que creó el negocio (hist. §168): lo mismo
         // para todos los suyos. De quién es, si no es de quien mira.
         es_propio: fila.propietario_id === req.usuario.id,
@@ -23140,10 +23222,8 @@ app.post('/api/socios/:id/cobros', (req, res) => {
   const organizacionId = req.usuario.organizacion_id;
   const socio = socioDeLaEmpresa(Number(req.params.id), organizacionId);
   if (!socio) return res.status(404).json({ error: 'Socio no encontrado.' });
-  const cuenta = db
-    .prepare('SELECT id, nombre FROM cuentas_tesoreria WHERE id = ? AND organizacion_id = ?')
-    .get(Number(req.body?.cuenta_tesoreria_id), organizacionId);
-  if (!cuenta) return res.status(400).json({ error: 'Elegí en qué cuenta entra la plata.' });
+  const destino = destinoDeCobro(req.body, organizacionId);
+  if (destino.error) return res.status(400).json({ error: destino.error });
 
   ponerCuotasAlDia(organizacionId, socio.id);
   const [{ cuotas }] = sociosConSituacion(organizacionId, socio.id);
@@ -23155,19 +23235,18 @@ app.post('/api/socios/:id/cobros', (req, res) => {
 
   const total = withTransaction(() => {
     for (const cuota of impagas) {
-      const cobroId = registrarCobro(cuota.venta_id, socio.cliente_id, cuota.saldo, cuenta.id, `Cuota de socio N° ${socio.numero}`, organizacionId);
-      auditar(req, {
-        accion: 'crear',
-        entidad: 'cobro',
-        entidad_id: cobroId,
-        operacion_tipo: 'venta',
-        operacion_id: cuota.venta_id,
-        detalle: `Cobro #${cobroId} de $${cuota.saldo} de la cuota del socio N° ${socio.numero} (${cuenta.nombre})`
+      cobrarCuota(req, {
+        ventaId: cuota.venta_id,
+        clienteId: socio.cliente_id,
+        saldo: cuota.saldo,
+        destino,
+        nota: `Cuota de socio N° ${socio.numero}`,
+        que: `la cuota del socio N° ${socio.numero}`
       });
     }
     return redondear2(impagas.reduce((acc, c) => acc + c.saldo, 0));
   });
-  res.status(201).json({ cobrado: total, cuotas: impagas.length, socio: detalleSocio(socio.id, organizacionId) });
+  res.status(201).json({ cobrado: total, cuotas: impagas.length, en: destino.en, socio: detalleSocio(socio.id, organizacionId) });
 });
 
 // Registra que el socio entró, con lo que debía en ese momento. Avisar y
@@ -23742,10 +23821,8 @@ app.post('/api/abonos/:id/cobros', (req, res) => {
   const organizacionId = req.usuario.organizacion_id;
   const abono = abonoDeLaEmpresa(Number(req.params.id), organizacionId);
   if (!abono) return res.status(404).json({ error: 'Abono no encontrado.' });
-  const cuenta = db
-    .prepare('SELECT id, nombre FROM cuentas_tesoreria WHERE id = ? AND organizacion_id = ?')
-    .get(Number(req.body?.cuenta_tesoreria_id), organizacionId);
-  if (!cuenta) return res.status(400).json({ error: 'Elegí en qué cuenta entra la plata.' });
+  const destino = destinoDeCobro(req.body, organizacionId);
+  if (destino.error) return res.status(400).json({ error: destino.error });
 
   ponerAbonosAlDia(organizacionId, abono.id);
   const { cuotas } = conCuotas(abono, db.prepare(`${SELECT_CUOTAS_ABONO} WHERE cuotas_abono.abono_id = ?`).all(abono.id));
@@ -23754,19 +23831,18 @@ app.post('/api/abonos/:id/cobros', (req, res) => {
 
   const total = withTransaction(() => {
     for (const cuota of impagas) {
-      const cobroId = registrarCobro(cuota.venta_id, abono.cliente_id, cuota.saldo, cuenta.id, `Cuota del abono #${abono.id}`, organizacionId);
-      auditar(req, {
-        accion: 'crear',
-        entidad: 'cobro',
-        entidad_id: cobroId,
-        operacion_tipo: 'venta',
-        operacion_id: cuota.venta_id,
-        detalle: `Cobro #${cobroId} de $${cuota.saldo} de la cuota del abono #${abono.id} (${cuenta.nombre})`
+      cobrarCuota(req, {
+        ventaId: cuota.venta_id,
+        clienteId: abono.cliente_id,
+        saldo: cuota.saldo,
+        destino,
+        nota: `Cuota del abono #${abono.id}`,
+        que: `la cuota del abono #${abono.id}`
       });
     }
     return redondear2(impagas.reduce((acc, c) => acc + c.saldo, 0));
   });
-  res.status(201).json({ cobrado: total, cuotas: impagas.length });
+  res.status(201).json({ cobrado: total, cuotas: impagas.length, en: destino.en });
 });
 
 // Editar precio, cada cuántos meses y notas (rigen desde la cuota siguiente), o

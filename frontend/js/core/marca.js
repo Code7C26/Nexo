@@ -146,6 +146,24 @@ export async function cargarLogo(url) {
   }
 }
 
+/* ---------- El encuadre del menú (hist. §215) ---------- */
+
+// Cuánto se puede correr el logo con ese zoom: hasta que su borde llega al
+// del cuadradito (sin zoom, nada).
+export const corrimientoMaximo = (zoom) => Math.min(150, Math.max(0, (zoom - 1) * 50));
+
+// Las clases y el estilo del <img> del cuadradito con el logo encuadrado a
+// mano: acercado y corrido, sin el margen blanco. Sin encuadre, el logo entero.
+export function atributosEncuadre(encuadre) {
+  if (!encuadre) return "";
+  const { zoom: z, x: cx, y: cy } = encuadre;
+  const zoom = Number(z) || 1;
+  const max = corrimientoMaximo(zoom);
+  const corrido = (v) => Math.max(-max, Math.min(max, Number(v) || 0));
+  const [x, y] = [corrido(cx), corrido(cy)];
+  return ` data-encuadrado style="transform: translate(${x}%, ${y}%) scale(${zoom})"`;
+}
+
 // El <img> del logo para una hoja o un ticket, o nada si no hay. El src es un
 // data: que arma el navegador, no un texto que venga de afuera.
 export const imgLogo = (clase) => (logoEnLinea ? `<img class="${clase}" src="${logoEnLinea}" alt="" />` : "");

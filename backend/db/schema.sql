@@ -1461,7 +1461,12 @@ CREATE TABLE IF NOT EXISTS organizaciones (
   color_marca TEXT,
   logo_tipo TEXT,
   logo_version TEXT,
-  logo BLOB
+  logo BLOB,
+  -- Cómo se encuadra el logo en el cuadradito del menú (hist. §215): JSON
+  -- {"zoom": 1..4, "x": -150..150, "y": -150..150}: cuánto se acerca y
+  -- cuánto se corre (en % del cuadradito). NULL = entero y centrado. Lo
+  -- impreso usa el logo entero.
+  logo_encuadre TEXT
 );
 
 -- nombre queda separado de usuario (el de login) porque la columna

@@ -1060,7 +1060,7 @@ const SECCIONES_ES = [
         "En **Socios**, dá de alta a la persona (nueva, o que ya es cliente) con su plan.",
         "La cuota vence desde la fecha de alta. Si hace varios planes, es **una sola cuota** con todos adentro: un cobro por mes, no uno por plan."
       ] },
-      "En **Cuotas** ves las del mes: cuánto cobraste, cuánto falta y cuánto está vencido, y cobrás cada una de un toque. Las cuotas no aparecen en **Ventas**, que queda para lo que vendés en el mostrador.",
+      "En **Cuotas** ves las del mes: cuánto cobraste, cuánto falta y cuánto está vencido, y cobrás cada una de un toque con el medio con que paga (efectivo, débito, crédito, transferencia: los de **Configuración › Medios de cobro**). **Otro importe** sirve para un pago parcial o el QR de Mercado Pago. Las cuotas no aparecen en **Ventas**, que queda para lo que vendés en el mostrador.",
       "Si a un socio le sumás un plan a mitad de mes, la primera vez paga solo los días que faltan hasta el vencimiento de su cuota, y desde ahí va en la misma cuota.",
       "En el **Resumen**, la pieza **Socios y cuotas** muestra los socios activos, las altas y las bajas, lo cobrado de cuotas aparte de las ventas del mostrador, las entradas por día y los que no vienen.",
       "En **Ingreso**, la recepción busca al socio cuando llega: Nexo avisa si debe la cuota.",
@@ -1122,6 +1122,7 @@ const SECCIONES_ES = [
       "En **Configuración › Logo y colores** subís tu logo y elegís tu color. El logo va arriba del menú, en las facturas, los presupuestos, los tickets y la pantalla de entrada del gimnasio.",
       "El color toma el lugar del azul de Nexo: la sección marcada del menú, los enlaces y lo que se destaca. Si subís el logo, Nexo te ofrece sus colores. Nexo lo aclara u oscurece lo justo para que se lea en el tema claro y en el oscuro.",
       { nota: "Un PNG con el fondo transparente queda mejor. En el ticket el logo sale en grises: la impresora térmica imprime en negro." },
+      "Si en el menú tu logo se ve chico (un escudo redondo con mucho margen), en **En el menú** acercalo con la barra y arrastralo hasta que se vea lo importante. Lo que se imprime sigue llevando el logo entero.",
       "Tu **foto de perfil** es de tu cuenta, no del negocio: se sube en **Configuración › Mi cuenta** y va en el círculo de abajo del menú."
     ],
     ver: ["datos-del-negocio"]
