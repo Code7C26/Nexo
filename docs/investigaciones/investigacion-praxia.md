@@ -93,7 +93,14 @@ esto está planificado todavía: es una lista de ideas para elegir con el equipo
 9. **Gastos fijos que se repiten:** el alquiler se carga una vez y se reparte
    solo por semana o por mes desde su fecha hasta que se da de baja (sin
    borrar el pasado). También gastos pendientes o en cuotas. **Nexo: cada
-   gasto es único y ya pagado.**
+   gasto es único y ya pagado.** Hecho en hist. §214, mirando también
+   QuickBooks (plantilla "Programada", que crea el gasto sola y recomienda para
+   el alquiler; "Recordatorio", que avisa y espera, para lo que cambia de monto;
+   quickbooks.intuit.com/learn-support, "Create recurring transactions") y
+   Holded (compras recurrentes mensuales, trimestrales o anuales,
+   holded.com/es/gemas/compras-recurrentes). Nexo toma "anotarlo solo" y
+   "avisarme para cargarlo"; lo pendiente o en cuotas no, porque un gasto se
+   paga en el momento (CLAUDE.md §14).
 10. **Permisos por sección**, para ver o para editar, y por sucursal (un
     contador, un socio, un encargado). **Nexo: admin y empleado.**
 

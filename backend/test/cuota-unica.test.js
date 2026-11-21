@@ -158,3 +158,28 @@ test('el Resumen del gimnasio: socios, cuotas aparte de las ventas y entradas (h
   assert.equal(despues.entradas, 1);
   assert.deepEqual(despues.por_dia, [{ fecha: haceDias(0), cantidad: 1 }]);
 });
+
+test('la cuota se cobra con un medio de cobro, no con una cuenta (hist. §215)', async () => {
+  const alta = await admin.post('/api/socios', {
+    cliente: { nombre: 'Medio', documento: '30111999' },
+    planes: [mensual(planes.BJJ)]
+  });
+  assert.equal(alta.status, 201, alta.texto);
+  const socio = alta.json;
+  const [ventaId] = new Set(socio.cuotas.map((c) => c.venta_id));
+  const medios = (await admin.get('/api/medios-cobro?activos=1')).json;
+  const debito = medios.find((m) => m.tipo === 'debito');
+  assert.ok(debito?.cuenta_tesoreria_id, 'el débito del alta entra a su cuenta');
+
+  // Un medio que no existe no cobra.
+  assert.equal((await admin.post(`/api/socios/${socio.id}/cobros`, { medio_cobro_id: 999999 })).status, 400);
+
+  const cobro = await admin.post(`/api/socios/${socio.id}/cobros`, { medio_cobro_id: debito.id });
+  assert.equal(cobro.status, 201, cobro.texto);
+  assert.equal(cobro.json.en, debito.nombre);
+  assert.equal(cobro.json.socio.deuda, 0);
+  const [registrado] = (await admin.get(`/api/ventas/${ventaId}/cobros`)).json;
+  assert.equal(registrado.medio, debito.nombre);
+  // Entra a la cuenta del medio, no a la que se hubiera elegido.
+  assert.equal(registrado.cuenta, debito.cuenta);
+});

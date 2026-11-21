@@ -2333,12 +2333,23 @@ for (const [tabla, columna] of [
   // Combos de verdad (hist. §203): un precio fijo por mes, y planes que el
   // combo pide sin bajarlos. Los combos de antes: porcentaje y todos bajan.
   ['descuentos_socio', 'precio_combo REAL'],
-  ['descuento_socio_planes', "rol TEXT NOT NULL DEFAULT 'baja' CHECK (rol IN ('baja', 'alguno'))"]
+  ['descuento_socio_planes', "rol TEXT NOT NULL DEFAULT 'baja' CHECK (rol IN ('baja', 'alguno'))"],
+  // Gastos fijos (hist. §214): el gasto fijo del que salió cada gasto y la vez
+  // que paga. Los de antes, de ninguno.
+  ['gastos', 'gasto_fijo_id INTEGER REFERENCES gastos_fijos(id)'],
+  ['gastos', 'periodo TEXT'],
+  // El encuadre del logo en el menú (hist. §215): NULL, entero y centrado.
+  ['organizaciones', 'logo_encuadre TEXT'],
+  // En cuántas cuotas se vendió cada renglón (hist. §216): lo de antes, sin plan.
+  ['venta_items', 'plan_cuotas INTEGER']
 ]) {
   if (!db.prepare(`PRAGMA table_info(${tabla})`).all().some((col) => col.name === columna.split(' ')[0])) {
     db.exec(`ALTER TABLE ${tabla} ADD COLUMN ${columna}`);
   }
 }
+// Cada vez de un gasto fijo se anota una sola vez. Los gastos sin gasto fijo
+// (NULL) no chocan entre sí, en SQLite ni en Postgres.
+db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_gastos_fijo_periodo ON gastos(gasto_fijo_id, periodo)');
 
 // Horarios y fichajes pasan de la cuenta al empleado (hist. §199): el cajero
 // no tiene cuenta de Nexo. Cada cuenta que ya tenía horario o fichajes en un

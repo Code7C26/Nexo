@@ -366,7 +366,27 @@ const SECCIONES_ES = [
       "En la ficha de la venta ves **Adónde fue la plata**: la mercadería, cada gasto de la venta (la comisión, el envío, las cuotas), el IVA y lo que te quedó. Si pagaste el envío, sumalo con **Sumar el envío**.",
       "También la podés cargar desde el asistente: \"vendí 2 buzos a Sole a 28 mil cada uno, pagó en efectivo\"."
     ],
-    ver: ["cobrar", "anular-venta", "facturar", "punto-de-venta"]
+    ver: ["cobrar", "vender-en-cuotas", "anular-venta", "facturar", "punto-de-venta"]
+  },
+  {
+    id: "vender-en-cuotas",
+    grupo: "Vender",
+    titulo: "Vender en cuotas (sin tarjeta)",
+    pantalla: ["#/productos", "Productos"],
+    preguntas: ["cómo vendo en cuotas", "cómo hago un plan de pagos", "cómo cobro en cuotas sin tarjeta", "cómo pongo un precio en cuotas", "un pago de 100 mil o tres de 50 mil", "cómo financio una venta"],
+    palabras: ["cuotas", "cuota", "plan", "pagos", "financiar", "financiacion", "pagar", "mensual", "cuenta corriente", "fiado"],
+    bloques: [
+      "Si vendés algo en cuotas con tu propia financiación (un pago de $100.000, dos de $65.000 o tres de $50.000), cada producto puede tener sus planes. Lo que falta pagar queda en la cuenta corriente del cliente, una cuota por mes.",
+      { pasos: [
+        "En **Productos**, editá el producto y en **Precio en cuotas** tocá **Sumar un plan**: cuántas cuotas y de cuánto cada una. Nexo te muestra el total y cuánto más es que de contado.",
+        "Al venderlo (en **Ventas › Nueva venta** o en el mostrador), elegí cómo paga: **1 pago** o uno de los planes. El precio es el del plan.",
+        "Elegí el cliente: sin cliente no se puede vender en cuotas.",
+        "Cobrá lo que paga hoy: el mostrador te propone la primera cuota."
+      ] },
+      "La primera cuota vence el día de la venta y las demás cada mes. En la ficha de la venta ves cada cuota con su vencimiento y cuánto falta; en **Cuentas corrientes**, cada cuota aparece con su número (cuota 2 de 3) y solo cuenta como vencida la que ya venció.",
+      { nota: "Una venta en cuotas no se edita: si hay que cambiarla, se anula y se carga de nuevo. No lleva descuento a mano: el precio es el del plan." }
+    ],
+    ver: ["registrar-venta", "cobrar", "punto-de-venta"]
   },
   {
     id: "cobrar",
@@ -962,9 +982,31 @@ const SECCIONES_ES = [
         "Tocá **Registrar gasto**."
       ] },
       "Las categorías se arman en **Gastos › Categorías**. Cada una dice si es un gasto operativo, una inversión (una heladera nueva) o un retiro del dueño: así el Resumen calcula bien el resultado.",
-      "Desde el asistente: \"pagué 25 mil de luz en efectivo\"."
+      "Desde el asistente: \"pagué 25 mil de luz en efectivo\".",
+      "Si se repite (el alquiler, la luz), marcá **Se repite**: ver **Gastos fijos que se repiten**."
     ],
-    ver: ["caja", "resumen"]
+    ver: ["gastos-fijos", "caja", "resumen"]
+  },
+  {
+    id: "gastos-fijos",
+    grupo: "Plata",
+    titulo: "Gastos fijos que se repiten",
+    pantalla: ["#/gastos", "Gastos"],
+    preguntas: ["cómo cargo el alquiler todos los meses", "cómo hago un gasto fijo", "puedo cargar un gasto que se repite", "cómo dejo de anotar un gasto fijo", "cómo cargo la luz que cambia cada mes"],
+    palabras: ["fijo", "fijos", "repite", "repetir", "mensual", "todos los meses", "recurrente", "alquiler", "luz", "internet", "cuota", "baja", "saltear"],
+    bloques: [
+      "El alquiler, la luz o internet se cargan una vez y Nexo sabe cuándo vuelven a tocar.",
+      { pasos: [
+        "En **Gastos**, tocá **Nuevo gasto** y cargalo como siempre, con la fecha de la primera vez.",
+        "Marcá **Se repite** y elegí cada cuánto: todos los meses, cada 2, 3 o 6 meses, todos los años, todas las semanas o cada 2 semanas.",
+        "Elegí qué pasa las próximas veces: **Anotarlo solo** (el día que toca, con el mismo importe y de la misma cuenta, como el alquiler) o **Avisarme para cargarlo** (para la luz o el gas, que cambian).",
+        "Tocá **Registrar gasto**."
+      ] },
+      "Los que te avisan aparecen arriba en **Gastos**, en **Para cargar**, y en **Para revisar** del Resumen: tocá **Cargar** y poné el importe que vino. Si un mes no se paga, **Esta vez no**.",
+      "En **Gastos fijos** ves cada uno con su próxima vez. Con el lápiz cambiás el importe, la cuenta o cómo se anota, y vale para las próximas veces. Con el tacho lo das de baja: no se anota más y lo ya anotado queda como estaba.",
+      "Cada vez es un gasto común: sale de la cuenta y resta del resultado. Si anulás uno, esa vez no se vuelve a anotar."
+    ],
+    ver: ["registrar-gasto", "resumen"]
   },
   {
     id: "resumen",
@@ -978,7 +1020,7 @@ const SECCIONES_ES = [
       "En **Resumen** elegís el período (hoy, 7 días, este mes, el año o las fechas que quieras) y ves:",
       { lista: [
         "lo que vendiste, lo que te costó eso, la ganancia, los gastos y el resultado, comparado con el período anterior o con el mismo del año pasado;",
-        "lo que hay que mirar hoy: lo que te deben, lo que debés y lo que hay que reponer;",
+        "lo que hay que mirar hoy: lo que te deben, lo que debés, lo que hay que reponer y, en **Para revisar**, lo que salió raro esta semana (facturas sin CAE, faltantes de caja, productos que compraste más caros sin cambiarles el precio, gastos fijos que tocaron y falta cargar), cada uno con su botón para ir a arreglarlo;",
         "cuándo se vende, por día de la semana y por hora;",
         "cómo viene el resultado mes a mes;",
         "qué se vende, por categoría y los mejores clientes;",
@@ -1038,7 +1080,7 @@ const SECCIONES_ES = [
         "En **Socios**, dá de alta a la persona (nueva, o que ya es cliente) con su plan.",
         "La cuota vence desde la fecha de alta. Si hace varios planes, es **una sola cuota** con todos adentro: un cobro por mes, no uno por plan."
       ] },
-      "En **Cuotas** ves las del mes: cuánto cobraste, cuánto falta y cuánto está vencido, y cobrás cada una de un toque. Las cuotas no aparecen en **Ventas**, que queda para lo que vendés en el mostrador.",
+      "En **Cuotas** ves las del mes: cuánto cobraste, cuánto falta y cuánto está vencido, y cobrás cada una de un toque con el medio con que paga (efectivo, débito, crédito, transferencia: los de **Configuración › Medios de cobro**). **Otro importe** sirve para un pago parcial o el QR de Mercado Pago. Las cuotas no aparecen en **Ventas**, que queda para lo que vendés en el mostrador.",
       "Si a un socio le sumás un plan a mitad de mes, la primera vez paga solo los días que faltan hasta el vencimiento de su cuota, y desde ahí va en la misma cuota.",
       "En el **Resumen**, la pieza **Socios y cuotas** muestra los socios activos, las altas y las bajas, lo cobrado de cuotas aparte de las ventas del mostrador, las entradas por día y los que no vienen.",
       "En **Ingreso**, la recepción busca al socio cuando llega: Nexo avisa si debe la cuota.",
@@ -1100,6 +1142,7 @@ const SECCIONES_ES = [
       "En **Configuración › Logo y colores** subís tu logo y elegís tu color. El logo va arriba del menú, en las facturas, los presupuestos, los tickets y la pantalla de entrada del gimnasio.",
       "El color toma el lugar del azul de Nexo: la sección marcada del menú, los enlaces y lo que se destaca. Si subís el logo, Nexo te ofrece sus colores. Nexo lo aclara u oscurece lo justo para que se lea en el tema claro y en el oscuro.",
       { nota: "Un PNG con el fondo transparente queda mejor. En el ticket el logo sale en grises: la impresora térmica imprime en negro." },
+      "Si en el menú tu logo se ve chico (un escudo redondo con mucho margen), en **En el menú** acercalo con la barra y arrastralo hasta que se vea lo importante. Lo que se imprime sigue llevando el logo entero.",
       "Tu **foto de perfil** es de tu cuenta, no del negocio: se sube en **Configuración › Mi cuenta** y va en el círculo de abajo del menú."
     ],
     ver: ["datos-del-negocio"]

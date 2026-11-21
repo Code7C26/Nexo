@@ -15271,3 +15271,79 @@ de cuenta corriente de cada cliente en la misma planilla.
 - **Rutas:** `PUT /api/negocio/marca` (admin), `GET /api/negocios/:id/logo` (quien trabaja en ese negocio; también la caja), `PUT/GET /api/auth/foto`. Se valida la firma de los bytes (PNG/JPEG/WebP), máx. 600 KB; dirección con `?v=` y caché inmutable.
 - Test nuevo: `marca`. `npm test`: 501 de 501. Probado en el navegador (oscuro, claro, celular sin scroll horizontal, impreso, entrada, foto).
 - **Falta:** probarlo con una impresora térmica real; si el logo es blanco sobre transparente, en la placa blanca no se ve (se podría ofrecer el fondo de la placa).
+
+## §213 — 21 de noviembre de 2026: "Para revisar" en el Resumen (punto 9, primera parte)
+
+- **Competencia:** Praxia (punto 7 de `docs/investigaciones/investigacion-praxia.md`): avisos en el tablero con un botón a donde se arreglan; ventas sin CAE, faltantes de caja de más de $15.000 por día, turnos que arrancaron con otro vuelto, "el costo subió y los precios no" (la última semana contra las cuatro anteriores, 5 % o más, sin precio tocado).
+- **Dónde:** dentro de la pieza "Para mirar hoy" del Resumen, abajo de las tres cifras; sin avisos no se ve. Mira la última semana, no el período elegido.
+- **Avisos** (`paraRevisar` en `server.js`, campo `revisar` de `GET /api/reportes/tablero`; el servidor manda datos y `dominios/tablero.js` arma la frase, traducible):
+  - facturas pendientes de ARCA (sin CAE) y rechazadas → la ficha si es una, Facturas si son varias (`abrirFicha:factura` registrado en `app.js`);
+  - faltante del día en una caja de $15.000 o más (suma de los cierres) y una caja que abrió con otra plata que la del último cierre (≥ $1) → el Cierre de ese día (`#/cierre/AAAA-MM-DD`, nuevo en `cierre.js`);
+  - una caja abierta desde otro día → el punto de venta;
+  - "el costo subió y el precio no": costo real ponderado de las compras activas de los últimos 7 días contra los 28 anteriores, +5 % o más, sin un `editar` de `precio_venta` en la auditoría del producto (o de una variante) desde la primera compra cara → la ficha del producto. Se ven 5, y "Y N productos más";
+  - pagos de Mercado Pago sin asignar, devueltos o en disputa sin revisar → Configuración › Mercado Pago.
+- Sin esquema nuevo. Cambiar un precio solo en una lista de precios (no el general) no cuenta como "tocado": no se audita aparte.
+- No se hizo "cajas que no abrieron" de Praxia: un día de cierre del local la daría por falla.
+- Test nuevo: `revisar` (3 casos). `npm test`: 504 de 504. Probado en el navegador (compu y celular, los dos botones). Manual (castellano e inglés) actualizado.
+
+## §214 — 21 de noviembre de 2026: gastos fijos que se repiten (punto 9, segunda parte)
+
+- **Competencia:** Praxia (punto 9 de `docs/investigaciones/investigacion-praxia.md`: el alquiler se carga una vez y se repite hasta darlo de baja, sin borrar el pasado); QuickBooks (tres tipos de plantilla: "Programada" crea el gasto sola, la recomienda para el alquiler; "Recordatorio" avisa y espera, para lo que cambia de monto como la luz; "Sin programar"); Holded (mensual, trimestral o anual, generado solo). Nexo toma los dos primeros de QuickBooks.
+- **Cómo se usa:** en Nuevo gasto (admin), **Se repite**: cada cuánto (todos los meses, cada 2, 3 o 6, todos los años, todas las semanas o cada 2) y qué pasa las próximas veces: **Anotarlo solo** (el día que toca, con ese importe y de esa cuenta) o **Avisarme para cargarlo**. La fecha pasa a ser "La primera vez". El gasto de esa fecha se registra en el momento (en los dos modos: es el que se está cargando).
+- **Gastos › Gastos fijos** (panel arriba de la lista, solo si hay alguno): **Para cargar** con lo que tocó y falta (Cargar, y "Esta vez no" para el admin), y la tabla con cada cuánto, cómo, la próxima vez y el importe; el lápiz cambia importe, categoría, cuenta, proveedor, descripción y modo (para las próximas veces; cada cuánto no se cambia: se da de baja y se carga otro), el tacho lo da de baja. Los gastos que salen de uno llevan la etiqueta "Fijo".
+- **Para revisar** del Resumen suma cada vez para cargar ("Luz: tocaba el 21/11", con lo que se pagó la última vez) y su botón abre el formulario en Gastos.
+- **Esquema (aditivo):** tablas `gastos_fijos` (la plantilla: `cada` + `unidad` mes/semana desde `desde`, `modo` solo/aviso, `estado` y `fecha_baja`) y `gastos_fijos_salteados`; columnas `gastos.gasto_fijo_id` y `gastos.periodo` (la vez que paga) con índice único `(gasto_fijo_id, periodo)`. Las veces se cuentan siempre desde la primera (`sumarMeses`: el 31 da el último día de los meses cortos). Un gasto anulado sigue ocupando su vez: anularlo es "esa vez no". `verificar-migracion`: 24 de 24.
+- **Sin cron:** los de "solo" se anotan al mirar Gastos, la tesorería o el Resumen, al arrancar y cada media hora (`ponerGastosFijosAlDia`), con auditoría de actor sistema. La primera vez puede estar hasta un año para atrás (anota o deja para cargar las de en medio, y el formulario lo avisa) o para adelante.
+- **Rutas:** `GET /api/gastos-fijos` (los dos roles), `POST`, `PUT /:id`, `POST /:id/saltear` y `POST /:id/baja` (admin); `POST /api/gastos` acepta `gasto_fijo_id` + `periodo` para cargar una vez (los dos roles; no deja dos veces la misma ni una que no es de la serie).
+- Test nuevo: `gastos-fijos` (5 casos). `npm test`: 509 de 509. Probado en el navegador (compu y celular: alta de los dos modos, cargar, editar, desde el Resumen; sin errores en la consola). Manual (castellano e inglés): "gastos-fijos".
+- **No se hizo** lo de Praxia de repartir un gasto en las semanas o los meses que cubre, ni los gastos pendientes o en cuotas: en Nexo un gasto se paga en el momento (CLAUDE.md §14); un gasto a pagar después es otra decisión.
+
+## §215 — 21 de noviembre de 2026: las cuotas se cobran con los medios de cobro, y el logo se encuadra en el menú
+
+Pedidos del usuario, con capturas de la cuenta de Morro.
+
+- **Cobrar cuotas con los medios** (el usuario ya lo había marcado: "no existe medio de pago banco ni mercado pago"). Cuotas, la ficha del socio, la recepción (#/ingreso) y la ficha del abono ofrecían un botón por **cuenta** (Efectivo, Banco, Mercado Pago). Ahora, uno por **medio de cobro activo** (Efectivo, Débito, Crédito, Transferencia…, los de Configuración › Medios de cobro), como el mostrador y "Registrar cobro" (hist. §171, §176). Lo que no está configurado no aparece.
+  - `core/cobro-medio.js` (nuevo): los botones y el diálogo `#modalCobroMedio`, que dice cuánto, a quién y adónde entra, y pregunta solo lo que el medio no dice (la caja si hay varias, la cuenta donde cayó la transferencia, las cuotas del crédito).
+  - Cuotas suma **Otro importe**, que abre "Registrar cobro" de Ventas (pago parcial, QR o link de Mercado Pago) y repinta con el evento `cobro-registrado`.
+  - Servidor: `POST /api/socios/:id/cobros` y `POST /api/abonos/:id/cobros` aceptan `medio_cobro_id` (+ `cuotas`, `cuenta_tesoreria_id`) con `destinoDeCobro` (las mismas `medioDelCobro` y `cuentaDelMedio` de Ventas); cada cuota pasa por `cobrarCuota`, que guarda el medio y anota sus costos (comisión, cuotas) como gastos de la venta. Sin medio, la cuenta suelta como antes. Responden `en` (el medio o la cuenta).
+- **El logo en el menú** ("se ve muy poco"): en Configuración › Logo y colores, **En el menú** muestra el cuadradito en grande para acercar el logo (barra de 1 a 4) y arrastrarlo con el dedo o el mouse (o las flechas); **Entero y centrado** lo deja como estaba. Se guarda con la marca y se aplica con CSS (`atributosEncuadre` en `core/marca.js`: `translate` + `scale`) en el selector de negocios y la vista previa. Lo impreso lleva el logo entero.
+  - Esquema: `organizaciones.logo_encuadre` (TEXT nulo, JSON `{zoom, x, y}`; aditivo). `PUT /api/negocio/marca` acepta `encuadre` (zoom 1–4, corrimiento ±150 %; entero = null); `GET /api/negocio` y `GET /api/negocios` lo devuelven.
+  - Arreglado: en la página, la vista previa del logo se salía del recuadro (el alto en % dentro de la grilla no tenía de qué tomarse).
+- Tests: un caso nuevo en `cuota-unica` (cobrar la cuota con el débito) y otro en `marca` (el encuadre). `npm test`: 511 de 511. `verificar-migracion`: 24 de 24. Probado en el navegador (compu y celular). Manual (castellano e inglés) al día.
+
+## §216 — 21 de noviembre de 2026: vender en cuotas con financiación propia
+
+Pedido del usuario: "mi profe a veces vende conjuntos y ofrece un pago de
+100.000, dos pagos de 65.000 o tres pagos de 50.000 … que si se vende, queda en
+la cuenta corriente del cliente". Competencia en
+`docs/investigaciones/investigacion-cuotas-propias.md` (Odoo: una factura con
+un vencimiento por cuota; Dux: planes con recargo en la forma de pago).
+
+- **El producto** tiene **Precio en cuotas** (formulario de Productos, solo
+  admin): filas "N pagos de $X" (2 a 36), con el total y cuánto más que de
+  contado. El de un pago es el precio de siempre. `PUT /api/productos/:id/planes-pago`
+  los reemplaza enteros (auditado); `GET /api/productos` y `/api/pos/catalogo`
+  traen `planes_pago`.
+- **Al vender** (Ventas › Nueva venta y el mostrador) cada renglón con planes
+  ofrece **1 pago** o un plan. El servidor pone el precio del plan
+  (`preciosDeLosPlanes`: N × cuota, sin oferta ni descuento), exige un cliente
+  que no sea "Consumidor final" y arma el cronograma (`crearCuotasDeVenta`):
+  la cuota k vence k − 1 meses después de la venta y lleva la cuota k de cada
+  renglón en cuotas; la primera, además, lo que no va en cuotas. La venta queda
+  con `condicion_pago = 'cuotas'` y vence con la última. En el mostrador se
+  propone cobrar la primera cuota; un plan saca el descuento a mano.
+- **La deuda**: `saldosPorOperacion` reparte lo que falta de la venta entre
+  sus cuotas, de la más vieja a la más nueva (`pendientePorCuota`), y da una
+  fila por cuota pendiente con su vencimiento. Así Cuentas corrientes ("cuota 2
+  de 3"), el Resumen y las consultas solo cuentan como vencido lo que ya venció.
+  La ficha de la venta muestra el panel **Cuotas** (vence, importe, falta).
+- Una venta en cuotas **no se edita** (se anula y se carga de nuevo), como una
+  con devoluciones: su cronograma sale de los renglones.
+- **Esquema (aditivo):** tablas `producto_planes_pago` y `venta_cuotas`, columna
+  `venta_items.plan_cuotas`. `verificar-migracion`: 24 de 24.
+- Test nuevo: `ventas-en-cuotas` (3 casos). `npm test`: 514 de 514. Probado en
+  el navegador: planes en el producto, alta de venta en 3 cuotas, ficha,
+  cuenta corriente y el mostrador en 2 cuotas cobrando la primera. Manual
+  (castellano e inglés): "vender-en-cuotas".
+- **No se hizo:** recargo por mora, cuotas que no sean mensuales, planes por
+  variante, y editar el cronograma a mano.

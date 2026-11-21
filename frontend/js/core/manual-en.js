@@ -173,6 +173,23 @@ export const SECCIONES_EN = {
       "You can also record it from the assistant: \"I sold 2 hoodies to Sole at 28 thousand each, she paid cash\"."
     ]
   },
+  "vender-en-cuotas": {
+    titulo: "Selling in installments (without a card)",
+    pantalla: "Products",
+    preguntas: ["how do i sell in installments", "how do i set up a payment plan", "how do i collect in installments without a card", "how do i set an installment price", "one payment of 100 thousand or three of 50 thousand", "how do i finance a sale"],
+    palabras: ["installments", "installment", "plan", "payments", "finance", "financing", "pay", "monthly", "account", "credit"],
+    bloques: [
+      "If you sell something in installments with your own financing (one payment of $100,000, two of $65,000 or three of $50,000), each product can have its plans. What's left to pay stays on the customer's account, one installment a month.",
+      { pasos: [
+        "In **Products**, edit the product and under **Price in installments** tap **Add a plan**: how many installments and how much each. Nexo shows the total and how much more it is than paying at once.",
+        "When you sell it (in **Sales › New sale** or at the counter), choose how they pay: **1 payment** or one of the plans. The price is the plan's.",
+        "Choose the customer: you can't sell in installments without one.",
+        "Collect what they pay today: the counter suggests the first installment."
+      ] },
+      "The first installment is due on the day of the sale and the rest every month. On the sale's page you see each installment with its due date and what's left; in **Accounts**, each installment shows its number (installment 2 of 3) and only the ones already due count as overdue.",
+      { nota: "A sale in installments can't be edited: if it needs changing, void it and enter it again. It doesn't take a manual discount: the price is the plan's." }
+    ]
+  },
   cobrar: {
     titulo: "Collecting a sale or a debt",
     pantalla: "Accounts",
@@ -478,7 +495,26 @@ export const SECCIONES_EN = {
         "Tap **Record expense**."
       ] },
       "Categories are set up in **Expenses › Categories**. Each one says whether it's an operating expense, an investment (a new fridge) or an owner withdrawal: that way the Dashboard calculates the result correctly.",
-      "From the assistant: \"I paid 25 thousand for electricity in cash\"."
+      "From the assistant: \"I paid 25 thousand for electricity in cash\".",
+      "If it repeats (rent, electricity), tick **It repeats**: see **Recurring expenses**."
+    ]
+  },
+  "gastos-fijos": {
+    titulo: "Recurring expenses",
+    pantalla: "Expenses",
+    preguntas: ["how do i record the rent every month", "how do i make a recurring expense", "can i record an expense that repeats", "how do i stop recording a recurring expense", "how do i record electricity that changes every month"],
+    palabras: ["recurring", "repeat", "repeats", "monthly", "every month", "fixed", "rent", "electricity", "internet", "installment", "cancel", "skip"],
+    bloques: [
+      "Rent, electricity or internet are entered once and Nexo knows when they're due again.",
+      { pasos: [
+        "In **Expenses**, tap **New expense** and fill it in as always, with the date of the first time.",
+        "Tick **It repeats** and choose how often: every month, every 2, 3 or 6 months, every year, every week or every 2 weeks.",
+        "Choose what happens the next times: **Record it automatically** (on the day it's due, with the same amount and from the same account, like rent) or **Remind me to enter it** (for electricity or gas, which change).",
+        "Tap **Record expense**."
+      ] },
+      "The ones that remind you show up at the top of **Expenses**, under **To enter**, and under **To review** on the Dashboard: tap **Record** and type the amount that came in. If one time isn't paid, **Not this time**.",
+      "Under **Recurring expenses** you see each one with its next time. With the pencil you change the amount, the account or how it's recorded, and it applies to the next times. With the bin you cancel it: it's not recorded anymore and what was already recorded stays as it was.",
+      "Each time is a regular expense: it comes out of the account and lowers the result. If you void one, that time isn't recorded again."
     ]
   },
   resumen: {
@@ -490,7 +526,7 @@ export const SECCIONES_EN = {
       "On the **Dashboard** you choose the period (today, 7 days, this month, the year or the dates you want) and you see:",
       { lista: [
         "what you sold, what it cost you, the profit, the expenses and the result, compared with the previous period or the same one last year;",
-        "what to look at today: what you're owed, what you owe and what to restock;",
+        "what to look at today: what you're owed, what you owe, what to restock and, under **To review**, what looked off this week (invoices without a CAE, cash shortfalls, products you bought at a higher cost without changing their price, recurring expenses that came due and are still to enter), each with a button to go fix it;",
         "when you sell, by day of the week and by hour;",
         "how the result is going month by month;",
         "what sells, by category, and the top customers;",
@@ -536,7 +572,7 @@ export const SECCIONES_EN = {
         "In **Members**, sign up the person (new, or already a customer) with their plan.",
         "The fee is due from the sign-up date. If they do several plans, it is **a single fee** with all of them inside: one payment a month, not one per plan."
       ] },
-      "In **Fees** you see this month's: how much you collected, how much is left and how much is overdue, and you collect each one with a tap. Fees don't show up in **Sales**, which is for what you sell at the counter.",
+      "In **Fees** you see this month's: how much you collected, how much is left and how much is overdue, and you collect each one with a tap with the method they pay with (cash, debit, credit, transfer: the ones in **Settings › Payment methods**). **Another amount** is for a partial payment or the Mercado Pago QR. Fees don't show up in **Sales**, which is for what you sell at the counter.",
       "If you add a plan to a member mid-month, the first time they only pay the days left until their fee is due, and from then on it goes in the same fee.",
       "On the **Dashboard**, the **Members and fees** piece shows active members, sign-ups and cancellations, fees collected apart from counter sales, check-ins per day and who stopped coming.",
       "In **Check-in**, the front desk looks up the member when they arrive: Nexo warns you if they owe the fee.",
@@ -584,6 +620,7 @@ export const SECCIONES_EN = {
       "In **Settings › Logo and colors** you upload your logo and choose your color. The logo goes at the top of the menu, on invoices, quotes, receipts and the gym's check-in screen.",
       "The color takes the place of Nexo's blue: the selected menu section, links and highlights. If you upload your logo, Nexo offers its colors. Nexo lightens or darkens it just enough to read well in the light and dark themes.",
       { nota: "A PNG with a transparent background looks best. On the receipt the logo prints in grayscale: thermal printers print in black." },
+      "If your logo looks small in the menu (a round badge with a lot of margin), under **In the menu** zoom in with the slider and drag it until the important part shows. What gets printed still carries the whole logo.",
       "Your **profile photo** belongs to your account, not the business: you upload it in **Settings › My account** and it goes in the circle at the bottom of the menu."
     ]
   },

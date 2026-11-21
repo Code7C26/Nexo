@@ -98,3 +98,25 @@ test('la foto de perfil: es de la cuenta, y se saca con null', async () => {
   assert.equal((await empleado.get('/api/auth/estado')).json.usuario.foto, null);
   assert.equal((await empleado.get('/api/auth/foto')).status, 404);
 });
+
+test('el encuadre del logo en el menú (hist. §215): se guarda, se valida y vuelve a entero con null', async () => {
+  for (const encuadre of [{ zoom: 5, x: 0, y: 0 }, { zoom: 0.5, x: 0, y: 0 }, { zoom: 2, x: 200, y: 0 }, { zoom: 'a' }, 'grande']) {
+    assert.equal((await admin.put('/api/negocio/marca', { encuadre })).status, 400, JSON.stringify(encuadre));
+  }
+  assert.equal((await empleado.put('/api/negocio/marca', { encuadre: { zoom: 2, x: 0, y: 0 } })).status, 403);
+
+  const guardado = await admin.put('/api/negocio/marca', { encuadre: { zoom: 1.756, x: -12.304, y: 8 } });
+  assert.equal(guardado.status, 200, guardado.texto);
+  assert.deepEqual(guardado.json.logo_encuadre, { zoom: 1.76, x: -12.3, y: 8 });
+  assert.deepEqual((await admin.get('/api/negocio')).json.logo_encuadre, { zoom: 1.76, x: -12.3, y: 8 });
+  const enLaLista = (await admin.get('/api/negocios')).json.find((n) => n.actual);
+  assert.deepEqual(enLaLista.logo_encuadre, { zoom: 1.76, x: -12.3, y: 8 });
+  // Lo ve el empleado en su selector; el otro negocio no lo tiene.
+  assert.deepEqual((await empleado.get('/api/negocio')).json.logo_encuadre, { zoom: 1.76, x: -12.3, y: 8 });
+  assert.equal((await otro.get('/api/negocio')).json.logo_encuadre, null);
+
+  // Entero y centrado es lo mismo que no tenerlo.
+  assert.equal((await admin.put('/api/negocio/marca', { encuadre: { zoom: 1, x: 0, y: 0 } })).json.logo_encuadre, null);
+  await admin.put('/api/negocio/marca', { encuadre: { zoom: 2, x: 10, y: 10 } });
+  assert.equal((await admin.put('/api/negocio/marca', { encuadre: null })).json.logo_encuadre, null);
+});

@@ -519,7 +519,10 @@ IVA (es del fisco, no ingreso); para los demás no cambia nada.
 La ficha de cada venta muestra adónde fue la plata: mercadería, packaging,
 cada gasto de la venta (comisión con su porcentaje, envío, cuotas), IVA y lo
 que quedó, cada uno con su porcentaje contra el promedio del negocio (hist.
-§131).
+§131). En cuotas con financiación propia (hist. §216): el producto tiene sus
+planes ("3 pagos de $50.000"), el renglón toma el precio del plan y la venta
+lleva su cronograma (`venta_cuotas`, una por mes); lo que falta queda en la
+cuenta corriente y vence de a una cuota.
 
 ---
 
@@ -718,6 +721,11 @@ Un gasto debe poder tener:
 - descripción
 - comprobante
 - usuario
+
+Implementado hoy: gastos fijos que se repiten (hist. §214). El alquiler o la
+luz se cargan una vez con cada cuánto se repiten; Nexo anota solo cada vez
+(`gastos_fijos`, modo "solo") o la deja para cargar con el importe que vino
+(modo "aviso"). Cada vez es un gasto común, pagado en el momento.
 
 ---
 

@@ -278,6 +278,18 @@ CREATE TABLE IF NOT EXISTS productos (
   mano_obra_por TEXT
 );
 
+-- Los planes en cuotas de un producto (hist. §216): "2 pagos de $65.000",
+-- "3 de $50.000". Es financiación del negocio, no de una tarjeta: lo que falta
+-- pagar queda en la cuenta corriente del cliente, con una cuota por mes. El de
+-- un pago es el precio de siempre y no va acá. Hija de productos.
+CREATE TABLE IF NOT EXISTS producto_planes_pago (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  producto_id INTEGER NOT NULL REFERENCES productos(id),
+  cuotas INTEGER NOT NULL CHECK (cuotas BETWEEN 2 AND 36),
+  importe_cuota REAL NOT NULL CHECK (importe_cuota > 0),
+  UNIQUE (producto_id, cuotas)
+);
+
 -- Precio de un producto en una lista puntual. No todo producto tiene fila
 -- acá para toda lista: si falta, el precio de esa combinación cae al
 -- precio_venta del producto (que representa la lista predeterminada). El
@@ -516,7 +528,24 @@ CREATE TABLE IF NOT EXISTS venta_items (
   -- unidad, ya restado de precio_unitario (el precio de antes es la suma de
   -- los dos). Se reparte entre los renglones según su valor, así el total, el
   -- IVA y el margen ya lo cuentan sin mirar esta columna. 0 = sin descuento.
-  descuento REAL NOT NULL DEFAULT 0
+  descuento REAL NOT NULL DEFAULT 0,
+  -- En cuántas cuotas se vendió (hist. §216, producto_planes_pago): el precio
+  -- del renglón es el de ese plan. NULL = el precio de siempre.
+  plan_cuotas INTEGER
+);
+
+-- Las cuotas de una venta en cuotas (hist. §216, el "plan de pagos" de Odoo):
+-- una fila por vencimiento, la primera el día de la venta y las demás cada
+-- mes. Lo que se cobra salda de la más vieja a la más nueva, así el atraso se
+-- mide por cuota (saldosPorOperacion). Una venta sin plan no tiene filas: vence
+-- entera, como siempre. Hija de ventas.
+CREATE TABLE IF NOT EXISTS venta_cuotas (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  venta_id INTEGER NOT NULL REFERENCES ventas(id),
+  numero INTEGER NOT NULL CHECK (numero >= 1),
+  vencimiento TEXT NOT NULL,
+  importe REAL NOT NULL CHECK (importe >= 0),
+  UNIQUE (venta_id, numero)
 );
 
 -- Un presupuesto es una OFERTA, no una operación: no toca stock, no
@@ -1069,7 +1098,54 @@ CREATE TABLE IF NOT EXISTS gastos (
   -- La venta de la que es costo (hist. §129): la comisión de Mercado Libre o
   -- el envío que paga el negocio. Se anula y se restaura con ella, y cuenta en
   -- la ganancia de su canal. NULL = un gasto del negocio, como siempre.
-  venta_id INTEGER REFERENCES ventas(id)
+  venta_id INTEGER REFERENCES ventas(id),
+  -- El gasto fijo del que salió (hist. §214) y la vez que paga: la fecha en
+  -- que tocaba, aunque se haya pagado otro día. El índice único de
+  -- (gasto_fijo_id, periodo), en db/index.js, no deja anotar dos veces la
+  -- misma vez; uno anulado la sigue ocupando (anularlo es "esa vez no").
+  gasto_fijo_id INTEGER REFERENCES gastos_fijos(id),
+  periodo TEXT
+);
+
+-- Gastos fijos que se repiten (hist. §214, punto 9 de investigacion-praxia.md):
+-- el alquiler o la luz se cargan una vez y Nexo sabe cuándo vuelven a tocar.
+-- Es la plantilla; cada vez que toca es un gasto común de la tabla gastos,
+-- pagado en el momento como cualquier otro (CLAUDE.md §13, §14).
+-- - desde: la primera vez. Las siguientes salen de sumarle `cada` meses o
+--   semanas, siempre contando desde ahí (el 31 da el último día de los meses
+--   más cortos). Cambiar cada cuánto sería otra serie: se da de baja y se
+--   carga otro.
+-- - modo: 'solo' lo anota Nexo el día que toca, con este importe y de esta
+--   cuenta (el alquiler, como el "Programado" de QuickBooks); 'aviso' lo deja
+--   para cargar, porque el importe cambia (la luz), y el importe es el de
+--   referencia.
+-- - tipo: el de la categoría al darlo de alta, como en gastos.
+-- - fecha_baja: desde ahí no toca más. Lo ya anotado queda como estaba.
+CREATE TABLE IF NOT EXISTS gastos_fijos (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  categoria_id INTEGER NOT NULL REFERENCES categorias_gasto(id),
+  cuenta_tesoreria_id INTEGER NOT NULL REFERENCES cuentas_tesoreria(id),
+  proveedor_id INTEGER REFERENCES proveedores(id),
+  importe REAL NOT NULL CHECK (importe > 0),
+  tipo TEXT NOT NULL CHECK (tipo IN ('operativo', 'inversion', 'retiro')),
+  descripcion TEXT,
+  cada INTEGER NOT NULL CHECK (cada >= 1),
+  unidad TEXT NOT NULL CHECK (unidad IN ('mes', 'semana')),
+  desde TEXT NOT NULL,
+  modo TEXT NOT NULL DEFAULT 'solo' CHECK (modo IN ('solo', 'aviso')),
+  estado TEXT NOT NULL DEFAULT 'activo' CHECK (estado IN ('activo', 'baja')),
+  fecha_baja TEXT,
+  fecha_alta TEXT NOT NULL DEFAULT (date('now')),
+  organizacion_id INTEGER NOT NULL REFERENCES organizaciones(id)
+);
+
+-- Las veces de un gasto fijo que no se pagan ("este mes no"): no se anotan ni
+-- se avisan. Hija de gastos_fijos.
+CREATE TABLE IF NOT EXISTS gastos_fijos_salteados (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  gasto_fijo_id INTEGER NOT NULL REFERENCES gastos_fijos(id),
+  periodo TEXT NOT NULL,
+  UNIQUE (gasto_fijo_id, periodo)
 );
 
 -- en la cuenta que sale y el ingreso en la que entra comparten el mismo
@@ -1414,7 +1490,12 @@ CREATE TABLE IF NOT EXISTS organizaciones (
   color_marca TEXT,
   logo_tipo TEXT,
   logo_version TEXT,
-  logo BLOB
+  logo BLOB,
+  -- Cómo se encuadra el logo en el cuadradito del menú (hist. §215): JSON
+  -- {"zoom": 1..4, "x": -150..150, "y": -150..150}: cuánto se acerca y
+  -- cuánto se corre (en % del cuadradito). NULL = entero y centrado. Lo
+  -- impreso usa el logo entero.
+  logo_encuadre TEXT
 );
 
 -- nombre queda separado de usuario (el de login) porque la columna

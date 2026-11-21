@@ -12,6 +12,7 @@ import { crearFiltros } from "../core/filtros.js";
 import { descargarCSV } from "../core/csv.js";
 import { invocar, registrar } from "../core/registro.js";
 import { icono } from "../core/iconos.js";
+import { formatear } from "../core/idioma.js";
 
 /* ---------- Cuentas corrientes (a cobrar y a pagar) ---------- */
 
@@ -70,16 +71,18 @@ function renderCcTabla(bodyId, lista, filtros, { tipoLabel, tipoClave, accionLab
 
   for (const e of lista) {
     const masVieja = ccMasVieja(e);
+    // Una venta en cuotas (hist. §216) trae una fila por cuota: se cuentan ventas.
+    const cuantas = new Set(e.operaciones.map((o) => o.id)).size;
     const fila = document.createElement("tr");
     fila.className = "fila-clickeable";
     fila.innerHTML = `
       <td data-label="${tipoLabel}" class="m-titulo"><button type="button" class="btn-link cc-abrir-ficha" data-id="${e.id}">${esc(e.nombre)}</button></td>
       ${celdaMovil(
-        `${numero(e.operaciones.length)} operaci${e.operaciones.length === 1 ? "ón" : "ones"}`,
+        `${numero(cuantas)} operaci${cuantas === 1 ? "ón" : "ones"}`,
         ["vence", fechaAR(masVieja.vencimiento)]
       )}
       <td data-label="Deuda" class="align-right mono m-valor">${money(e.saldo)}</td>
-      <td data-label="Operaciones">${numero(e.operaciones.length)}</td>
+      <td data-label="Operaciones">${numero(cuantas)}</td>
       <td data-label="Vence">${esc(fechaAR(masVieja.vencimiento))}</td>
       <td data-label="Estado" class="m-estado"><span class="status ${CC_TRAMO_CLASE[masVieja.tramo]}">${CC_TRAMO_LABEL[masVieja.tramo]}</span></td>
       <td data-label="" class="cc-chevron">${icono("chevron-right")}</td>
@@ -97,7 +100,9 @@ function renderCcTabla(bodyId, lista, filtros, { tipoLabel, tipoClave, accionLab
                 (o) => `
               <tr>
                 <td data-label="Fecha">${esc(fechaAR(o.fecha))}</td>
-                <td data-label="Vence">${esc(fechaAR(o.vencimiento))}</td>
+                <td data-label="Vence">${esc(fechaAR(o.vencimiento))}${
+                  o.cuota ? ` <span class="cc-cuota">${esc(formatear("cuota {0} de {1}", o.cuota, o.cuotas))}</span>` : ""
+                }</td>
                 <td data-label="Pendiente" class="align-right mono">${money(o.pendiente)}</td>
                 <td data-label="Estado">${ccTextoDias(o.dias)}</td>
                 <td data-label=""><button type="button" class="btn-fila cc-accion" data-id="${o.id}">${accionLabel}</button></td>

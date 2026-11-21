@@ -11,7 +11,7 @@
 
 - Al cerrar una etapa, se hacen tres cosas:
   - su relato completo se agrega al final de `docs/proyecto/handoff-historico.md` con el
-    siguiente número (hoy el último es §212);
+    siguiente número (hoy el último es §216);
   - acá se actualizan "Estado actual" y "Qué sigue";
   - si cambió alguna decisión vigente, se actualiza también esa lista.
 - Nunca apilar secciones "Última etapa" en este archivo: así fue como llegó a
@@ -81,13 +81,46 @@ Lector propio sin librerías (`core/planilla.js`, compartido con el servidor) y
 `POST /api/importar/:tipo`. Test nuevo: `importar`. `npm test`: 498 de 498.
 **Falta:** variantes nuevas desde la planilla y precios por lista.
 
-**20 de noviembre, hist. §212: logo y colores del negocio y la foto de perfil (punto 8).**
+**20 de noviembre, hist. §212: logo y colores del negocio y la foto de perfil (punto 8, publicado, PR #112).**
 Configuración › Logo y colores: el logo va en el menú, la factura, el ticket
 (en grises) y la pantalla de entrada; el color reemplaza al azul de Nexo.
 Foto de perfil en Mi cuenta. Test nuevo: `marca`. `npm test`: 501 de 501.
 
-**Lo que sigue: el punto 9** (el resto de Praxia), sin empezar. Antes, ver
-cómo lo hace la competencia.
+**21 de noviembre, hist. §213: "Para revisar" en el Resumen (punto 9, primera parte).**
+Abajo de "Para mirar hoy": facturas sin CAE o rechazadas, faltantes de caja de
+$15.000 o más en un día, cajas que abrieron con otra plata o siguen abiertas
+desde otro día, "el costo subió y el precio no" y pagos de Mercado Pago para
+revisar, cada uno con su botón. Sin esquema nuevo. Test nuevo: `revisar`.
+`npm test`: 504 de 504.
+
+**21 de noviembre, hist. §214: gastos fijos que se repiten (punto 9, segunda parte).**
+En Nuevo gasto, **Se repite** (cada mes, 2, 3, 6, el año, la semana o cada 2) y
+**Anotarlo solo** (el alquiler: Nexo lo anota el día que toca) o **Avisarme
+para cargarlo** (la luz: queda en Gastos › Para cargar y en Para revisar del
+Resumen, con lo que se pagó la última vez). Gastos › Gastos fijos los lista con
+la próxima vez, se editan para lo que viene y se dan de baja sin tocar lo
+anotado. Esquema aditivo: `gastos_fijos`, `gastos_fijos_salteados` y
+`gastos.gasto_fijo_id`/`periodo` (índice único). Test nuevo: `gastos-fijos`.
+`npm test`: 509 de 509. **Sin publicar** (§213 tampoco).
+
+**21 de noviembre, hist. §215: las cuotas se cobran con los medios de cobro, y
+el logo se encuadra en el menú** (pedidos del usuario). Cuotas, la ficha del
+socio, la recepción y Abonos ofrecen los medios activos (Efectivo, Débito,
+Crédito, Transferencia…), nunca las cuentas (`core/cobro-medio.js`); en
+Logo y colores, **En el menú** acerca y corre el logo
+(`organizaciones.logo_encuadre`). **Sin publicar** (§213 y §214 tampoco).
+
+**21 de noviembre, hist. §216: vender en cuotas con financiación propia**
+(pedido del usuario). Cada producto puede tener **Precio en cuotas** ("3 pagos
+de $50.000"); al venderlo (Ventas o el mostrador) se elige el plan, lo que falta
+queda en la cuenta corriente con una cuota por mes, y solo lo que ya venció
+cuenta como vencido. Esquema aditivo: `producto_planes_pago`, `venta_cuotas`,
+`venta_items.plan_cuotas`. Test nuevo: `ventas-en-cuotas`. 514 de 514.
+**Sin publicar** (§213 a §216).
+
+**Lo que sigue:** el resto del punto 9: mensajes de WhatsApp armados y
+"quiénes deben" (que ya puede avisar de la cuota que vence), y puntos y
+premios.
 
 **19 de noviembre, hist. §205 (publicado, PR #106):** en Planes se elimina un plan que nunca hizo
 nadie (con su servicio del catálogo); el que algún socio hizo solo se pausa.
@@ -2370,8 +2403,8 @@ datos reales; la demo no la necesita.
    pantalla de entrada del gimnasio; la foto de perfil, en el mismo paso.
 9. **El resto de Praxia** (puntos 5 a 9): puntos y premios; mensajes de
    WhatsApp armados por situación y "quiénes deben", con el recordatorio
-   listo; "Para revisar" en el Resumen (ventas sin CAE, faltantes de caja, "el
-   costo subió y los precios no"); gastos fijos que se repiten.
+   listo; ~~"Para revisar" en el Resumen~~ (hecho, hist. §213); ~~gastos
+   fijos que se repiten~~ (hecho, hist. §214).
 10. Si da: **el resumen del día** por WhatsApp o mail, y **vender sin
     conexión** (de Praxia; detalle en "Para más adelante": choca con §39 y
     sin internet no hay CAE).

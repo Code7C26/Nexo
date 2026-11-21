@@ -31,10 +31,10 @@ import { alEntrarEnVista, invocar, recargar, registrar } from "../core/registro.
 import { mostrarVista } from "../core/router.js";
 import { limpiarError, limpiarErrores, marcarError } from "../core/campos.js";
 import { LOCALE } from "../core/idioma.js";
+import { botonesDeMedios, cargarMediosDeCobro, confirmarCobroConMedio } from "../core/cobro-medio.js";
 
 const MAX_RESULTADOS = 8;
 const MAX_MESES = 36;
-const ICONO_TIPO_CUENTA = { efectivo: "banknote", banco: "building-2", mercadopago: "wallet", otro: "wallet" };
 // Los mismos nombres que nombreDuracion() de server.js, para lo que se está
 // escribiendo en el formulario y todavía no se guardó.
 const NOMBRES_DURACION = { 1: "Mensual", 2: "Bimestral", 3: "Trimestral", 4: "Cuatrimestral", 6: "Semestral", 12: "Anual" };
@@ -54,6 +54,7 @@ let socios = [];
 let planes = [];
 let descuentos = [];
 let cuentas = [];
+let medios = [];
 let clientesLibres = [];
 let ingresosHoy = [];
 let filtro = "activos";
@@ -126,12 +127,13 @@ async function cargarDescuentos() {
   descuentos = await api("/api/descuentos-socio", { error: "No se pudieron cargar los descuentos." });
 }
 
-// Las cuentas donde puede entrar la plata de una cuota, para los botones de
-// cobro. Se traen acá y no de core/maestros.js: Caja las carga al arrancar,
-// pero un deep-link a #/ingreso puede llegar antes.
+// Los medios de cobro para los botones (hist. §215) y las cuentas donde puede
+// entrar la plata. Se traen acá y no de core/maestros.js: Caja las carga al
+// arrancar, pero un deep-link a #/ingreso puede llegar antes.
 async function cargarCuentas() {
-  const todas = await api("/api/cuentas-tesoreria", { error: "No se pudieron cargar las cuentas." });
+  const [todas, activos] = await Promise.all([api("/api/cuentas-tesoreria", { error: "No se pudieron cargar las cuentas." }), cargarMediosDeCobro()]);
   cuentas = todas.filter((c) => c.activa !== 0 && c.activa !== false);
+  medios = activos;
 }
 
 async function cargarIngresosHoy() {
@@ -620,20 +622,10 @@ function badgeCuota(c) {
   return c.desde === hoyISO() ? badge("status-pendiente", "Vence hoy").html : badge("status-vencido", "Vencida").html;
 }
 
-// Un botón por cuenta: cobrar es un toque, sin modal. La de efectivo va
-// primero y resaltada, que es lo más común en una recepción. El monto ya está
-// en el título de al lado y en la confirmación.
-function botonesCobro() {
-  const orden = [...cuentas].sort((a, b) => Number(b.tipo === "efectivo") - Number(a.tipo === "efectivo"));
-  return orden
-    .map(
-      (c, i) => `
-    <button type="button" class="btn ${i === 0 ? "btn-primary" : "btn-secundario"}" data-cobrar="${c.id}">
-      ${icono(ICONO_TIPO_CUENTA[c.tipo] ?? "wallet")} Cobrar en ${esc(c.nombre)}
-    </button>`
-    )
-    .join("");
-}
+// Un botón por medio de cobro (hist. §215): Efectivo, Débito, Transferencia…
+// los que el negocio tiene activos. El efectivo va primero y resaltado, que es
+// lo más común en una recepción.
+const botonesCobro = () => botonesDeMedios(medios, "data-cobrar", { chicos: false });
 
 function pintarCobroFicha(s) {
   const panel = document.getElementById("fichaSocioCobro");
@@ -782,30 +774,33 @@ function pintarFicha(s) {
           .join("");
 }
 
-async function cobrar(socio, cuentaId, boton) {
-  const cuenta = cuentas.find((c) => c.id === cuentaId);
-  const ok = await confirmar({
-    titulo: "Cobrar cuotas",
-    cuerpo: `¿Cobrarle ${money(socio.deuda)} a ${socio.nombre} en ${cuenta.nombre}? Salda ${plural(socio.cuotas_impagas, "cuota", "cuotas")}.`,
-    aceptar: `Cobrar ${money(socio.deuda)}`
+async function cobrar(socio, medioId, boton) {
+  const medio = medios.find((m) => m.id === medioId);
+  if (!medio) return null;
+  const como = await confirmarCobroConMedio({
+    medio,
+    cuentas,
+    importe: socio.deuda,
+    quien: socio.nombre,
+    que: `salda ${plural(socio.cuotas_impagas, "cuota", "cuotas")}`
   });
-  if (!ok) return null;
+  if (!como) return null;
   const resultado = await enviando(boton, () =>
     api(`/api/socios/${socio.id}/cobros`, {
       method: "POST",
-      body: { cuenta_tesoreria_id: cuentaId },
+      body: como,
       error: "No se pudo registrar el cobro."
     })
   );
-  avisar(`Cobrado ${money(resultado.cobrado)} en ${cuenta.nombre}.`, "ok");
+  avisar(`Cobrado ${money(resultado.cobrado)} con ${resultado.en}.`, "ok");
   await refrescar([cargarSocios(), recargarOtrasVistas()]);
-  return { ...resultado, cuenta };
+  return resultado;
 }
 
 document.getElementById("fichaSocioCobroCuentas").addEventListener("click", async (e) => {
   const boton = e.target.closest("[data-cobrar]");
   if (!boton || !fichaSocio) return;
-  const resultado = await cobrar(fichaSocio, Number(boton.dataset.cobrar), boton);
+  const resultado = await cobrar(fichaSocio, Number(boton.dataset.medio), boton);
   if (resultado) pintarFicha(resultado.socio);
 });
 
@@ -1259,13 +1254,13 @@ ingresoTarjeta.addEventListener("click", async (e) => {
   } else if (boton.dataset.accion === "pasar") {
     const detalle = socio.situacion === "por_empezar" ? `Su plan empieza el ${fechaAR(socio.empieza)}.` : undefined;
     await enviando(boton, () => registrarIngreso(socio, { tono: "aviso", estado: "Puede pasar", detalle }));
-  } else if (boton.dataset.cobrar) {
-    const resultado = await cobrar(socio, Number(boton.dataset.cobrar), boton);
+  } else if (boton.dataset.medio) {
+    const resultado = await cobrar(socio, Number(boton.dataset.medio), boton);
     if (!resultado) return;
     await registrarIngreso(resultado.socio, {
       tono: "ok",
       estado: "Puede pasar",
-      detalle: `Pagó ${money(resultado.cobrado)} en ${resultado.cuenta.nombre}. Al día hasta el ${fechaAR(resultado.socio.al_dia_hasta)}.`
+      detalle: `Pagó ${money(resultado.cobrado)} con ${resultado.en}. Al día hasta el ${fechaAR(resultado.socio.al_dia_hasta)}.`
     });
   }
 });

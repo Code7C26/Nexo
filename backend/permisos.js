@@ -349,6 +349,13 @@ export const RUTAS_PERMISOS = {
   'PUT /api/gastos/:id': 'ambos',
   'POST /api/gastos/:id/anular': 'admin',
   'POST /api/gastos/:id/restaurar': 'admin',
+  // Gastos fijos (hist. §214): verlos y cargar una vez que toca (POST
+  // /api/gastos), de los dos; armarlos, saltear una vez y darlos de baja, admin.
+  'GET /api/gastos-fijos': 'ambos',
+  'POST /api/gastos-fijos': 'admin',
+  'PUT /api/gastos-fijos/:id': 'admin',
+  'POST /api/gastos-fijos/:id/saltear': 'admin',
+  'POST /api/gastos-fijos/:id/baja': 'admin',
   'GET /api/cuentas-corrientes': 'ambos',
   'GET /api/resumen': 'admin',
   'GET /api/resumen/evolucion': 'admin',
@@ -491,6 +498,8 @@ export const RUTAS_PERMISOS = {
   'GET /api/carga-inicial/stock': 'admin',
   'POST /api/carga-inicial/stock': 'admin',
   'POST /api/productos/:id/costo': 'admin',
+  // Los planes en cuotas del producto (hist. §216).
+  'PUT /api/productos/:id/planes-pago': 'admin',
   'GET /api/carga-inicial/saldos': 'admin',
   'POST /api/carga-inicial/saldos': 'admin',
   'GET /api/carga-inicial/ventas': 'admin',

@@ -409,6 +409,8 @@ button { font-family: inherit; cursor: pointer; }
   height: 100%;
   object-fit: contain;
 }
+/* Encuadrado a mano (hist. §215): acercado y corrido, sin el margen blanco. */
+.negocio-logo:has(img[data-encuadrado]) { padding: 0; }
 
 .negocio-textos {
   display: flex;
@@ -5690,11 +5692,56 @@ html[data-ejemplo] #btnCompraFactura { display: none; }
 .marca-logo-fondo-oscuro { background: #000000; color: #A1A1A1; }
 .marca-logo-fondo-claro { background: #FFFFFF; color: #6B6B6B; }
 
+/* El alto en píxeles: un porcentaje adentro de la grilla no tiene de qué
+   tomarlo, y un logo alto se salía del recuadro. */
 .marca-logo-fondo img {
   max-width: 100%;
-  max-height: 100%;
+  max-height: 64px;
+  min-height: 0;
   object-fit: contain;
 }
+
+/* El encuadre del menú (hist. §215): el cuadradito en grande, para arrastrar
+   el logo con el dedo o el mouse. */
+.marca-encuadre-cuerpo {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-4);
+}
+.marca-encuadre-cuadro {
+  flex: none;
+  width: 120px;
+  height: 120px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: #FFFFFF;
+  cursor: grab;
+  touch-action: none;
+}
+.marca-encuadre-cuadro.is-arrastrando { cursor: grabbing; }
+.marca-encuadre-cuadro:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.marca-encuadre-cuadro img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  pointer-events: none;
+  user-select: none;
+}
+/* Sin encuadre, con el mismo margen que el cuadradito del menú. */
+.marca-encuadre-cuadro img:not([data-encuadrado]) { padding: 8px; }
+.marca-encuadre-controles {
+  display: flex;
+  flex: 1 1 220px;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--sp-2);
+}
+.marca-encuadre-controles label { width: 100%; }
+.marca-encuadre-controles input[type="range"] { width: 100%; }
+.marca-encuadre-controles .form-note { margin: 0; }
 
 .marca-logo-vacio { font-size: var(--txt-xs); }
 
@@ -10687,6 +10734,29 @@ a.asistente-guia-whatsapp:hover { border-color: var(--line-strong); }
 }
 .pendiente-medidor span { display: block; height: 100%; width: 0; background: var(--accent-danger); border-radius: inherit; }
 
+/* Para revisar (hist. §213): un renglón por aviso, con su botón. */
+.revisar { margin-top: var(--sp-4); }
+.revisar-titulo { margin: 0 0 var(--sp-2); font-size: var(--txt-sm); font-weight: 650; }
+.revisar-lista { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--line); }
+.revisar-aviso {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-3) 0;
+  border-bottom: 1px solid var(--line);
+}
+.revisar-aviso > .ico { flex: none; width: 18px; height: 18px; color: var(--accent-warn); }
+.revisar-texto { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.revisar-frase { font-size: var(--txt-sm); font-weight: 600; overflow-wrap: anywhere; }
+.revisar-detalle { font-size: var(--txt-xs); color: var(--ink-muted); }
+.revisar-aviso > .btn { flex: none; }
+/* Los gastos fijos para cargar (hist. §214): dos botones; en el celular, abajo. */
+.revisar-acciones { flex: none; display: flex; gap: var(--sp-2); }
+@media (max-width: 560px) {
+  .revisar-aviso:has(.revisar-acciones) { flex-wrap: wrap; }
+  .revisar-acciones { width: 100%; justify-content: flex-end; }
+}
+
 /* ---------- Personalizar: una casilla y dos flechas por pieza ---------- */
 
 .tablero-lista {
@@ -11683,3 +11753,35 @@ button.grilla-agenda-clase { cursor: pointer; }
 .gimnasio-titulo { margin-top: var(--sp-4); }
 /* Lo cobrado, en verde (en "Para mirar hoy" la barra es lo vencido, en rojo). */
 .medidor-cobrado span { background: var(--accent-ok); }
+
+/* ---------- Ventas en cuotas (hist. §216) ---------- */
+
+/* Los planes del producto: "3 pagos de $50.000", con el total al lado. */
+.planes-pago { display: grid; gap: var(--sp-2); margin-bottom: var(--sp-2); }
+/* El total va abajo: el formulario es angosto y no entra en la misma línea. */
+.plan-pago-fila {
+  display: grid;
+  grid-template-columns: 72px auto minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: var(--sp-2);
+  row-gap: 2px;
+}
+.plan-pago-de { font-size: var(--txt-sm); color: var(--ink-muted); white-space: nowrap; }
+.plan-pago-total { grid-column: 1 / -1; grid-row: 2; font-size: var(--txt-xs); color: var(--ink-muted); }
+.plan-pago-total:empty { display: none; }
+
+/* En el ticket del mostrador: cómo paga cada renglón con planes. */
+.pos-renglon-plan {
+  margin-top: 4px;
+  max-width: 100%;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-sm);
+  padding: 4px 8px;
+  font: inherit;
+  font-size: var(--txt-xs);
+  color: var(--ink);
+  background: var(--surface);
+}
+
+/* En la cuenta corriente: de qué cuota es cada renglón. */
+.cc-cuota { font-size: var(--txt-xs); color: var(--ink-muted); white-space: nowrap; }

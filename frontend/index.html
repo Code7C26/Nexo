@@ -496,6 +496,12 @@
               <span class="pendiente-detalle" id="pendienteStockDetalle"></span>
             </a>
           </div>
+          <!-- Para revisar (hist. §213): lo que salió raro esta semana, cada
+               aviso con su botón a donde se arregla. Sin nada, no se ve. -->
+          <div class="revisar" id="paraRevisar" hidden>
+            <h3 class="revisar-titulo">Para revisar</h3>
+            <ul class="revisar-lista" id="paraRevisarLista"></ul>
+          </div>
         </section>
         </div>
 
@@ -2348,6 +2354,27 @@
           </div>
         </section>
 
+        <!-- Las cuotas de una venta en cuotas (hist. §216): cuándo vence cada
+             una y cuánto falta. Lo cobrado salda de la más vieja a la más nueva. -->
+        <section class="panel" id="fichaVentaCuotasPanel" hidden>
+          <div class="panel-head">
+            <h2>Cuotas</h2>
+          </div>
+          <div class="tabla-scroll">
+          <table class="ledger-table">
+            <thead>
+              <tr>
+                <th scope="col">Cuota</th>
+                <th scope="col">Vence</th>
+                <th scope="col" class="align-right">Importe</th>
+                <th scope="col" class="align-right">Falta</th>
+              </tr>
+            </thead>
+            <tbody id="fichaVentaCuotas"></tbody>
+          </table>
+          </div>
+        </section>
+
         <!-- Lo que se usó al venderla (hist. §126): la caja, la bolsa. -->
         <section class="panel" id="fichaVentaConsumosPanel" hidden>
           <div class="panel-head">
@@ -4137,6 +4164,34 @@
           </div>
         </section>
 
+        <!-- Gastos fijos (hist. §214): los que se repiten, arriba lo que tocó y
+             falta cargar. Sin ninguno, no se ve: se crean con "Se repite" en
+             Nuevo gasto. -->
+        <section class="panel" id="gastosFijosPanel" aria-labelledby="gastosFijosTitulo" hidden>
+          <div class="panel-head">
+            <h2 id="gastosFijosTitulo">Gastos fijos</h2>
+          </div>
+          <div class="revisar" id="gastosFijosParaCargar" hidden>
+            <h3 class="revisar-titulo">Para cargar</h3>
+            <ul class="revisar-lista" id="gastosFijosPendientes"></ul>
+          </div>
+          <div class="tabla-scroll">
+          <table class="ledger-table lista-movil">
+            <thead>
+              <tr>
+                <th scope="col">Gasto</th>
+                <th scope="col">Cada cuánto</th>
+                <th scope="col">Cómo</th>
+                <th scope="col">Próxima vez</th>
+                <th scope="col" class="align-right">Importe</th>
+                <th scope="col"></th>
+              </tr>
+            </thead>
+            <tbody id="gastosFijosBody"></tbody>
+          </table>
+          </div>
+        </section>
+
         <section class="panel">
           <div class="panel-head">
             <h2>Gastos</h2>
@@ -4716,6 +4771,24 @@
                          "cambios sin guardar" de configuracion.js. -->
                     <input type="text" name="logo" id="marcaLogoEstado" hidden />
                   </div>
+                  <!-- El encuadre del menú (hist. §215): el logo se acerca y se
+                       corre a mano dentro del cuadradito, para que se vea grande.
+                       Lo impreso lleva el logo entero. -->
+                  <fieldset class="opciones marca-encuadre" id="marcaEncuadre" hidden>
+                    <legend>En el menú</legend>
+                    <div class="marca-encuadre-cuerpo">
+                      <div class="marca-encuadre-cuadro" id="marcaEncuadreCuadro" tabindex="0" role="img" aria-label="El logo en el menú: arrastralo, o movelo con las flechas"></div>
+                      <div class="marca-encuadre-controles">
+                        <label>Acercar
+                          <input type="range" name="encuadre_zoom" id="marcaEncuadreZoom" min="1" max="4" step="0.05" value="1" />
+                        </label>
+                        <p class="form-note">Arrastralo con el dedo o el mouse para que se vea lo importante. Lo que se imprime lleva el logo entero.</p>
+                        <button type="button" class="btn-link" id="marcaEncuadreCentrar">Entero y centrado</button>
+                      </div>
+                    </div>
+                    <input type="text" name="encuadre_x" id="marcaEncuadreX" hidden />
+                    <input type="text" name="encuadre_y" id="marcaEncuadreY" hidden />
+                  </fieldset>
                   <fieldset class="opciones">
                     <legend>Color</legend>
                     <p class="opciones-nota">Toma el lugar del azul de Nexo: la sección marcada del menú, los enlaces y lo que se destaca. El negro queda.</p>
@@ -7309,6 +7382,7 @@
             <option value="60">60 días</option>
             <option value="manual">Fecha puntual…</option>
           </select>
+          <span class="campo-ayuda" id="ventaCondicionCuotas" hidden>En cuotas vence una cuota por mes, desde hoy.</span>
         </label>
         <label id="ventaVencimientoWrap" hidden>Vence el
           <input type="date" name="fecha_vencimiento" id="ventaVencimiento" />
@@ -7651,7 +7725,7 @@
         <label>Cuenta de la que sale
           <select name="cuenta_tesoreria_id" id="gastoCuenta" required></select>
         </label>
-        <label>Fecha
+        <label id="gastoFechaCampo"><span id="gastoFechaEtiqueta">Fecha</span>
           <input type="date" name="fecha" required />
         </label>
         <label>Descripción
@@ -7660,9 +7734,50 @@
         <label>Proveedor (opcional)
           <select name="proveedor_id" id="gastoProveedor"></select>
         </label>
-        <label>Comprobante (opcional)
+        <label id="gastoComprobanteCampo">Comprobante (opcional)
           <input type="text" name="comprobante" placeholder="N° de factura o recibo" />
         </label>
+        <!-- Gastos fijos (hist. §214): el alquiler o la luz se cargan una vez y
+             Nexo sabe cuándo vuelven a tocar. Solo al cargar uno nuevo, y del
+             admin; al editar un gasto fijo se ven las opciones sin la casilla. -->
+        <label class="form-check col-admin" id="gastoRepiteCampo"><input type="checkbox" name="repite" id="gastoRepite" /> <span>Se repite: el alquiler, la luz, internet…</span></label>
+        <div class="gasto-repite" id="gastoRepiteOpciones" hidden>
+          <label id="gastoFrecuenciaCampo">Cada cuánto
+            <select name="frecuencia" id="gastoFrecuencia">
+              <option value="1-mes">Todos los meses</option>
+              <option value="2-mes">Cada 2 meses</option>
+              <option value="3-mes">Cada 3 meses</option>
+              <option value="6-mes">Cada 6 meses</option>
+              <option value="12-mes">Todos los años</option>
+              <option value="1-semana">Todas las semanas</option>
+              <option value="2-semana">Cada 2 semanas</option>
+            </select>
+          </label>
+          <fieldset class="opciones">
+            <legend>Las próximas veces</legend>
+            <div class="opciones-tarjetas">
+              <label class="opcion-tarjeta">
+                <input type="radio" name="modo" value="solo" checked />
+                <span class="opcion-tarjeta-icono"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#repeat"></use></svg></span>
+                <span class="opcion-tarjeta-texto">
+                  <span class="opcion-tarjeta-nombre">Anotarlo solo</span>
+                  <span class="opcion-tarjeta-desc">El día que toca, con este importe y de esta cuenta. Para el alquiler o una cuota fija.</span>
+                </span>
+                <span class="opcion-tarjeta-check"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#check"></use></svg></span>
+              </label>
+              <label class="opcion-tarjeta">
+                <input type="radio" name="modo" value="aviso" />
+                <span class="opcion-tarjeta-icono"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#bell"></use></svg></span>
+                <span class="opcion-tarjeta-texto">
+                  <span class="opcion-tarjeta-nombre">Avisarme para cargarlo</span>
+                  <span class="opcion-tarjeta-desc">Queda en Gastos y en el Resumen para que pongas el importe. Para la luz o el gas, que cambian.</span>
+                </span>
+                <span class="opcion-tarjeta-check"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#check"></use></svg></span>
+              </label>
+            </div>
+          </fieldset>
+          <p class="campo-ayuda" id="gastoRepiteNota"></p>
+        </div>
         <button type="submit" class="btn btn-primary btn-full" id="formGastoSubmit">Registrar gasto</button>
       </form>
     </div>
@@ -7881,6 +7996,15 @@
              input queda vacío y ese producto cae al fallback de
              precio_venta en esa lista (CLAUDE.md §18). -->
         <div id="preciosPorListaProducto" class="form-precios-lista"></div>
+        <!-- Precio en cuotas (hist. §216): financiación del negocio, no de una
+             tarjeta. Cada plan es "N pagos de $X"; el de un pago es el precio
+             de arriba. Se guarda aparte, con PUT /api/productos/:id/planes-pago. -->
+        <fieldset class="opciones col-admin" id="productoPlanesCampo">
+          <legend>Precio en cuotas</legend>
+          <p class="opciones-nota">Si lo vendés en cuotas con otro precio (2 pagos de $65.000, 3 de $50.000). Lo que falta pagar queda en la cuenta corriente del cliente, una cuota por mes. El de un pago es el precio de arriba.</p>
+          <div class="planes-pago" id="productoPlanes"></div>
+          <button type="button" class="btn btn-secundario btn-chico" id="btnProductoPlanSumar"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#plus"></use></svg> Sumar un plan</button>
+        </fieldset>
         <!-- Solo informativo/alerta: compara contra el margen real de la
              lista predeterminada, no sugiere ni fuerza ningún precio. -->
         <label>Margen objetivo (%)
@@ -8603,6 +8727,30 @@
   <!-- Modal de confirmación genérico — reemplaza confirm() nativo. Ver
        confirmar() en app.js: se completa título/cuerpo/botón según el
        caso y resuelve una Promise<boolean> con el botón que se apriete. -->
+  <!-- Cobrar cuotas con un medio de cobro (hist. §215, core/cobro-medio.js):
+       dice cuánto y adónde entra, y pregunta solo lo que el medio no dice. -->
+  <div class="modal" id="modalCobroMedio" role="dialog" aria-modal="true" aria-labelledby="cobroMedioTitulo" hidden>
+    <div class="modal-card">
+      <div class="modal-head">
+        <h3 id="cobroMedioTitulo">Cobrar</h3>
+      </div>
+      <form id="formCobroMedio" class="form">
+        <p class="form-note" id="cobroMedioCuerpo"></p>
+        <label id="cobroMedioCuotasCampo" hidden>¿En cuántas cuotas?
+          <select name="cuotas"></select>
+        </label>
+        <label id="cobroMedioCuentaCampo" hidden><span id="cobroMedioCuentaEtiqueta">¿A qué cuenta entra?</span>
+          <select name="cuenta_tesoreria_id"></select>
+        </label>
+        <p class="campo-ayuda" id="cobroMedioDestino" hidden></p>
+        <div class="panel-acciones confirmar-acciones">
+          <button type="button" class="btn btn-secundario" id="cobroMedioCancelar">Cancelar</button>
+          <button type="submit" class="btn btn-primary" id="cobroMedioAceptar">Cobrar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <div class="modal" id="modalConfirmar" role="dialog" aria-modal="true" aria-labelledby="modalConfirmarTitulo" hidden>
     <div class="modal-card">
       <div class="modal-head">

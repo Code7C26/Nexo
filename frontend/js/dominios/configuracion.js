@@ -20,7 +20,7 @@ import { CONDICIONES_FISCALES, condicionFiscal, errorCuit, esCondicionFiscal, fo
 import { limpiarError, limpiarErrores, marcarError } from "../core/campos.js";
 import { aplicarTema, temaActual } from "../core/tema.js";
 import { cambiarIdioma, idioma } from "../core/idioma.js";
-import { achicarImagen, colorParaPapel, coloresDelLogo, variantesDeColor } from "../core/marca.js";
+import { achicarImagen, atributosEncuadre, colorParaPapel, coloresDelLogo, corrimientoMaximo, variantesDeColor } from "../core/marca.js";
 
 // `negocio` queda en memoria para que armarHojaComprobante() no tenga que
 // hacer un fetch cada vez que se imprime: vive en core/negocio.js (lo lee
@@ -211,6 +211,86 @@ function colorElegido() {
   return color === "otro" ? otro : color;
 }
 
+/* --- El encuadre del logo en el menú (hist. §215) --- */
+
+// El logo se acerca y se corre a mano dentro del cuadradito del menú, para que
+// un logo con mucho margen (un escudo redondo en un cuadrado blanco) se vea
+// grande. Se guarda con el resto de la marca; lo impreso usa el logo entero.
+const cajaEncuadre = document.getElementById("marcaEncuadre");
+const cuadroEncuadre = document.getElementById("marcaEncuadreCuadro");
+const zoomEncuadre = document.getElementById("marcaEncuadreZoom");
+const xEncuadre = document.getElementById("marcaEncuadreX");
+const yEncuadre = document.getElementById("marcaEncuadreY");
+
+const redondear1 = (n) => String(Math.round(n * 10) / 10);
+function encuadreElegido() {
+  const zoom = Number(zoomEncuadre.value) || 1;
+  const max = corrimientoMaximo(zoom);
+  const limitar = (v) => Math.max(-max, Math.min(max, Number(v) || 0));
+  return { zoom, x: limitar(xEncuadre.value), y: limitar(yEncuadre.value) };
+}
+const entero = (e) => e.zoom === 1 && e.x === 0 && e.y === 0;
+
+function ponerEncuadre(e) {
+  zoomEncuadre.value = String(e?.zoom ?? 1);
+  xEncuadre.value = redondear1(e?.x ?? 0);
+  yEncuadre.value = redondear1(e?.y ?? 0);
+}
+
+function pintarEncuadre() {
+  const url = logoVisible();
+  cajaEncuadre.hidden = !url;
+  if (!url) return;
+  // Al alejar, el corrimiento vuelve a lo que entra.
+  const e = encuadreElegido();
+  xEncuadre.value = redondear1(e.x);
+  yEncuadre.value = redondear1(e.y);
+  cuadroEncuadre.innerHTML = `<img src="${esc(url)}" alt="" draggable="false"${atributosEncuadre(entero(e) ? null : e)} />`;
+}
+
+function cambioEncuadre() {
+  pintarEncuadre();
+  pintarPreviaMarca();
+  actualizarBoton(formMarca);
+}
+
+zoomEncuadre.addEventListener("input", cambioEncuadre);
+document.getElementById("marcaEncuadreCentrar").addEventListener("click", () => {
+  ponerEncuadre(null);
+  cambioEncuadre();
+});
+
+// Arrastrar con el dedo o el mouse: el logo sigue al puntero.
+let arrastre = null;
+cuadroEncuadre.addEventListener("pointerdown", (ev) => {
+  arrastre = { x: ev.clientX, y: ev.clientY, desde: encuadreElegido(), lado: cuadroEncuadre.clientWidth || 1 };
+  cuadroEncuadre.setPointerCapture(ev.pointerId);
+  cuadroEncuadre.classList.add("is-arrastrando");
+});
+cuadroEncuadre.addEventListener("pointermove", (ev) => {
+  if (!arrastre) return;
+  xEncuadre.value = String(arrastre.desde.x + ((ev.clientX - arrastre.x) / arrastre.lado) * 100);
+  yEncuadre.value = String(arrastre.desde.y + ((ev.clientY - arrastre.y) / arrastre.lado) * 100);
+  cambioEncuadre();
+});
+for (const fin of ["pointerup", "pointercancel"]) {
+  cuadroEncuadre.addEventListener(fin, () => {
+    arrastre = null;
+    cuadroEncuadre.classList.remove("is-arrastrando");
+  });
+}
+// Con el teclado, las flechas lo corren de a poco.
+const FLECHAS = { ArrowLeft: [-2, 0], ArrowRight: [2, 0], ArrowUp: [0, -2], ArrowDown: [0, 2] };
+cuadroEncuadre.addEventListener("keydown", (ev) => {
+  const paso = FLECHAS[ev.key];
+  if (!paso) return;
+  ev.preventDefault();
+  const e = encuadreElegido();
+  xEncuadre.value = String(e.x + paso[0]);
+  yEncuadre.value = String(e.y + paso[1]);
+  cambioEncuadre();
+});
+
 // El mismo color con un par de puntos de diferencia: el que se lee del logo
 // guardado (en WebP) no sale idéntico al que se leyó del original.
 const casiIgual = (a, b) =>
@@ -282,7 +362,7 @@ function pintarPreviaMarca() {
   const url = logoVisible();
   const nombre = negocio.nombre || "Tu negocio";
   const cuadradito = url
-    ? `<span class="negocio-inicial negocio-logo"><img src="${esc(url)}" alt="" /></span>`
+    ? `<span class="negocio-inicial negocio-logo"><img src="${esc(url)}" alt=""${atributosEncuadre(entero(encuadreElegido()) ? null : encuadreElegido())} /></span>`
     : `<span class="negocio-inicial">${esc(([...nombre.trim()][0] ?? "N").toLocaleUpperCase("es-AR"))}</span>`;
   document.getElementById("marcaPreviaNegocio").innerHTML = `${cuadradito}<span>${esc(nombre)}</span>`;
   const papel = colorParaPapel(HEX.test(hex) ? hex : null) ?? "#0A0A0A";
@@ -315,7 +395,9 @@ function pintarMarca() {
   estadoLogo.value = negocio.logo ? "actual" : "";
   errorLogo.hidden = true;
   pintarColores(negocio.color_marca ?? "");
+  ponerEncuadre(negocio.logo_encuadre);
   pintarLogoMarca();
+  pintarEncuadre();
   pintarPreviaMarca();
   marcarSinCambios(formMarca);
   if (!negocio.logo) return;
@@ -351,7 +433,9 @@ archivoLogo.addEventListener("change", async () => {
   // se puede volver al azul antes de guardar.
   const elegido = colorElegido();
   pintarColores(!elegido && coloresDelLogoActual[0] ? coloresDelLogoActual[0] : elegido);
+  ponerEncuadre(null);
   pintarLogoMarca();
+  pintarEncuadre();
   pintarPreviaMarca();
   actualizarBoton(formMarca);
 });
@@ -361,7 +445,9 @@ botonSacarLogo.addEventListener("click", () => {
   coloresDelLogoActual = [];
   estadoLogo.value = "";
   pintarColores(colorElegido());
+  ponerEncuadre(null);
   pintarLogoMarca();
+  pintarEncuadre();
   pintarPreviaMarca();
   actualizarBoton(formMarca);
   botonSubirLogo.focus();
@@ -391,6 +477,8 @@ formMarca.addEventListener("submit", async (e) => {
   const color = colorElegido() || null;
   if (color !== (negocio.color_marca ?? null)) cuerpo.color = color;
   if (logoPendiente !== undefined) cuerpo.logo = logoPendiente && { tipo: logoPendiente.tipo, datos: logoPendiente.datos };
+  const encuadre = logoVisible() && !entero(encuadreElegido()) ? encuadreElegido() : null;
+  if (JSON.stringify(encuadre) !== JSON.stringify(negocio.logo_encuadre ?? null)) cuerpo.encuadre = encuadre;
   await guardar(formMarca, cuerpo, pintarMarca, "/api/negocio/marca");
 });
 
