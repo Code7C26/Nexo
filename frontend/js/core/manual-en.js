@@ -478,7 +478,26 @@ export const SECCIONES_EN = {
         "Tap **Record expense**."
       ] },
       "Categories are set up in **Expenses › Categories**. Each one says whether it's an operating expense, an investment (a new fridge) or an owner withdrawal: that way the Dashboard calculates the result correctly.",
-      "From the assistant: \"I paid 25 thousand for electricity in cash\"."
+      "From the assistant: \"I paid 25 thousand for electricity in cash\".",
+      "If it repeats (rent, electricity), tick **It repeats**: see **Recurring expenses**."
+    ]
+  },
+  "gastos-fijos": {
+    titulo: "Recurring expenses",
+    pantalla: "Expenses",
+    preguntas: ["how do i record the rent every month", "how do i make a recurring expense", "can i record an expense that repeats", "how do i stop recording a recurring expense", "how do i record electricity that changes every month"],
+    palabras: ["recurring", "repeat", "repeats", "monthly", "every month", "fixed", "rent", "electricity", "internet", "installment", "cancel", "skip"],
+    bloques: [
+      "Rent, electricity or internet are entered once and Nexo knows when they're due again.",
+      { pasos: [
+        "In **Expenses**, tap **New expense** and fill it in as always, with the date of the first time.",
+        "Tick **It repeats** and choose how often: every month, every 2, 3 or 6 months, every year, every week or every 2 weeks.",
+        "Choose what happens the next times: **Record it automatically** (on the day it's due, with the same amount and from the same account, like rent) or **Remind me to enter it** (for electricity or gas, which change).",
+        "Tap **Record expense**."
+      ] },
+      "The ones that remind you show up at the top of **Expenses**, under **To enter**, and under **To review** on the Dashboard: tap **Record** and type the amount that came in. If one time isn't paid, **Not this time**.",
+      "Under **Recurring expenses** you see each one with its next time. With the pencil you change the amount, the account or how it's recorded, and it applies to the next times. With the bin you cancel it: it's not recorded anymore and what was already recorded stays as it was.",
+      "Each time is a regular expense: it comes out of the account and lowers the result. If you void one, that time isn't recorded again."
     ]
   },
   resumen: {
@@ -490,7 +509,7 @@ export const SECCIONES_EN = {
       "On the **Dashboard** you choose the period (today, 7 days, this month, the year or the dates you want) and you see:",
       { lista: [
         "what you sold, what it cost you, the profit, the expenses and the result, compared with the previous period or the same one last year;",
-        "what to look at today: what you're owed, what you owe, what to restock and, under **To review**, what looked off this week (invoices without a CAE, cash shortfalls, products you bought at a higher cost without changing their price), each with a button to go fix it;",
+        "what to look at today: what you're owed, what you owe, what to restock and, under **To review**, what looked off this week (invoices without a CAE, cash shortfalls, products you bought at a higher cost without changing their price, recurring expenses that came due and are still to enter), each with a button to go fix it;",
         "when you sell, by day of the week and by hour;",
         "how the result is going month by month;",
         "what sells, by category, and the top customers;",

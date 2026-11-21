@@ -185,6 +185,13 @@ const AVISOS = {
     detalle: "No entraron solos como cobro: decidí qué hacer con cada uno.",
     boton: "Ver pagos",
     ir: { vista: "configuracion", subruta: "mercado-pago" }
+  }),
+  // Un gasto fijo que avisa (hist. §214): tocó y nadie lo cargó.
+  gasto_fijo: (a) => ({
+    frase: formatear("{0}: tocaba el {1}", a.nombre, fechaCorta(a.fecha)),
+    detalle: formatear("Es un gasto fijo: cargalo con lo que vino (la última vez fueron {0}).", money(a.importe)),
+    boton: "Cargar",
+    ir: { gastoFijo: { id: a.id, periodo: a.fecha } }
   })
 };
 
@@ -220,7 +227,8 @@ listaRevisar.addEventListener("click", (e) => {
   const boton = e.target.closest("[data-ir]");
   if (!boton) return;
   const ir = destinos[Number(boton.dataset.ir)];
-  if (ir.ficha) invocar(`abrirFicha:${ir.ficha}`, ir.id);
+  if (ir.gastoFijo) invocar("cargarVezGastoFijo", ir.gastoFijo.id, ir.gastoFijo.periodo);
+  else if (ir.ficha) invocar(`abrirFicha:${ir.ficha}`, ir.id);
   else mostrarVista(ir.vista, { subruta: ir.subruta ?? null });
 });
 

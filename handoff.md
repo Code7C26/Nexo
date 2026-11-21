@@ -11,7 +11,7 @@
 
 - Al cerrar una etapa, se hacen tres cosas:
   - su relato completo se agrega al final de `docs/proyecto/handoff-historico.md` con el
-    siguiente número (hoy el último es §213);
+    siguiente número (hoy el último es §214);
   - acá se actualizan "Estado actual" y "Qué sigue";
   - si cambió alguna decisión vigente, se actualiza también esa lista.
 - Nunca apilar secciones "Última etapa" en este archivo: así fue como llegó a
@@ -93,8 +93,18 @@ desde otro día, "el costo subió y el precio no" y pagos de Mercado Pago para
 revisar, cada uno con su botón. Sin esquema nuevo. Test nuevo: `revisar`.
 `npm test`: 504 de 504.
 
-**Lo que sigue: el resto del punto 9**: gastos fijos que se repiten, mensajes
-de WhatsApp armados y "quiénes deben", y puntos y premios.
+**21 de noviembre, hist. §214: gastos fijos que se repiten (punto 9, segunda parte).**
+En Nuevo gasto, **Se repite** (cada mes, 2, 3, 6, el año, la semana o cada 2) y
+**Anotarlo solo** (el alquiler: Nexo lo anota el día que toca) o **Avisarme
+para cargarlo** (la luz: queda en Gastos › Para cargar y en Para revisar del
+Resumen, con lo que se pagó la última vez). Gastos › Gastos fijos los lista con
+la próxima vez, se editan para lo que viene y se dan de baja sin tocar lo
+anotado. Esquema aditivo: `gastos_fijos`, `gastos_fijos_salteados` y
+`gastos.gasto_fijo_id`/`periodo` (índice único). Test nuevo: `gastos-fijos`.
+`npm test`: 509 de 509. **Sin publicar** (§213 tampoco).
+
+**Lo que sigue: el resto del punto 9**: mensajes de WhatsApp armados y
+"quiénes deben", y puntos y premios.
 
 **19 de noviembre, hist. §205 (publicado, PR #106):** en Planes se elimina un plan que nunca hizo
 nadie (con su servicio del catálogo); el que algún socio hizo solo se pausa.
@@ -2377,8 +2387,8 @@ datos reales; la demo no la necesita.
    pantalla de entrada del gimnasio; la foto de perfil, en el mismo paso.
 9. **El resto de Praxia** (puntos 5 a 9): puntos y premios; mensajes de
    WhatsApp armados por situación y "quiénes deben", con el recordatorio
-   listo; ~~"Para revisar" en el Resumen~~ (hecho, hist. §213); gastos fijos
-   que se repiten.
+   listo; ~~"Para revisar" en el Resumen~~ (hecho, hist. §213); ~~gastos
+   fijos que se repiten~~ (hecho, hist. §214).
 10. Si da: **el resumen del día** por WhatsApp o mail, y **vender sin
     conexión** (de Praxia; detalle en "Para más adelante": choca con §39 y
     sin internet no hay CAE).

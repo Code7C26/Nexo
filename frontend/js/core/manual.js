@@ -962,9 +962,31 @@ const SECCIONES_ES = [
         "Tocá **Registrar gasto**."
       ] },
       "Las categorías se arman en **Gastos › Categorías**. Cada una dice si es un gasto operativo, una inversión (una heladera nueva) o un retiro del dueño: así el Resumen calcula bien el resultado.",
-      "Desde el asistente: \"pagué 25 mil de luz en efectivo\"."
+      "Desde el asistente: \"pagué 25 mil de luz en efectivo\".",
+      "Si se repite (el alquiler, la luz), marcá **Se repite**: ver **Gastos fijos que se repiten**."
     ],
-    ver: ["caja", "resumen"]
+    ver: ["gastos-fijos", "caja", "resumen"]
+  },
+  {
+    id: "gastos-fijos",
+    grupo: "Plata",
+    titulo: "Gastos fijos que se repiten",
+    pantalla: ["#/gastos", "Gastos"],
+    preguntas: ["cómo cargo el alquiler todos los meses", "cómo hago un gasto fijo", "puedo cargar un gasto que se repite", "cómo dejo de anotar un gasto fijo", "cómo cargo la luz que cambia cada mes"],
+    palabras: ["fijo", "fijos", "repite", "repetir", "mensual", "todos los meses", "recurrente", "alquiler", "luz", "internet", "cuota", "baja", "saltear"],
+    bloques: [
+      "El alquiler, la luz o internet se cargan una vez y Nexo sabe cuándo vuelven a tocar.",
+      { pasos: [
+        "En **Gastos**, tocá **Nuevo gasto** y cargalo como siempre, con la fecha de la primera vez.",
+        "Marcá **Se repite** y elegí cada cuánto: todos los meses, cada 2, 3 o 6 meses, todos los años, todas las semanas o cada 2 semanas.",
+        "Elegí qué pasa las próximas veces: **Anotarlo solo** (el día que toca, con el mismo importe y de la misma cuenta, como el alquiler) o **Avisarme para cargarlo** (para la luz o el gas, que cambian).",
+        "Tocá **Registrar gasto**."
+      ] },
+      "Los que te avisan aparecen arriba en **Gastos**, en **Para cargar**, y en **Para revisar** del Resumen: tocá **Cargar** y poné el importe que vino. Si un mes no se paga, **Esta vez no**.",
+      "En **Gastos fijos** ves cada uno con su próxima vez. Con el lápiz cambiás el importe, la cuenta o cómo se anota, y vale para las próximas veces. Con el tacho lo das de baja: no se anota más y lo ya anotado queda como estaba.",
+      "Cada vez es un gasto común: sale de la cuenta y resta del resultado. Si anulás uno, esa vez no se vuelve a anotar."
+    ],
+    ver: ["registrar-gasto", "resumen"]
   },
   {
     id: "resumen",
@@ -978,7 +1000,7 @@ const SECCIONES_ES = [
       "En **Resumen** elegís el período (hoy, 7 días, este mes, el año o las fechas que quieras) y ves:",
       { lista: [
         "lo que vendiste, lo que te costó eso, la ganancia, los gastos y el resultado, comparado con el período anterior o con el mismo del año pasado;",
-        "lo que hay que mirar hoy: lo que te deben, lo que debés, lo que hay que reponer y, en **Para revisar**, lo que salió raro esta semana (facturas sin CAE, faltantes de caja, productos que compraste más caros sin cambiarles el precio), cada uno con su botón para ir a arreglarlo;",
+        "lo que hay que mirar hoy: lo que te deben, lo que debés, lo que hay que reponer y, en **Para revisar**, lo que salió raro esta semana (facturas sin CAE, faltantes de caja, productos que compraste más caros sin cambiarles el precio, gastos fijos que tocaron y falta cargar), cada uno con su botón para ir a arreglarlo;",
         "cuándo se vende, por día de la semana y por hora;",
         "cómo viene el resultado mes a mes;",
         "qué se vende, por categoría y los mejores clientes;",

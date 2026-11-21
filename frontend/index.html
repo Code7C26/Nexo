@@ -4143,6 +4143,34 @@
           </div>
         </section>
 
+        <!-- Gastos fijos (hist. §214): los que se repiten, arriba lo que tocó y
+             falta cargar. Sin ninguno, no se ve: se crean con "Se repite" en
+             Nuevo gasto. -->
+        <section class="panel" id="gastosFijosPanel" aria-labelledby="gastosFijosTitulo" hidden>
+          <div class="panel-head">
+            <h2 id="gastosFijosTitulo">Gastos fijos</h2>
+          </div>
+          <div class="revisar" id="gastosFijosParaCargar" hidden>
+            <h3 class="revisar-titulo">Para cargar</h3>
+            <ul class="revisar-lista" id="gastosFijosPendientes"></ul>
+          </div>
+          <div class="tabla-scroll">
+          <table class="ledger-table lista-movil">
+            <thead>
+              <tr>
+                <th scope="col">Gasto</th>
+                <th scope="col">Cada cuánto</th>
+                <th scope="col">Cómo</th>
+                <th scope="col">Próxima vez</th>
+                <th scope="col" class="align-right">Importe</th>
+                <th scope="col"></th>
+              </tr>
+            </thead>
+            <tbody id="gastosFijosBody"></tbody>
+          </table>
+          </div>
+        </section>
+
         <section class="panel">
           <div class="panel-head">
             <h2>Gastos</h2>
@@ -7657,7 +7685,7 @@
         <label>Cuenta de la que sale
           <select name="cuenta_tesoreria_id" id="gastoCuenta" required></select>
         </label>
-        <label>Fecha
+        <label id="gastoFechaCampo"><span id="gastoFechaEtiqueta">Fecha</span>
           <input type="date" name="fecha" required />
         </label>
         <label>Descripción
@@ -7666,9 +7694,50 @@
         <label>Proveedor (opcional)
           <select name="proveedor_id" id="gastoProveedor"></select>
         </label>
-        <label>Comprobante (opcional)
+        <label id="gastoComprobanteCampo">Comprobante (opcional)
           <input type="text" name="comprobante" placeholder="N° de factura o recibo" />
         </label>
+        <!-- Gastos fijos (hist. §214): el alquiler o la luz se cargan una vez y
+             Nexo sabe cuándo vuelven a tocar. Solo al cargar uno nuevo, y del
+             admin; al editar un gasto fijo se ven las opciones sin la casilla. -->
+        <label class="form-check col-admin" id="gastoRepiteCampo"><input type="checkbox" name="repite" id="gastoRepite" /> <span>Se repite: el alquiler, la luz, internet…</span></label>
+        <div class="gasto-repite" id="gastoRepiteOpciones" hidden>
+          <label id="gastoFrecuenciaCampo">Cada cuánto
+            <select name="frecuencia" id="gastoFrecuencia">
+              <option value="1-mes">Todos los meses</option>
+              <option value="2-mes">Cada 2 meses</option>
+              <option value="3-mes">Cada 3 meses</option>
+              <option value="6-mes">Cada 6 meses</option>
+              <option value="12-mes">Todos los años</option>
+              <option value="1-semana">Todas las semanas</option>
+              <option value="2-semana">Cada 2 semanas</option>
+            </select>
+          </label>
+          <fieldset class="opciones">
+            <legend>Las próximas veces</legend>
+            <div class="opciones-tarjetas">
+              <label class="opcion-tarjeta">
+                <input type="radio" name="modo" value="solo" checked />
+                <span class="opcion-tarjeta-icono"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#repeat"></use></svg></span>
+                <span class="opcion-tarjeta-texto">
+                  <span class="opcion-tarjeta-nombre">Anotarlo solo</span>
+                  <span class="opcion-tarjeta-desc">El día que toca, con este importe y de esta cuenta. Para el alquiler o una cuota fija.</span>
+                </span>
+                <span class="opcion-tarjeta-check"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#check"></use></svg></span>
+              </label>
+              <label class="opcion-tarjeta">
+                <input type="radio" name="modo" value="aviso" />
+                <span class="opcion-tarjeta-icono"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#bell"></use></svg></span>
+                <span class="opcion-tarjeta-texto">
+                  <span class="opcion-tarjeta-nombre">Avisarme para cargarlo</span>
+                  <span class="opcion-tarjeta-desc">Queda en Gastos y en el Resumen para que pongas el importe. Para la luz o el gas, que cambian.</span>
+                </span>
+                <span class="opcion-tarjeta-check"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#check"></use></svg></span>
+              </label>
+            </div>
+          </fieldset>
+          <p class="campo-ayuda" id="gastoRepiteNota"></p>
+        </div>
         <button type="submit" class="btn btn-primary btn-full" id="formGastoSubmit">Registrar gasto</button>
       </form>
     </div>

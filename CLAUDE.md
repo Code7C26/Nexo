@@ -719,6 +719,11 @@ Un gasto debe poder tener:
 - comprobante
 - usuario
 
+Implementado hoy: gastos fijos que se repiten (hist. §214). El alquiler o la
+luz se cargan una vez con cada cuánto se repiten; Nexo anota solo cada vez
+(`gastos_fijos`, modo "solo") o la deja para cargar con el importe que vino
+(modo "aviso"). Cada vez es un gasto común, pagado en el momento.
+
 ---
 
 # 15. PRESUPUESTOS

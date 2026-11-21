@@ -1069,7 +1069,54 @@ CREATE TABLE IF NOT EXISTS gastos (
   -- La venta de la que es costo (hist. §129): la comisión de Mercado Libre o
   -- el envío que paga el negocio. Se anula y se restaura con ella, y cuenta en
   -- la ganancia de su canal. NULL = un gasto del negocio, como siempre.
-  venta_id INTEGER REFERENCES ventas(id)
+  venta_id INTEGER REFERENCES ventas(id),
+  -- El gasto fijo del que salió (hist. §214) y la vez que paga: la fecha en
+  -- que tocaba, aunque se haya pagado otro día. El índice único de
+  -- (gasto_fijo_id, periodo), en db/index.js, no deja anotar dos veces la
+  -- misma vez; uno anulado la sigue ocupando (anularlo es "esa vez no").
+  gasto_fijo_id INTEGER REFERENCES gastos_fijos(id),
+  periodo TEXT
+);
+
+-- Gastos fijos que se repiten (hist. §214, punto 9 de investigacion-praxia.md):
+-- el alquiler o la luz se cargan una vez y Nexo sabe cuándo vuelven a tocar.
+-- Es la plantilla; cada vez que toca es un gasto común de la tabla gastos,
+-- pagado en el momento como cualquier otro (CLAUDE.md §13, §14).
+-- - desde: la primera vez. Las siguientes salen de sumarle `cada` meses o
+--   semanas, siempre contando desde ahí (el 31 da el último día de los meses
+--   más cortos). Cambiar cada cuánto sería otra serie: se da de baja y se
+--   carga otro.
+-- - modo: 'solo' lo anota Nexo el día que toca, con este importe y de esta
+--   cuenta (el alquiler, como el "Programado" de QuickBooks); 'aviso' lo deja
+--   para cargar, porque el importe cambia (la luz), y el importe es el de
+--   referencia.
+-- - tipo: el de la categoría al darlo de alta, como en gastos.
+-- - fecha_baja: desde ahí no toca más. Lo ya anotado queda como estaba.
+CREATE TABLE IF NOT EXISTS gastos_fijos (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  categoria_id INTEGER NOT NULL REFERENCES categorias_gasto(id),
+  cuenta_tesoreria_id INTEGER NOT NULL REFERENCES cuentas_tesoreria(id),
+  proveedor_id INTEGER REFERENCES proveedores(id),
+  importe REAL NOT NULL CHECK (importe > 0),
+  tipo TEXT NOT NULL CHECK (tipo IN ('operativo', 'inversion', 'retiro')),
+  descripcion TEXT,
+  cada INTEGER NOT NULL CHECK (cada >= 1),
+  unidad TEXT NOT NULL CHECK (unidad IN ('mes', 'semana')),
+  desde TEXT NOT NULL,
+  modo TEXT NOT NULL DEFAULT 'solo' CHECK (modo IN ('solo', 'aviso')),
+  estado TEXT NOT NULL DEFAULT 'activo' CHECK (estado IN ('activo', 'baja')),
+  fecha_baja TEXT,
+  fecha_alta TEXT NOT NULL DEFAULT (date('now')),
+  organizacion_id INTEGER NOT NULL REFERENCES organizaciones(id)
+);
+
+-- Las veces de un gasto fijo que no se pagan ("este mes no"): no se anotan ni
+-- se avisan. Hija de gastos_fijos.
+CREATE TABLE IF NOT EXISTS gastos_fijos_salteados (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  gasto_fijo_id INTEGER NOT NULL REFERENCES gastos_fijos(id),
+  periodo TEXT NOT NULL,
+  UNIQUE (gasto_fijo_id, periodo)
 );
 
 -- en la cuenta que sale y el ingreso en la que entra comparten el mismo

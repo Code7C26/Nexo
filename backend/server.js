@@ -14113,6 +14113,7 @@ function registrarCostosDelMedio({ ventaId, medio, plan, importe, cuentaId, orga
 // (saldo_inicial + movimientos), nunca de un campo editable a mano
 // (CLAUDE.md §12/§13): se puede reconstruir siempre desde el historial.
 app.get('/api/tesoreria', (req, res) => {
+  ponerGastosFijosAlDia(req.usuario.organizacion_id);
   // Las cuentas son de la organización (cada una con su "Efectivo"), así que
   // el saldo de cada fila ya es solo de esa empresa: saldo_tesoreria agrupa
   // por cuenta, y una cuenta nunca recibe movimientos de otra organización
@@ -14404,6 +14405,7 @@ const SELECT_GASTO = `
     LEFT JOIN proveedores ON proveedores.id = gastos.proveedor_id`;
 
 app.get('/api/gastos', (req, res) => {
+  ponerGastosFijosAlDia(req.usuario.organizacion_id);
   const gastos = db
     .prepare(`${SELECT_GASTO} WHERE gastos.organizacion_id = ? ORDER BY gastos.fecha DESC, gastos.id DESC`)
     .all(req.usuario.organizacion_id);
@@ -14456,6 +14458,8 @@ function validarGasto(body, organizacionId) {
 // Un gasto se paga en el momento (decisión del equipo): además de la fila
 // en gastos genera su egreso de tesorería, los dos en la misma
 // transacción para que no quede plata descontada sin gasto ni al revés.
+// Con gasto_fijo_id y periodo es una vez de un gasto fijo que quedó para
+// cargar (hist. §214): tiene que ser una de sus veces y no estar anotada.
 app.post('/api/gastos', (req, res) => {
   const { fecha, descripcion, comprobante } = req.body;
   const validacion = validarGasto(req.body, req.usuario.organizacion_id);
@@ -14463,6 +14467,14 @@ app.post('/api/gastos', (req, res) => {
     return res.status(400).json({ error: validacion.error });
   }
   const { categoriaId, cuentaId, proveedorId, monto, tipo } = validacion;
+  let fijo = null;
+  if (req.body.gasto_fijo_id) {
+    fijo = gastoFijoDeLaEmpresa(Number(req.body.gasto_fijo_id), req.usuario.organizacion_id);
+    if (!fijo) return res.status(404).json({ error: 'Gasto fijo no encontrado.' });
+    if (!vecesPendientes(fijo, fechaDeHoy()).includes(req.body.periodo)) {
+      return res.status(400).json({ error: 'Esa vez del gasto fijo ya está cargada, o no toca.' });
+    }
+  }
 
   const gastoId = withTransaction(() => {
     const id = crearGasto({
@@ -14474,9 +14486,17 @@ app.post('/api/gastos', (req, res) => {
       fecha,
       descripcion,
       comprobante,
-      organizacionId: req.usuario.organizacion_id
+      organizacionId: req.usuario.organizacion_id,
+      gastoFijoId: fijo?.id ?? null,
+      periodo: fijo ? req.body.periodo : null
     });
-    auditar(req, { accion: 'crear', entidad: 'gasto', entidad_id: id, detalle: `Gasto #${id} creado` });
+    auditar(req, {
+      accion: 'crear',
+      entidad: 'gasto',
+      entidad_id: id,
+      ...(fijo ? { operacion_tipo: 'gasto_fijo', operacion_id: fijo.id } : {}),
+      detalle: fijo ? `Gasto #${id} creado: ${nombreGastoFijo(fijo)} del ${fechaLegible(req.body.periodo)}` : `Gasto #${id} creado`
+    });
     return id;
   });
 
@@ -14487,9 +14507,24 @@ app.post('/api/gastos', (req, res) => {
 // validados por validarGasto() (categoriaId/cuentaId/proveedorId/monto/
 // tipo con nombres resueltos a ID). Asume que se la llama DENTRO de una
 // transacción.
-function crearGasto({ categoriaId, cuentaId, proveedorId, monto, tipo, fecha, descripcion, comprobante, organizacionId, ventaId = null }) {
+function crearGasto({
+  categoriaId,
+  cuentaId,
+  proveedorId,
+  monto,
+  tipo,
+  fecha,
+  descripcion,
+  comprobante,
+  organizacionId,
+  ventaId = null,
+  gastoFijoId = null,
+  periodo = null
+}) {
   const columnas = [
     'venta_id',
+    'gasto_fijo_id',
+    'periodo',
     'categoria_id',
     'cuenta_tesoreria_id',
     'proveedor_id',
@@ -14501,6 +14536,8 @@ function crearGasto({ categoriaId, cuentaId, proveedorId, monto, tipo, fecha, de
   ];
   const valores = [
     ventaId,
+    gastoFijoId,
+    periodo,
     categoriaId,
     cuentaId,
     proveedorId,
@@ -14703,6 +14740,334 @@ app.post('/api/gastos/:id/restaurar', soloAdmin, (req, res) => {
   });
 
   res.json({ id: gastoId, estado: 'activo' });
+});
+
+/* ---------- Gastos fijos (hist. §214) ---------- */
+
+// El alquiler, la luz, internet: se cargan una vez y Nexo sabe cuándo vuelven
+// a tocar (ver gastos_fijos en schema.sql). Cada vez es un gasto común, con su
+// egreso de tesorería. Los de modo 'solo' se anotan el día que tocan, sin
+// cron, como las cuotas de los abonos: al mirar los gastos, la tesorería o el
+// Resumen, y cada media hora. Los de modo 'aviso' quedan para cargar, en
+// Gastos y en "Para revisar". Darlos de alta, editarlos, saltear una vez y
+// darlos de baja es admin; cargar una vez que toca es un gasto más, de los dos
+// roles. La auditoría va como entidad gasto con operacion_tipo gasto_fijo.
+
+const UNIDADES_GASTO_FIJO = ['mes', 'semana'];
+const MODOS_GASTO_FIJO = ['solo', 'aviso'];
+// La primera vez, dentro de un año para atrás o para adelante: más atrás
+// serían decenas de gastos anotados de golpe.
+const DIAS_PRIMERA_VEZ = 366;
+const MAX_VECES_GASTO_FIJO = 1000;
+
+const SELECT_GASTO_FIJO = `
+  SELECT gastos_fijos.*,
+         categorias_gasto.nombre AS categoria,
+         cuentas_tesoreria.nombre AS cuenta,
+         proveedores.nombre AS proveedor
+    FROM gastos_fijos
+    JOIN categorias_gasto ON categorias_gasto.id = gastos_fijos.categoria_id
+    JOIN cuentas_tesoreria ON cuentas_tesoreria.id = gastos_fijos.cuenta_tesoreria_id
+    LEFT JOIN proveedores ON proveedores.id = gastos_fijos.proveedor_id`;
+// Las veces ya resueltas: anotadas (también las anuladas) o salteadas.
+const SQL_VECES_RESUELTAS = db.prepare(
+  `SELECT periodo FROM gastos WHERE gasto_fijo_id = ?
+   UNION SELECT periodo FROM gastos_fijos_salteados WHERE gasto_fijo_id = ?`
+);
+
+const gastoFijoDeLaEmpresa = (id, organizacionId) =>
+  db.prepare(`${SELECT_GASTO_FIJO} WHERE gastos_fijos.id = ? AND gastos_fijos.organizacion_id = ?`).get(id, organizacionId);
+const nombreGastoFijo = (fijo) => fijo.descripcion || fijo.categoria;
+
+// La vez número n (desde 0), contada siempre desde la primera.
+function vezDelGastoFijo(fijo, n) {
+  return fijo.unidad === 'mes' ? sumarMeses(fijo.desde, n * fijo.cada) : sumarDias(fijo.desde, n * fijo.cada * 7);
+}
+
+// Las veces que tocaron hasta hoy, o hasta el día antes de la baja, y que nadie
+// anotó ni salteó. La de hoy cuenta.
+function vecesPendientes(fijo, hoy) {
+  const hasta = fijo.fecha_baja && fijo.fecha_baja <= hoy ? sumarDias(fijo.fecha_baja, -1) : hoy;
+  const resueltas = new Set(SQL_VECES_RESUELTAS.all(fijo.id, fijo.id).map((v) => v.periodo));
+  const veces = [];
+  for (let n = 0; n < MAX_VECES_GASTO_FIJO; n++) {
+    const fecha = vezDelGastoFijo(fijo, n);
+    if (fecha > hasta) break;
+    if (!resueltas.has(fecha)) veces.push(fecha);
+  }
+  return veces;
+}
+
+// La próxima vez después de hoy, si sigue activo.
+function proximaVez(fijo, hoy) {
+  if (fijo.estado !== 'activo') return null;
+  for (let n = 0; n < MAX_VECES_GASTO_FIJO; n++) {
+    const fecha = vezDelGastoFijo(fijo, n);
+    if (fecha > hoy) return fecha;
+  }
+  return null;
+}
+
+// Anota una vez de un gasto fijo con sus datos. Dentro de una transacción.
+function anotarVezDelGastoFijo(fijo, periodo, organizacionId) {
+  return crearGasto({
+    categoriaId: fijo.categoria_id,
+    cuentaId: fijo.cuenta_tesoreria_id,
+    proveedorId: fijo.proveedor_id,
+    monto: fijo.importe,
+    tipo: fijo.tipo,
+    fecha: periodo,
+    descripcion: fijo.descripcion,
+    organizacionId,
+    gastoFijoId: fijo.id,
+    periodo
+  });
+}
+
+// Anota lo que falte de los que se anotan solos. Solo abre una transacción si
+// hay algo para anotar. Devuelve cuántos anotó.
+function ponerGastosFijosAlDia(organizacionId) {
+  const hoy = fechaDeHoy();
+  const porAnotar = db
+    .prepare(`${SELECT_GASTO_FIJO} WHERE gastos_fijos.organizacion_id = ? AND gastos_fijos.modo = 'solo' AND gastos_fijos.desde <= ?`)
+    .all(organizacionId, hoy)
+    .flatMap((fijo) => vecesPendientes(fijo, hoy).map((periodo) => ({ fijo, periodo })));
+  if (porAnotar.length === 0) return 0;
+  withTransaction(() => {
+    for (const { fijo, periodo } of porAnotar) {
+      const id = anotarVezDelGastoFijo(fijo, periodo, organizacionId);
+      // Actor sistema y sin usuario: lo anotó Nexo el día que tocaba.
+      registrarAuditoria({
+        actor: 'sistema',
+        accion: 'crear',
+        entidad: 'gasto',
+        entidad_id: id,
+        operacion_tipo: 'gasto_fijo',
+        operacion_id: fijo.id,
+        detalle: `Gasto #${id}: ${nombreGastoFijo(fijo)} del ${fechaLegible(periodo)}, anotado solo`,
+        organizacion_id: organizacionId
+      });
+    }
+  });
+  return porAnotar.length;
+}
+
+function ponerTodosLosGastosFijosAlDia() {
+  const negocios = db
+    .prepare(
+      `SELECT DISTINCT gastos_fijos.organizacion_id AS id FROM gastos_fijos
+         JOIN organizaciones ON organizaciones.id = gastos_fijos.organizacion_id
+        WHERE gastos_fijos.modo = 'solo' AND gastos_fijos.estado = 'activo' AND organizaciones.baja_pedida IS NULL`
+    )
+    .all();
+  for (const { id } of negocios) {
+    try {
+      ponerGastosFijosAlDia(id);
+    } catch (err) {
+      console.error('[gastos fijos]', id, err);
+    }
+  }
+}
+
+// Lo que se pagó la última vez (la luz cambia): de ahí sale el importe que se
+// propone al cargar la próxima. Sin ninguna anotada, el del gasto fijo.
+const SQL_ULTIMO_IMPORTE = db.prepare(
+  "SELECT importe FROM gastos WHERE gasto_fijo_id = ? AND estado = 'activo' ORDER BY periodo DESC LIMIT 1"
+);
+const ultimoImporte = (fijo) => SQL_ULTIMO_IMPORTE.get(fijo.id)?.importe ?? fijo.importe;
+
+function conVeces(fijo, hoy) {
+  const hechos = db
+    .prepare("SELECT COUNT(*) AS n, MAX(periodo) AS ultima FROM gastos WHERE gasto_fijo_id = ? AND estado = 'activo'")
+    .get(fijo.id);
+  return {
+    ...fijo,
+    proxima: proximaVez(fijo, hoy),
+    pendientes: fijo.modo === 'aviso' ? vecesPendientes(fijo, hoy) : [],
+    anotados: hechos.n,
+    ultima: hechos.ultima,
+    ultimo_importe: ultimoImporte(fijo)
+  };
+}
+
+// Lo que se puede cambiar de un gasto fijo: lo mismo que de un gasto, más el
+// modo. Cada cuánto y desde cuándo, solo al darlo de alta.
+function validarGastoFijo(body, organizacionId) {
+  const validacion = validarGasto(body, organizacionId);
+  if (validacion.error) return validacion;
+  const modo = body.modo ?? 'solo';
+  if (!MODOS_GASTO_FIJO.includes(modo)) return { error: 'Elegí si Nexo lo anota solo o te avisa para cargarlo.' };
+  return { ...validacion, modo };
+}
+
+app.get('/api/gastos-fijos', (req, res) => {
+  const organizacionId = req.usuario.organizacion_id;
+  ponerGastosFijosAlDia(organizacionId);
+  const hoy = fechaDeHoy();
+  res.json(
+    db
+      .prepare(`${SELECT_GASTO_FIJO} WHERE gastos_fijos.organizacion_id = ? ORDER BY gastos_fijos.estado, gastos_fijos.id`)
+      .all(organizacionId)
+      .map((fijo) => conVeces(fijo, hoy))
+  );
+});
+
+// El alta: la plantilla y, si la primera vez ya llegó, ese gasto con los datos
+// del formulario (en los dos modos: es el que se está cargando). Si la primera
+// fue hace un tiempo, los que se anotan solos anotan también las otras veces
+// hasta hoy; los de aviso las dejan para cargar.
+app.post('/api/gastos-fijos', soloAdmin, (req, res) => {
+  const organizacionId = req.usuario.organizacion_id;
+  const validacion = validarGastoFijo(req.body, organizacionId);
+  if (validacion.error) return res.status(400).json({ error: validacion.error });
+  const { categoriaId, cuentaId, proveedorId, monto, tipo, modo } = validacion;
+  const cada = Number(req.body.cada);
+  if (!Number.isInteger(cada) || cada < 1 || cada > 24) {
+    return res.status(400).json({ error: 'Cada cuánto se repite: entre 1 y 24.' });
+  }
+  if (!UNIDADES_GASTO_FIJO.includes(req.body.unidad)) {
+    return res.status(400).json({ error: 'Se repite por meses o por semanas.' });
+  }
+  const hoy = fechaDeHoy();
+  const desde = validarFecha(req.body.fecha);
+  if (!desde) return res.status(400).json({ error: 'Poné la fecha de la primera vez.' });
+  if (diffDias(minISO(desde, hoy), desde > hoy ? desde : hoy) > DIAS_PRIMERA_VEZ) {
+    return res.status(400).json({ error: 'La primera vez tiene que ser dentro del último año, o del próximo.' });
+  }
+  const descripcion = req.body.descripcion?.trim() || null;
+
+  const resultado = withTransaction(() => {
+    const { lastInsertRowid } = db
+      .prepare(
+        `INSERT INTO gastos_fijos (categoria_id, cuenta_tesoreria_id, proveedor_id, importe, tipo, descripcion,
+                                   cada, unidad, desde, modo, fecha_alta, organizacion_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      )
+      .run(categoriaId, cuentaId, proveedorId, monto, tipo, descripcion, cada, req.body.unidad, desde, modo, hoy, organizacionId);
+    const id = Number(lastInsertRowid);
+    const fijo = gastoFijoDeLaEmpresa(id, organizacionId);
+    auditar(req, {
+      accion: 'crear',
+      entidad: 'gasto',
+      operacion_tipo: 'gasto_fijo',
+      operacion_id: id,
+      valor_nuevo: JSON.stringify({ importe: monto, cada, unidad: req.body.unidad, desde, modo }),
+      detalle: `Gasto fijo "${nombreGastoFijo(fijo)}" creado`
+    });
+    let primero = null;
+    if (desde <= hoy) {
+      primero = crearGasto({
+        categoriaId,
+        cuentaId,
+        proveedorId,
+        monto,
+        tipo,
+        fecha: desde,
+        descripcion,
+        comprobante: req.body.comprobante,
+        organizacionId,
+        gastoFijoId: id,
+        periodo: desde
+      });
+      auditar(req, {
+        accion: 'crear',
+        entidad: 'gasto',
+        entidad_id: primero,
+        operacion_tipo: 'gasto_fijo',
+        operacion_id: id,
+        detalle: `Gasto #${primero} creado: ${nombreGastoFijo(fijo)} del ${fechaLegible(desde)}`
+      });
+    }
+    return { id, primero };
+  });
+  const anotados = (resultado.primero ? 1 : 0) + ponerGastosFijosAlDia(organizacionId);
+  res.status(201).json({ ...conVeces(gastoFijoDeLaEmpresa(resultado.id, organizacionId), hoy), anotados });
+});
+
+// Editar cambia las veces que vienen; lo ya anotado queda como estaba (se
+// edita cada gasto, si hace falta).
+app.put('/api/gastos-fijos/:id', soloAdmin, (req, res) => {
+  const organizacionId = req.usuario.organizacion_id;
+  const fijo = gastoFijoDeLaEmpresa(Number(req.params.id), organizacionId);
+  if (!fijo) return res.status(404).json({ error: 'Gasto fijo no encontrado.' });
+  if (fijo.estado !== 'activo') return res.status(400).json({ error: 'Este gasto fijo está dado de baja.' });
+  const validacion = validarGastoFijo(req.body, organizacionId);
+  if (validacion.error) return res.status(400).json({ error: validacion.error });
+  const { categoriaId, cuentaId, proveedorId, monto, tipo, modo } = validacion;
+  const nuevo = {
+    categoria_id: categoriaId,
+    cuenta_tesoreria_id: cuentaId,
+    proveedor_id: proveedorId,
+    importe: monto,
+    tipo,
+    descripcion: req.body.descripcion?.trim() || null,
+    modo
+  };
+  const cambios = diffCampos(fijo, nuevo, Object.keys(nuevo));
+  withTransaction(() => {
+    db.prepare(
+      `UPDATE gastos_fijos
+          SET categoria_id = ?, cuenta_tesoreria_id = ?, proveedor_id = ?, importe = ?, tipo = ?, descripcion = ?, modo = ?
+        WHERE id = ?`
+    ).run(categoriaId, cuentaId, proveedorId, monto, tipo, nuevo.descripcion, modo, fijo.id);
+    if (cambios) {
+      auditar(req, {
+        accion: 'editar',
+        entidad: 'gasto',
+        operacion_tipo: 'gasto_fijo',
+        operacion_id: fijo.id,
+        valor_anterior: cambios.anterior,
+        valor_nuevo: cambios.nuevo,
+        detalle: `Gasto fijo "${nuevo.descripcion || fijo.categoria}" editado`
+      });
+    }
+  });
+  // Pasar a "anotarlo solo" anota lo que había quedado para cargar.
+  ponerGastosFijosAlDia(organizacionId);
+  res.json(conVeces(gastoFijoDeLaEmpresa(fijo.id, organizacionId), fechaDeHoy()));
+});
+
+// "Esta vez no": una vez que tocó y no se paga (el mes que no hubo luz).
+app.post('/api/gastos-fijos/:id/saltear', soloAdmin, (req, res) => {
+  const organizacionId = req.usuario.organizacion_id;
+  const fijo = gastoFijoDeLaEmpresa(Number(req.params.id), organizacionId);
+  if (!fijo) return res.status(404).json({ error: 'Gasto fijo no encontrado.' });
+  const { periodo } = req.body;
+  if (!vecesPendientes(fijo, fechaDeHoy()).includes(periodo)) {
+    return res.status(400).json({ error: 'Esa vez del gasto fijo ya está cargada, o no toca.' });
+  }
+  withTransaction(() => {
+    db.prepare('INSERT INTO gastos_fijos_salteados (gasto_fijo_id, periodo) VALUES (?, ?)').run(fijo.id, periodo);
+    auditar(req, {
+      accion: 'cambiar_estado',
+      entidad: 'gasto',
+      operacion_tipo: 'gasto_fijo',
+      operacion_id: fijo.id,
+      detalle: `Gasto fijo "${nombreGastoFijo(fijo)}": el del ${fechaLegible(periodo)} no se paga`
+    });
+  });
+  res.json(conVeces(gastoFijoDeLaEmpresa(fijo.id, organizacionId), fechaDeHoy()));
+});
+
+// La baja: desde hoy no toca más. Lo anotado queda; lo que había quedado para
+// cargar de antes de hoy, también (se sigue debiendo).
+app.post('/api/gastos-fijos/:id/baja', soloAdmin, (req, res) => {
+  const organizacionId = req.usuario.organizacion_id;
+  const fijo = gastoFijoDeLaEmpresa(Number(req.params.id), organizacionId);
+  if (!fijo) return res.status(404).json({ error: 'Gasto fijo no encontrado.' });
+  if (fijo.estado !== 'activo') return res.status(400).json({ error: 'Este gasto fijo ya está dado de baja.' });
+  const hoy = fechaDeHoy();
+  withTransaction(() => {
+    db.prepare("UPDATE gastos_fijos SET estado = 'baja', fecha_baja = ? WHERE id = ?").run(hoy, fijo.id);
+    auditar(req, {
+      accion: 'cambiar_estado',
+      entidad: 'gasto',
+      operacion_tipo: 'gasto_fijo',
+      operacion_id: fijo.id,
+      detalle: `Gasto fijo "${nombreGastoFijo(fijo)}" dado de baja`
+    });
+  });
+  res.json(conVeces(gastoFijoDeLaEmpresa(fijo.id, organizacionId), hoy));
 });
 
 /* ---------- Cuentas corrientes (a cobrar y a pagar) ---------- */
@@ -16344,6 +16709,13 @@ function paraRevisar(organizacionId, hoy) {
 
   const pagos = SQL_REVISAR_PAGOS_MP.get(organizacionId).n;
   if (pagos) avisos.push({ clave: 'mercado_pago', cantidad: pagos });
+
+  // Los gastos fijos que tocaron y nadie cargó (hist. §214), de a uno por vez.
+  for (const fijo of db.prepare(`${SELECT_GASTO_FIJO} WHERE gastos_fijos.organizacion_id = ? AND gastos_fijos.modo = 'aviso' ORDER BY gastos_fijos.id`).all(organizacionId)) {
+    for (const periodo of vecesPendientes(fijo, hoy)) {
+      avisos.push({ clave: 'gasto_fijo', id: fijo.id, nombre: nombreGastoFijo(fijo), fecha: periodo, importe: ultimoImporte(fijo) });
+    }
+  }
   return avisos;
 }
 
@@ -16388,6 +16760,7 @@ app.get('/api/reportes/tablero', soloAdmin, (req, res) => {
   const redondearFila = (f) => ({ ...f, ventas: redondear2(f.ventas) });
 
   ponerAbonosAlDia(organizacionId);
+  ponerGastosFijosAlDia(organizacionId);
   const porCobrar = deudaDelTablero(
     saldosPorOperacion('movimientos_cc_clientes', 'cliente_id', 'venta_id', 'ventas', organizacionId),
     hoy
@@ -28432,6 +28805,10 @@ setInterval(() => {
   borrarEjemplosViejos();
   reponerReserva();
 }, 30 * 60 * 1000).unref();
+// Los gastos fijos que se anotan solos (hist. §214): al arrancar y cada media
+// hora, además de al mirar los gastos, la tesorería o el Resumen.
+setTimeout(ponerTodosLosGastosFijosAlDia, 30_000).unref();
+setInterval(ponerTodosLosGastosFijosAlDia, 30 * 60 * 1000).unref();
 // Las tiendas conectadas (CLAUDE.md §32): pedidos, stock y precio.
 setInterval(() => sincronizarTodas().catch((err) => console.error('[integraciones]', err)), SINCRONIZAR_CADA_MS).unref();
 
