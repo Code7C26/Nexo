@@ -308,9 +308,10 @@ etapa de pruebas). PR #116: ahora solo en `/app` y `/api`, y la privacidad suma
 "Google user data" en inglés. Igual siguió marcándola: **el 22 de noviembre se
 mandó todo junto** (apelación "El hallazgo es incorrecto" con la explicación en
 inglés, el video de YouTube y la justificación de `gmail.send`). Falta la
-respuesta de Google, que llega a nexosystem.app@gmail.com. En inglés, el cartel verde de "Conectado a…"
-de Configuración → Gmail sigue en castellano (falta en `idioma/en.js`).
-Mientras tanto anda con el aviso de "app no verificada", hasta 100 cuentas.
+respuesta de Google, que llega a nexosystem.app@gmail.com. El cartel verde de
+"Conectado a…" ya sale en inglés: `npm run i18n` salteaba todo texto que
+empieza con punto (". Las facturas…", lo que sigue a un `<strong>`), y con eso
+aparecieron y se tradujeron 10 que faltaban (22 de noviembre). Mientras tanto anda con el aviso de "app no verificada", hasta 100 cuentas.
 **Con §218 la verificación pasa a ser necesaria** para que cualquier negocio
 mande facturas por mail sin ese aviso.
 
