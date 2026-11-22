@@ -4062,10 +4062,17 @@ html[data-ejemplo] #btnCompraFactura { display: none; }
   /* Sin hamburguesa en el celular: el cajón lo abre "Más", de la barra de
      abajo (hist. §95). */
 
+  /* 100dvh y no 100vh: en el celular 100vh es la pantalla sin la barra del
+     navegador, y el pie (la cuenta) quedaba debajo de ella, sin poder
+     llegarle. El pie despeja la rayita de inicio del iPhone, y el scroll del
+     cajón no sigue en la página de atrás al llegar al final. */
   .sidebar {
     position: fixed;
     inset: 0 auto 0 0;
     width: min(300px, 84vw);
+    height: 100dvh;
+    padding-bottom: calc(var(--sp-4) + env(safe-area-inset-bottom));
+    overscroll-behavior: contain;
     z-index: 55;
     transform: translateX(-100%);
     transition: transform var(--dur-3) var(--ease-out);

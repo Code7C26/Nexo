@@ -11,7 +11,7 @@
 
 - Al cerrar una etapa, se hacen tres cosas:
   - su relato completo se agrega al final de `docs/proyecto/handoff-historico.md` con el
-    siguiente número (hoy el último es §219);
+    siguiente número (hoy el último es §220);
   - acá se actualizan "Estado actual" y "Qué sigue";
   - si cambió alguna decisión vigente, se actualiza también esa lista.
 - Nunca apilar secciones "Última etapa" en este archivo: así fue como llegó a
@@ -135,6 +135,19 @@ días"). Lo manda una persona: el envío automático es el "ARM" de "Para más
 adelante". Esquema aditivo: `organizaciones.mensajes_whatsapp` y tabla
 `recordatorios_deuda`. Test nuevo: `recordatorios`. Publicado (PR #115).
 
+**22 de noviembre, hist. §220: el celular, la traducción y la regresión**
+(pulido, pedido del usuario). En el celular el pie del cajón (la cuenta) ya
+se alcanza (`100dvh`, el margen del iPhone, y el scroll no sigue en la
+página de atrás), y la barra de abajo no recalcula la pantalla por cada
+cambio de sección. `npm run i18n` ya ve los textos que empiezan con punto (10
+traducidos) y `npm run regresion` anda (0 diferencias). **Lo que traba el
+celular es el arranque** (medido con la CPU 4 veces más lenta: el primer
+pedido de datos a los 5,8 s, por leer `index.html` de 510 KB con todas las
+pantallas, el CSS y todos los módulos; y el Resumen salta cuando aparecen
+"Para hoy" y "Primeros pasos"). **Propuesto, sin hacer:** cargar primero la
+pantalla que se mira y el resto después (se planifica antes, §27). Sin
+publicar.
+
 **Lo que sigue:** el resto del punto 9: mensajes de WhatsApp armados y
 "quiénes deben" (que ya puede avisar de la cuota que vence), y puntos y
 premios.
@@ -192,7 +205,7 @@ los turnos cumplidos (punto 5 rehecho, publicado, PR #101).**
 - Tests nuevos: `caja-vinculada` y `empleados-migracion`. Probado en el
   navegador, en la compu y en el celular.
 - **Falta:** probarlo en el servidor con una caja real y los permisos por
-  sección (punto 4). `npm run regresion` sigue roto, como dice §198.
+  sección (punto 4).
 
 **18 de noviembre, hist. §198: la lista de precios del proveedor, Proveedores
 en Compras, Mercado Pago fuera de los canales y el QR al cobrar una deuda
@@ -208,8 +221,7 @@ en Compras, Mercado Pago fuera de los canales y el QR al cobrar una deuda
 - Registrar cobro (Cuentas corrientes, Ventas): **Cobrar con QR** (menos
   comisión) además del link, por el importe escrito o todo lo que debe.
 - 462 tests. **Falta:** probar el QR con el Mercado Pago real y la lista con un
-  PDF real de un proveedor. **`npm run regresion` está roto** (el login del
-  admin sembrado da 401 también en el commit anterior): arreglar el script.
+  PDF real de un proveedor.
 - **Pregunta del usuario contestada:** los anuncios se cargan como un gasto
   (categoría Publicidad) y Venta online muestra cuánto rinden; una sección de
   anuncios con Meta o Google Ads es §39 (fuera de alcance por ahora).

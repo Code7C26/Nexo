@@ -15436,3 +15436,40 @@ por Meta: queda para el "ARM" de después (ver handoff, "Para más adelante").
   situaciones (gracias por tu compra, puntos), el recordatorio desde la ficha
   del cliente, y la entrada del manual (se completa al final, junto con el
   resto).
+
+## §220 — 22 de noviembre de 2026: el celular, la traducción y la regresión
+
+Pulido, pedido del usuario: "en la versión de celular es como que media tosca,
+hay cosas que se traban, y en la barra lateral no se llega a ver la parte del
+usuario".
+
+- **El pie del cajón (la cuenta) no se alcanzaba en el celular:** la sidebar
+  medía `100vh`, que en el celular es la pantalla sin la barra del navegador,
+  y el pie quedaba debajo. Ahora `100dvh`, el pie despeja la rayita del iPhone
+  (`env(safe-area-inset-bottom)`) y `overscroll-behavior: contain` (el scroll
+  del cajón ya no sigue en la página de atrás al llegar al final).
+- **Barra de abajo** (`core/barra-inferior.js`): rearmaba sus destinos (con
+  `innerText` y `checkVisibility`, que recalculan la pantalla) por cada cambio
+  de clase del menú. Ahora un cambio solo de clases (la sección activa, el
+  cajón abierto) solo mueve lo marcado.
+- **Medición del celular** (Chrome con la CPU 4 veces más lenta, el Resumen de
+  "Baseline SA"): ya cargado, el scroll va a 60 cuadros por segundo (el blur de
+  las barras no es el problema). Lo que traba es **el arranque**: unos 7,5 s de
+  cuadros largos y el Resumen completo a los ~7 s. El primer pedido de datos
+  sale recién a los 5,8 s: antes se lee `index.html` (510 KB, todas las
+  pantallas adentro; ~8.200 elementos y se ven ~2.200), `styles.css`
+  (340 KB) y se evalúan todos los módulos (`app.js` 400 KB, ~0,5 s). Los datos
+  pesan 66 KB y cada pedido tarda ~20 ms: la red no es el problema. Además,
+  `cargarTodo` trae todas las secciones antes que el Resumen, y "Para hoy" y
+  "Primeros pasos" aparecen arriba cuando el esqueleto ya está y lo empujan
+  (CLS 0,80). **Propuesto, no hecho:** cargar primero la pantalla que se mira
+  y el resto después, y sacar del HTML inicial las pantallas que no se usan
+  al entrar (cambia el arranque de toda la app: se planifica antes, §27).
+- **Traducción:** `npm run i18n` descartaba todo texto que empieza con punto
+  (". Las facturas…", lo que sigue a un `<strong>`). Aparecieron y se
+  tradujeron 10, entre ellos el cartel de Gmail.
+- **`npm run regresion` anda de nuevo:** el login ya no fallaba; las 14
+  diferencias eran del entorno (el worktree sale con CRLF y la página de la
+  app volvía distinta por los finales de línea; cada base genera su clave de
+  notificaciones). El script las ignora: 308 comparaciones, 0 distintas.
+- `npm test`: 523 de 523. Lint e i18n en verde.
