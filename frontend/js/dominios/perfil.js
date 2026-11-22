@@ -11,7 +11,6 @@ import { esc } from "../core/formato.js";
 import { icono } from "../core/iconos.js";
 import { avisar } from "../core/ui.js";
 import { alEntrarEnVista, registrar } from "../core/registro.js";
-import { mostrarVista } from "../core/router.js";
 import { codigoCompleto, esperarParaReenviar, prepararCampoCodigo } from "../core/codigo.js";
 import { achicarImagen } from "../core/marca.js";
 
@@ -255,11 +254,6 @@ formBajaCuenta.addEventListener("submit", async (e) => {
   } finally {
     boton.disabled = false;
   }
-});
-
-document.getElementById("btnPerfil").addEventListener("click", () => {
-  document.getElementById("sidebar").classList.remove("is-open");
-  mostrarVista("configuracion", { subruta: "cuenta" });
 });
 
 document.getElementById("formCambioPassword").addEventListener("submit", async (e) => {

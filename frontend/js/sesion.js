@@ -286,8 +286,10 @@
     // sabe de la caja (cuál es, quién atiende) lo lee dominios/pos.js.
     document.documentElement.toggleAttribute("data-caja", !!usuario.caja);
     window.nexoCaja = usuario.caja ?? null;
-    const nombreEl = document.querySelector("[data-usuario-nombre]");
-    if (nombreEl) nombreEl.textContent = usuario.nombre;
+    // El nombre va en el pie y en la cabecera del menú de la cuenta, con el
+    // mail (dominios/cuenta-menu.js).
+    for (const el of document.querySelectorAll("[data-usuario-nombre]")) el.textContent = usuario.nombre;
+    for (const el of document.querySelectorAll("[data-usuario-mail]")) el.textContent = usuario.email ?? "";
     // La foto de perfil (hist. §212) en el círculo del pie del menú. Sin
     // foto queda el ícono; Mi cuenta (dominios/perfil.js) la cambia.
     const avatar = document.getElementById("btnPerfil");

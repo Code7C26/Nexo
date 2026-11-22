@@ -2337,6 +2337,27 @@ Además: el CUIT de Nexo es el monotributo de Santino, no una sociedad (punto
 donde entrena el usuario (19 de noviembre); él habla con el dueño y lo que
 ese gimnasio no pueda trabajar sin tener, entra.
 
+**Hecho (22 de noviembre, hist. §217): menú de la cuenta y la lista de
+Configuración.** Pulido, pedido del usuario.
+- El pie de la sidebar es un solo botón (foto, rol, nombre) que abre el menú
+  de la cuenta, como el de Notion: `dominios/cuenta-menu.js` (copia el patrón
+  del selector de negocio: menú mudado al `<body>`, fijo arriba del botón,
+  flechas, Escape, clic afuera). Tiene foto, nombre y mail; Mejorar tu plan e
+  Invitar a alguien (`col-admin`); Mi cuenta; Configuración; el tema (cambia
+  sin cerrar el menú); Avisar un problema; Entrar con otra cuenta; Cerrar
+  sesión. Se sacaron del pie el engranaje, el tema y el aviso de problema
+  (`#btnTema` y `#btnConfiguracion` ya no existen; `#btnPerfil` es la foto
+  adentro del botón).
+- "Entrar con otra cuenta" = cerrar sesión y abrir el login con un aviso
+  (decisión del usuario). Varias cuentas abiertas a la vez, como Notion,
+  pediría varias sesiones por cookie: no se hizo.
+- Los negocios no se repiten en el menú: siguen en el selector de arriba.
+- Configuración en la compu: la lista tiene su propio scroll, con el alto de
+  lo que se ve en pantalla (`ajustarLista` en `dominios/configuracion.js`), y
+  al cambiar de página la de la derecha arranca desde arriba.
+- Probado en el navegador con un negocio de ejemplo sobre una copia de la
+  base. Lint, `npm run i18n` y `npm test` pasan. Falta mirarlo en el celular.
+
 **Plan hasta la presentación oficial (principios de diciembre), acordado con
 el usuario el 16 de noviembre y ampliado el 17.** Sale de su lista de mejoras
 después del simulacro y de lo que vio en Praxia; reemplaza al "Plan hasta el

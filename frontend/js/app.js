@@ -43,7 +43,6 @@ import { facturaDeFila, leerFactura, marcarCoincidencia, montarOrigen, pintarRes
 import { CANALES_VENTA } from "./core/canales.js";
 import { mejorOferta } from "./core/ofertas.js";
 import { mostrarVista, subrutaDesdeHash, vistaDesdeHash } from "./core/router.js";
-import { aplicarTema, temaActual } from "./core/tema.js";
 import { alEntrarEnVista, invocar, recargar, registrar } from "./core/registro.js";
 import { cuentasTesoreria, fijarCuentasTesoreria, fijarProveedores, poblarSelectCuentas, proveedores } from "./core/maestros.js";
 import { catalogoMixto, fijarTiposDelCatalogo, moduloActivo, negocio, termino, terminoDeTipo } from "./core/negocio.js";
@@ -86,6 +85,7 @@ import "./dominios/primeros-pasos.js";
 import "./dominios/carga-inicial.js";
 import "./dominios/importar.js";
 import "./dominios/negocios.js";
+import "./dominios/cuenta-menu.js";
 import "./dominios/plataforma.js";
 import "./dominios/problema.js";
 import "./dominios/balanza.js";
@@ -9468,14 +9468,6 @@ function cargarTodo() {
 cargarTodo().catch((e) => {
   avisar("No se terminaron de cargar los datos. Recargá la página para reintentar.", "atencion");
   throw e;
-});
-
-/* ---------- Tema claro / oscuro ---------- */
-
-// El botón de la sidebar alterna; la página Apariencia de Configuración elige
-// uno. Los dos pasan por core/tema.js.
-document.getElementById("btnTema").addEventListener("click", () => {
-  aplicarTema(temaActual() === "oscuro" ? "claro" : "oscuro");
 });
 
 /* ---------- Colapsar sidebar (pantalla completa en desktop) ---------- */
