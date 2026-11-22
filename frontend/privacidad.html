@@ -119,6 +119,37 @@
         incluidos los requisitos de Uso Limitado.
       </p>
 
+      <!-- Lo mismo en inglés, para la revisión de Google del permiso gmail.send
+           (docs/proyecto/verificacion-google.md). Si cambia lo de arriba, cambia acá. -->
+      <section lang="en">
+        <h2>Google user data (English)</h2>
+        <p>
+          This section describes how Nexo accesses, uses, stores and shares Google user data when a business
+          connects its Gmail account in Settings → Gmail.
+        </p>
+        <ul>
+          <li><strong>Data accessed:</strong> Nexo requests a single Google permission,
+            <code>https://www.googleapis.com/auth/gmail.send</code> (send email on your behalf), plus your
+            email address to show which account is connected. Nexo cannot read, modify or delete your emails,
+            and does not access your contacts or any other Google data.</li>
+          <li><strong>How it is used:</strong> only to send the emails you trigger in Nexo: an invoice, with its
+            PDF attached, to the recipient you choose, or a test email to your own address.</li>
+          <li><strong>Storage and protection:</strong> Nexo stores only the connected email address and an
+            OAuth refresh token, encrypted at rest on Nexo's server (Oracle Cloud, São Paulo, Brazil).</li>
+          <li><strong>Sharing:</strong> Google user data is not sold, not shared with third parties, not used
+            for advertising and not used to train artificial intelligence models.</li>
+          <li><strong>Retention and deletion:</strong> you can disconnect Gmail at any time in Settings → Gmail
+            or from your Google Account. When you disconnect it in Nexo, the token is revoked with Google and
+            deleted from our server. If you delete your business or account, all its data is deleted within
+            30 days. To request deletion, write to <a href="mailto:%TITULAR_EMAIL%">%TITULAR_EMAIL%</a>.</li>
+        </ul>
+        <p>
+          Nexo's use and transfer of information received from Google APIs adheres to the
+          <a href="https://developers.google.com/terms/api-services-user-data-policy" target="_blank" rel="noopener">Google API Services User Data Policy</a>,
+          including the Limited Use requirements.
+        </p>
+      </section>
+
       <h2>Dónde se guardan y por cuánto tiempo</h2>
       <p>
         Los datos se guardan en el servidor de Nexo, alquilado a Oracle Cloud en San Pablo, Brasil, con un
