@@ -2400,7 +2400,9 @@ empleados**; después de presentar se puede mejorar mucho más. El orden es mío
 3. ~~**Mandar la factura por mail**, de a una o varias juntas~~ (hecho, hist.
    §186 y §187: desde el Gmail del negocio; falta el trámite con Google).
 4. ~~**Sucursales y el cierre del día y del mes**~~ (hecho, hist. §193).
-   **Falta de este punto: los permisos por sección**, el punto de venta de
+   **Falta de este punto: los permisos por sección** (guardados para
+   escalar: `plan-para-vender.md`, punto 13, con el ejemplo del área de
+   compras que pidió el usuario el 22 de noviembre), el punto de venta de
    ARCA por sucursal y el precio por sucursal. (Detalle
    en "Para más adelante", donde quedó la propuesta). Suma los **permisos por
    sección** de Praxia: para ver o para editar, y por sucursal (un contador,
