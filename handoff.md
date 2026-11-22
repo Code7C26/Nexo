@@ -86,7 +86,7 @@ Configuración › Logo y colores: el logo va en el menú, la factura, el ticket
 (en grises) y la pantalla de entrada; el color reemplaza al azul de Nexo.
 Foto de perfil en Mi cuenta. Test nuevo: `marca`. `npm test`: 501 de 501.
 
-**21 de noviembre, hist. §213: "Para revisar" en el Resumen (punto 9, primera parte).**
+**21 de noviembre, hist. §213: "Para revisar" en el Resumen (punto 9, primera parte; publicado, PR #113).**
 Abajo de "Para mirar hoy": facturas sin CAE o rechazadas, faltantes de caja de
 $15.000 o más en un día, cajas que abrieron con otra plata o siguen abiertas
 desde otro día, "el costo subió y el precio no" y pagos de Mercado Pago para
@@ -101,14 +101,14 @@ Resumen, con lo que se pagó la última vez). Gastos › Gastos fijos los lista 
 la próxima vez, se editan para lo que viene y se dan de baja sin tocar lo
 anotado. Esquema aditivo: `gastos_fijos`, `gastos_fijos_salteados` y
 `gastos.gasto_fijo_id`/`periodo` (índice único). Test nuevo: `gastos-fijos`.
-`npm test`: 509 de 509. **Sin publicar** (§213 tampoco).
+`npm test`: 509 de 509. Publicado (PR #113).
 
 **21 de noviembre, hist. §215: las cuotas se cobran con los medios de cobro, y
 el logo se encuadra en el menú** (pedidos del usuario). Cuotas, la ficha del
 socio, la recepción y Abonos ofrecen los medios activos (Efectivo, Débito,
 Crédito, Transferencia…), nunca las cuentas (`core/cobro-medio.js`); en
 Logo y colores, **En el menú** acerca y corre el logo
-(`organizaciones.logo_encuadre`). **Sin publicar** (§213 y §214 tampoco).
+(`organizaciones.logo_encuadre`). Publicado (PR #113).
 
 **21 de noviembre, hist. §216: vender en cuotas con financiación propia**
 (pedido del usuario). Cada producto puede tener **Precio en cuotas** ("3 pagos
@@ -116,7 +116,7 @@ de $50.000"); al venderlo (Ventas o el mostrador) se elige el plan, lo que falta
 queda en la cuenta corriente con una cuota por mes, y solo lo que ya venció
 cuenta como vencido. Esquema aditivo: `producto_planes_pago`, `venta_cuotas`,
 `venta_items.plan_cuotas`. Test nuevo: `ventas-en-cuotas`. 514 de 514.
-**Sin publicar** (§213 a §216).
+Publicado (PR #113, con §213 a §215).
 
 **Lo que sigue:** el resto del punto 9: mensajes de WhatsApp armados y
 "quiénes deben" (que ya puede avisar de la cuota que vence), y puntos y
@@ -2336,6 +2336,27 @@ Además: el CUIT de Nexo es el monotributo de Santino, no una sociedad (punto
 0 del mismo documento). **Primer piloto:** el gimnasio de artes marciales
 donde entrena el usuario (19 de noviembre); él habla con el dueño y lo que
 ese gimnasio no pueda trabajar sin tener, entra.
+
+**Hecho (22 de noviembre, hist. §217): menú de la cuenta y la lista de
+Configuración.** Pulido, pedido del usuario.
+- El pie de la sidebar es un solo botón (foto, rol, nombre) que abre el menú
+  de la cuenta, como el de Notion: `dominios/cuenta-menu.js` (copia el patrón
+  del selector de negocio: menú mudado al `<body>`, fijo arriba del botón,
+  flechas, Escape, clic afuera). Tiene foto, nombre y mail; Mejorar tu plan e
+  Invitar a alguien (`col-admin`); Mi cuenta; Configuración; el tema (cambia
+  sin cerrar el menú); Avisar un problema; Entrar con otra cuenta; Cerrar
+  sesión. Se sacaron del pie el engranaje, el tema y el aviso de problema
+  (`#btnTema` y `#btnConfiguracion` ya no existen; `#btnPerfil` es la foto
+  adentro del botón).
+- "Entrar con otra cuenta" = cerrar sesión y abrir el login con un aviso
+  (decisión del usuario). Varias cuentas abiertas a la vez, como Notion,
+  pediría varias sesiones por cookie: no se hizo.
+- Los negocios no se repiten en el menú: siguen en el selector de arriba.
+- Configuración en la compu: la lista tiene su propio scroll, con el alto de
+  lo que se ve en pantalla (`ajustarLista` en `dominios/configuracion.js`), y
+  al cambiar de página la de la derecha arranca desde arriba.
+- Probado en el navegador con un negocio de ejemplo sobre una copia de la
+  base. Lint, `npm run i18n` y `npm test` pasan. Falta mirarlo en el celular.
 
 **Plan hasta la presentación oficial (principios de diciembre), acordado con
 el usuario el 16 de noviembre y ampliado el 17.** Sale de su lista de mejoras

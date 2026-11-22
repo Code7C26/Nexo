@@ -800,6 +800,21 @@ const permitida = (clave) =>
 
 const celular = window.matchMedia("(max-width: 860px)");
 
+// En la compu la lista tiene su propio scroll y mide lo que se ve de ella:
+// con la página arriba arranca más abajo (el título, el aviso del ejemplo), y
+// el tope fijo del CSS la dejaba seguir debajo del borde de la pantalla.
+const listaConfig = config.querySelector(".config-menu");
+function ajustarLista() {
+  if (celular.matches || config.closest(".view").hidden) {
+    listaConfig.style.maxHeight = "";
+    return;
+  }
+  const arriba = Math.max(listaConfig.getBoundingClientRect().top, 16);
+  listaConfig.style.maxHeight = `${Math.round(window.innerHeight - arriba - 16)}px`;
+}
+window.addEventListener("scroll", ajustarLista, { passive: true });
+window.addEventListener("resize", ajustarLista);
+
 async function abrirPagina(subruta) {
   // Con un deep-link, el router llega antes que el boot: sin el negocio
   // todavía no se sabe qué módulos están prendidos (moduloActivo deja pasar
@@ -832,6 +847,19 @@ async function abrirPagina(subruta) {
   if (celular.matches) {
     window.scrollTo(0, 0);
     config.querySelector(`.config-pagina[data-seccion="${clave}"] h2`)?.focus();
+  } else if (anterior !== clave) {
+    // En la compu la lista tiene su propio scroll: la página nueva se ve
+    // desde arriba, y el ítem elegido queda a la vista en la lista.
+    // A mano y no con scrollIntoView, que corría también la página.
+    window.scrollTo(0, 0);
+    ajustarLista();
+    const item = listaConfig.querySelector(".config-item.is-active");
+    if (item) {
+      const l = listaConfig.getBoundingClientRect();
+      const i = item.getBoundingClientRect();
+      if (i.bottom > l.bottom) listaConfig.scrollTop += i.bottom - l.bottom;
+      else if (i.top < l.top) listaConfig.scrollTop -= l.top - i.top;
+    }
   }
   // Lo que se estaba editando y no se guardó no se pisa al volver a la página.
   const { form, alEntrar } = PAGINAS[clave];
@@ -842,11 +870,6 @@ async function abrirPagina(subruta) {
 // la primera.
 celular.addEventListener("change", () => {
   if (!config.closest(".view").hidden && !config.dataset.pagina) abrirPagina(null);
-});
-
-document.getElementById("btnConfiguracion").addEventListener("click", () => {
-  document.getElementById("sidebar").classList.remove("is-open");
-  mostrarVista("configuracion");
 });
 
 alEntrarEnVista("configuracion", abrirPagina);
