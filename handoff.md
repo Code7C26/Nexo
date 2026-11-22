@@ -305,7 +305,10 @@ Search Console por santinosolla22 en vez del dueño del proyecto (los dos son
 propietarios de las dos cosas ahora). Al reintentar quedó solo "la privacidad no
 tiene suficiente contenido": todo el sitio mandaba `X-Robots-Tag: noindex` (de la
 etapa de pruebas). PR #116: ahora solo en `/app` y `/api`, y la privacidad suma
-"Google user data" en inglés. Aprobada la marca, va el video. En inglés, el cartel verde de "Conectado a…"
+"Google user data" en inglés. Igual siguió marcándola: **el 22 de noviembre se
+mandó todo junto** (apelación "El hallazgo es incorrecto" con la explicación en
+inglés, el video de YouTube y la justificación de `gmail.send`). Falta la
+respuesta de Google, que llega a nexosystem.app@gmail.com. En inglés, el cartel verde de "Conectado a…"
 de Configuración → Gmail sigue en castellano (falta en `idioma/en.js`).
 Mientras tanto anda con el aviso de "app no verificada", hasta 100 cuentas.
 **Con §218 la verificación pasa a ser necesaria** para que cualquier negocio
