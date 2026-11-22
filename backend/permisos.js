@@ -71,6 +71,8 @@ export const RUTAS_PERMISOS = {
   'PATCH /api/clientes/:id': 'ambos',
   // Mueve ventas y cuenta corriente y borra al otro (hist. §177).
   'POST /api/clientes/:id/unir': 'admin',
+  // Recordar una deuda por WhatsApp (hist. §219): cobrar es trabajo diario.
+  'POST /api/clientes/:id/recordatorios': 'ambos',
   'GET /api/facturas': 'ambos',
   'GET /api/facturas/:id': 'ambos',
   'POST /api/facturas': 'ambos',
@@ -411,6 +413,7 @@ export const RUTAS_PERMISOS = {
   'PUT /api/negocio': 'admin',
   // El formato de las etiquetas de la balanza (hist. §132).
   'PUT /api/negocio/balanza': 'admin',
+  'PUT /api/negocio/mensajes': 'admin',
   // El logo y el color del negocio (hist. §212): los cambia el admin, y el
   // logo lo ven todos los que trabajan en ese negocio (el menú, lo impreso).
   'PUT /api/negocio/marca': 'admin',

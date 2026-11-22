@@ -11,7 +11,7 @@
 
 - Al cerrar una etapa, se hacen tres cosas:
   - su relato completo se agrega al final de `docs/proyecto/handoff-historico.md` con el
-    siguiente número (hoy el último es §216);
+    siguiente número (hoy el último es §219);
   - acá se actualizan "Estado actual" y "Qué sigue";
   - si cambió alguna decisión vigente, se actualiza también esa lista.
 - Nunca apilar secciones "Última etapa" en este archivo: así fue como llegó a
@@ -117,6 +117,23 @@ queda en la cuenta corriente con una cuota por mes, y solo lo que ya venció
 cuenta como vencido. Esquema aditivo: `producto_planes_pago`, `venta_cuotas`,
 `venta_items.plan_cuotas`. Test nuevo: `ventas-en-cuotas`. 514 de 514.
 Publicado (PR #113, con §213 a §215).
+
+**22 de noviembre, hist. §218: las facturas por mail, solo desde el Gmail del
+negocio** (decisión del usuario). Sin Gmail conectado, "Mandar por mail" avisa
+y lleva a Configuración → Gmail (al empleado: que se lo pida al admin); el
+servidor responde 409 `gmail_sin_conectar`. La casilla de Nexo queda para
+los mails de Nexo. Google falso de los tests compartido en
+`backend/test/google-falso.js`. Commit local, sin publicar.
+
+**22 de noviembre, hist. §219: recordar una deuda por WhatsApp** (punto 9 del
+plan, mensajes armados de Praxia). Configuración › Cobros › **Mensajes de
+WhatsApp** (antes de que venza, ya venció y la cuota de un socio, con
+marcadores y vista previa); en Cuentas corrientes › Por cobrar, **Recordar**
+abre WhatsApp con el mensaje listo y **Hace más de un mes** filtra; en Cuotas,
+la vencida también. Cada recordatorio queda anotado ("Le recordaste hace 3
+días"). Lo manda una persona: el envío automático es el "ARM" de "Para más
+adelante". Esquema aditivo: `organizaciones.mensajes_whatsapp` y tabla
+`recordatorios_deuda`. Test nuevo: `recordatorios`. Sin publicar.
 
 **Lo que sigue:** el resto del punto 9: mensajes de WhatsApp armados y
 "quiénes deben" (que ya puede avisar de la cuota que vence), y puntos y
@@ -269,14 +286,17 @@ rutas nuevas. 427 tests. Probado en el navegador (celular) con ARCA simulado.
 **17 de noviembre, hist. §187: las facturas desde el Gmail del negocio
 (publicado, PR #92).** Configuración → Gmail, con su logo:
 el negocio conecta su Gmail (solo el permiso de mandar, `gmail.send`) y las
-facturas salen desde ahí, a su nombre; sin conectar, siguen saliendo desde
-Nexo. Si Google le saca el permiso, no se pasa a Nexo solo: pide reconectar.
+facturas salen desde ahí, a su nombre. **Desde hist. §218, sin conectarlo no
+se mandan** (decisión del usuario: la casilla de Nexo no manda facturas de
+nadie). Si Google le saca el permiso, pide reconectar.
 Tabla nueva `cuentas_mail`. Todo el envío por mail es desde Emprendedor, como la factura electrónica (decisión del usuario). 424 tests. **Trámite con Google**
 (`docs/proyecto/verificacion-google.md`): hechos la Gmail API, la vuelta, el
 permiso con su justificación, la marca (la de "Entrar con Google") y el dominio
 en Search Console (`frontend/googlef2d419cf3d874499.html`, PR #93; la app sigue
 "En producción"). **Falta** el video y enviarlo a verificar (van juntos).
 Mientras tanto anda con el aviso de "app no verificada", hasta 100 cuentas.
+**Con §218 la verificación pasa a ser necesaria** para que cualquier negocio
+mande facturas por mail sin ese aviso.
 
 **17 de noviembre, hist. §186: mandar la factura por mail (publicado, PR
 #92).** Punto 3 del plan. Desde la ficha de la factura o
@@ -2422,9 +2442,10 @@ datos reales; la demo no la necesita.
    CSV; faltan las variantes nuevas y los precios por lista).
 8. ~~**Logo y colores del negocio:**~~ (hecho, hist. §212) en la factura, el ticket, el menú y la
    pantalla de entrada del gimnasio; la foto de perfil, en el mismo paso.
-9. **El resto de Praxia** (puntos 5 a 9): puntos y premios; mensajes de
+9. **El resto de Praxia** (puntos 5 a 9): puntos y premios; ~~mensajes de
    WhatsApp armados por situación y "quiénes deben", con el recordatorio
-   listo; ~~"Para revisar" en el Resumen~~ (hecho, hist. §213); ~~gastos
+   listo~~ (hecho, hist. §219: los de deuda; faltan los de compra y puntos);
+   ~~"Para revisar" en el Resumen~~ (hecho, hist. §213); ~~gastos
    fijos que se repiten~~ (hecho, hist. §214).
 10. Si da: **el resumen del día** por WhatsApp o mail, y **vender sin
     conexión** (de Praxia; detalle en "Para más adelante": choca con §39 y
@@ -2465,6 +2486,15 @@ yo).** Sin orden fijo; cada uno se planifica al arrancarlo:
 - CRM con WhatsApp, Instagram y Facebook en un solo lugar (depende de la app
   de Meta); después el "ARM": agentes de IA que leen los mensajes, llenan las
   fichas y proponen las cargas, siempre con confirmación humana (§21, §36).
+  **Pedido del profe (22 de noviembre, por el usuario):** un bot de WhatsApp
+  por negocio que mande los mensajes solo (no que los arme para mandarlos a
+  mano, como hist. §219), que vaya calificando a los contactos y que conteste
+  consultas. El usuario tiene un video de referencia para mostrar. Lo que pide:
+  la API de WhatsApp Business (la app de Meta, el mismo trámite que el
+  WhatsApp del asistente), un número por negocio (o uno de Nexo para todos),
+  plantillas aprobadas por Meta para escribir primero (fuera de las 24 horas
+  de la última respuesta del cliente) y el costo por conversación que cobra
+  Meta, que choca con "nada pago" (§40: se decide al escalar).
 - Asistente especialista en contabilidad, armado con la mamá de Joaquín
   (contadora): una respuesta mal le cuesta plata al negocio.
 - **Detalle del punto 4: sucursales, cajas y permisos** (de Praxia, 16 de

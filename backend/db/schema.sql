@@ -1240,6 +1240,24 @@ CREATE TABLE IF NOT EXISTS movimientos_cc_clientes (
   cobro_id INTEGER REFERENCES cobros(id)
 );
 
+-- Cada vez que alguien le recordó una deuda a un cliente por WhatsApp (hist.
+-- §219): el mensaje sale del teléfono de quien lo manda (un enlace wa.me), y
+-- Nexo anota quién, cuándo, de qué y cuánto debía en ese momento, para no
+-- insistir de más. El texto del mensaje no se guarda.
+-- - tipo: 'por_vencer' (todavía no venció), 'vencida' o 'cuota' (la de un
+--   socio, con su venta en venta_id).
+-- - deuda: la que tenía al recordarle; el saldo de hoy sale de los movimientos.
+CREATE TABLE IF NOT EXISTS recordatorios_deuda (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  cliente_id INTEGER NOT NULL REFERENCES clientes(id),
+  usuario_id INTEGER REFERENCES usuarios(id),
+  venta_id INTEGER REFERENCES ventas(id),
+  tipo TEXT NOT NULL CHECK (tipo IN ('por_vencer', 'vencida', 'cuota')),
+  deuda REAL NOT NULL CHECK (deuda > 0),
+  fecha TEXT NOT NULL DEFAULT (datetime('now')),
+  organizacion_id INTEGER NOT NULL REFERENCES organizaciones(id)
+);
+
 CREATE TABLE IF NOT EXISTS movimientos_cc_proveedores (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   proveedor_id INTEGER NOT NULL REFERENCES proveedores(id),
@@ -1495,7 +1513,12 @@ CREATE TABLE IF NOT EXISTS organizaciones (
   -- {"zoom": 1..4, "x": -150..150, "y": -150..150}: cuánto se acerca y
   -- cuánto se corre (en % del cuadradito). NULL = entero y centrado. Lo
   -- impreso usa el logo entero.
-  logo_encuadre TEXT
+  logo_encuadre TEXT,
+  -- Los mensajes de WhatsApp armados que el negocio cambió (hist. §219), como
+  -- JSON {"por_vencer": "...", "vencida": "...", "cuota": "..."}: solo los
+  -- que editó. NULL o una clave que falta = el de partida
+  -- (frontend/js/core/mensajes.js).
+  mensajes_whatsapp TEXT
 );
 
 -- nombre queda separado de usuario (el de login) porque la columna

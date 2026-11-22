@@ -32,6 +32,7 @@ import { icono } from "../core/iconos.js";
 import { moduloActivo, negocio } from "../core/negocio.js";
 import { alEntrarEnVista, invocar, recargar, registrar } from "../core/registro.js";
 import { mostrarVista } from "../core/router.js";
+import { enlaceWhatsApp } from "../core/mensajes.js";
 
 // Cada tipo de actividad: cómo se llama, su ícono y qué se sugiere escribir.
 const TIPOS = {
@@ -110,16 +111,6 @@ function avisoDe(o, hoy) {
   const etiqueta = o.aviso === "vencida" ? `Venció ${enMinuscula(cuando(o.proxima_fecha, hoy))}` : cuando(o.proxima_fecha, hoy);
   const simbolo = icono(tipo.icono);
   return `<span class="proximo ${clase}">${simbolo} <span>${esc(etiqueta)}: ${esc(o.proxima_descripcion)}</span></span>`;
-}
-
-// Un link de WhatsApp para un celular argentino cargado como se escribe
-// (351 555-0101, 0351…): con 10 dígitos se le suma el 549. Si no se puede
-// armar con seguridad, no hay link.
-function linkWhatsApp(telefono) {
-  let digitos = String(telefono ?? "").replace(/\D/g, "");
-  if (digitos.startsWith("0")) digitos = digitos.slice(1);
-  if (digitos.startsWith("54")) return digitos.length >= 12 ? `https://wa.me/${digitos}` : null;
-  return digitos.length === 10 ? `https://wa.me/549${digitos}` : null;
 }
 
 async function cargarCatalogos() {
@@ -561,7 +552,8 @@ function pintarFicha(o) {
   document.getElementById("fichaConsultaTitulo").textContent = o.nombre;
   document.getElementById("fichaConsultaAcciones").innerHTML = botonesFicha(o);
   const enlace = (accion, texto) => ({ html: `<button type="button" class="btn-link" data-accion="${accion}">${esc(texto)}</button>` });
-  const whatsapp = linkWhatsApp(o.telefono);
+  // Sin un celular que se pueda armar con seguridad, no hay link.
+  const whatsapp = enlaceWhatsApp(o.telefono);
   const telefono = o.telefono
     ? {
         html:

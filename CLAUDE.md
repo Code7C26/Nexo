@@ -659,6 +659,12 @@ No depender exclusivamente de un campo "saldo" editable manualmente.
 
 El saldo debe poder reconstruirse a partir de los movimientos.
 
+Implementado hoy (hist. §219): recordar una deuda por WhatsApp. Cuentas
+corrientes y Cuotas abren el WhatsApp de quien cobra con el mensaje armado
+(Configuración › Mensajes de WhatsApp, editable con marcadores), y cada
+recordatorio queda anotado (`recordatorios_deuda`). Lo manda una persona: el
+envío automático pide la API de WhatsApp Business.
+
 ---
 
 # 13. TESORERÍA

@@ -15347,3 +15347,92 @@ un vencimiento por cuota; Dux: planes con recargo en la forma de pago).
   (castellano e inglés): "vender-en-cuotas".
 - **No se hizo:** recargo por mora, cuotas que no sean mensuales, planes por
   variante, y editar el cronograma a mano.
+
+## §217 — 22 de noviembre de 2026: el menú de la cuenta y la lista de Configuración
+
+Pulido, pedido del usuario ("algo como lo que tiene Notion"). Publicado (PR
+#114). Esta entrada se escribió después, en la sesión de §218: la de §217 no
+llegó al histórico.
+
+- El pie de la sidebar es un solo botón (foto, rol, nombre) que abre el menú
+  de la cuenta: `dominios/cuenta-menu.js`, con el patrón del selector de
+  negocio (menú mudado al `<body>`, fijo arriba del botón, flechas, Escape,
+  clic afuera). Tiene foto, nombre y mail; Mejorar tu plan e Invitar a alguien
+  (`col-admin`); Mi cuenta; Configuración; el tema (cambia sin cerrar el
+  menú); Avisar un problema; Entrar con otra cuenta; Cerrar sesión.
+- Se sacaron del pie el engranaje, el tema y el aviso de problema
+  (`#btnTema` y `#btnConfiguracion` ya no existen; `#btnPerfil` es la foto).
+- "Entrar con otra cuenta" = cerrar sesión y abrir el login con un aviso
+  (decisión del usuario). Varias cuentas abiertas a la vez, como Notion,
+  pediría varias sesiones por cookie: no se hizo.
+- Configuración en la compu: la lista tiene su propio scroll (`ajustarLista`
+  en `dominios/configuracion.js`), y al cambiar de página la de la derecha
+  arranca desde arriba.
+
+## §218 — 22 de noviembre de 2026: las facturas por mail, solo desde el Gmail del negocio
+
+Decisión del usuario: "sí o sí haría que tengan que conectar su Gmail para
+poder mandar las facturas por mail … no tengo ganas de que todos usen el mail
+de Nexo". Antes (§186, §187), sin Gmail conectado la factura salía desde la
+casilla de Nexo a nombre del negocio.
+
+- `POST /api/facturas/:id/mail` sin Gmail conectado responde 409
+  `gmail_sin_conectar` ("Para mandar facturas por mail, el negocio tiene que
+  conectar su Gmail en Configuración → Gmail."). Ya no hay `Reply-To` ni el
+  texto "Te la mandó … desde Nexo": todo sale de la casilla del negocio.
+- La casilla de Nexo queda para los mails de Nexo (códigos, contraseña,
+  invitaciones). `GET /api/gmail` ya no trae `nexo_manda`.
+- En la pantalla, "Mandar por mail" (de a una o varias) avisa antes de abrir
+  el envío: al admin, con el botón **Conectar Gmail**; al empleado, que se lo
+  pida al administrador (`sePuedenMandarMails` en `app.js`, que reemplaza a
+  `mailDelPlan`). Configuración → Gmail, el manual, la política de privacidad y
+  CLAUDE.md §16 dejan de prometer la casilla de Nexo.
+- Tests: el Google falso pasa a `backend/test/google-falso.js` (con
+  `leerMensaje` para mirar el mail crudo), compartido por `gmail` y
+  `factura-mail`, que ahora conecta un Gmail y prueba que sin él no sale nada.
+  `npm test`: 516 de 516.
+
+## §219 — 22 de noviembre de 2026: recordar una deuda por WhatsApp
+
+Punto 9 del plan (Praxia, punto 6: "mensajes armados" y "quiénes deben hace
+más de un mes, con el recordatorio listo"). Competencia mirada antes: Alegra
+manda recordatorios de cobro por WhatsApp, Yo Facturo avisa lo vencido y lo
+por vencer, y las guías de cobranza (Wati, Cliengo) separan "por vencer" de
+"vencido", piden nombre, monto y fecha, y no insistir (otro aviso a los 7 a 14
+días). Lo automático pide la API de WhatsApp Business con plantillas aprobadas
+por Meta: queda para el "ARM" de después (ver handoff, "Para más adelante").
+
+- **Configuración › Cobros › Mensajes de WhatsApp** (`dominios/mensajes.js`,
+  solo admin): una tarjeta por situación de `core/mensajes.js` (**Antes de que
+  venza**, **Ya venció** y, con el módulo socios, **Cuota vencida de un
+  socio**), con su texto, los marcadores para sumar donde está el cursor
+  (`{nombre}`, `{negocio}`, `{deuda}`, `{vencimiento}`, `{dias}`, `{plan}`), la
+  vista previa con un cliente de ejemplo y "Volver al de partida".
+  `PUT /api/negocio/mensajes` guarda solo los que cambiaron
+  (`organizaciones.mensajes_whatsapp`, JSON); `GET /api/negocio` los trae.
+- **Cuentas corrientes › Por cobrar**: columna **Recordar** (un `<a>` a
+  `wa.me` con el mensaje lleno, así el navegador no lo bloquea; con un celular
+  argentino va al chat, sin él WhatsApp pide a quién) y abajo "Le recordaste
+  hoy / ayer / hace N días". Arriba, **Todos | Hace más de un mes** (más de 30
+  días vencido). Vencido usa "Ya venció"; lo que vence hoy o después, "Antes
+  de que venza".
+- **Cuotas** (socios): la cuota vencida trae su Recordar, con el plan.
+- **Cada recordatorio se anota** (`POST /api/clientes/:id/recordatorios`, los
+  dos roles): tabla nueva `recordatorios_deuda` (cliente, persona, venta si es
+  una cuota, tipo, la deuda de ese momento y la fecha) y la auditoría. La deuda
+  la calcula el servidor; sin deuda, 409. El texto del mensaje no se guarda.
+  Unir clientes repetidos mueve sus recordatorios.
+- `enlaceWhatsApp` (core/mensajes.js) reemplaza al `linkWhatsApp` del CRM.
+- **Arreglado de paso:** en el celular, el detalle de cada deuda de Cuentas
+  corrientes se veía abierto (la regla de las filas móviles le ganaba a
+  `[hidden]`).
+- **Esquema (aditivo):** columna `organizaciones.mensajes_whatsapp` y tabla
+  `recordatorios_deuda`.
+- Test nuevo: `recordatorios` (7 casos). Probado en el navegador (compu y
+  celular) sobre una base sembrada: los enlaces, "Le recordaste hoy", "Hace
+  más de un mes" y guardar un mensaje propio. Cuotas, por API (la base
+  sembrada no tiene socios).
+- **No se hizo:** mandar solo (necesita la API de Meta), mensajes de otras
+  situaciones (gracias por tu compra, puntos), el recordatorio desde la ficha
+  del cliente, y la entrada del manual (se completa al final, junto con el
+  resto).

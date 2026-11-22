@@ -4127,6 +4127,12 @@
             <button class="btn btn-secundario" id="btnExportarCcCobrar"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#download"></use></svg> Exportar CSV</button>
           </div>
           <p class="form-note" id="ccNotaFavorClientes" hidden></p>
+          <!-- "Quiénes deben hace más de un mes" (hist. §219): los de más de
+               30 días, con Recordar por WhatsApp en cada fila. -->
+          <div class="segmentos cc-cuanto" role="group" aria-label="Mostrar" id="ccCobrarCuanto">
+            <button type="button" class="segmento" data-cuanto="todos" aria-pressed="true">Todos</button>
+            <button type="button" class="segmento" data-cuanto="mes" aria-pressed="false">Hace más de un mes</button>
+          </div>
           <div class="filtros" id="filtrosCcCobrar"></div>
           <div class="tabla-scroll">
           <table class="ledger-table lista-movil">
@@ -4137,6 +4143,7 @@
                 <th scope="col">Operaciones</th>
                 <th scope="col">Vence</th>
                 <th scope="col">Estado</th>
+                <th scope="col">Recordar</th>
                 <th scope="col"></th>
               </tr>
             </thead>
@@ -4650,6 +4657,13 @@
               <a class="config-item" href="#/configuracion/mercado-pago" data-seccion="mercado-pago">
                 <span class="config-item-icono"><svg class="ico ico-marca ico-marca-color" aria-hidden="true" viewBox="0 0 150 104"><use href="/img/mercadopago.svg#emblema"></use></svg></span>
                 <span class="config-item-texto"><span class="config-item-nombre">Mercado Pago</span><span class="config-item-desc" id="configMercadoPagoResumen">Cobrá con un link y que entre solo</span></span>
+                <svg class="ico config-item-chevron" aria-hidden="true"><use href="/img/iconos.svg#chevron-right"></use></svg>
+              </a>
+              <!-- Los mensajes armados para recordar una deuda (hist. §219):
+                   dominios/mensajes.js. -->
+              <a class="config-item" href="#/configuracion/mensajes" data-seccion="mensajes">
+                <span class="config-item-icono"><svg class="ico ico-marca" aria-hidden="true" viewBox="0 0 24 24"><use href="/img/whatsapp.svg#emblema"></use></svg></span>
+                <span class="config-item-texto"><span class="config-item-nombre">Mensajes de WhatsApp</span><span class="config-item-desc">Para recordar lo que te deben</span></span>
                 <svg class="ico config-item-chevron" aria-hidden="true"><use href="/img/iconos.svg#chevron-right"></use></svg>
               </a>
             </div>
@@ -6409,6 +6423,21 @@
             <!-- Etiquetas de balanza (hist. §132): lo arma dominios/balanza.js. El
                  formato se deduce de una etiqueta real; si más de uno la
                  explica, pide otra. -->
+            <!-- Mensajes de WhatsApp (hist. §219): las tarjetas las arma
+                 dominios/mensajes.js, una por situación (core/mensajes.js). -->
+            <section class="config-pagina col-admin" data-seccion="mensajes" aria-labelledby="configMensajesTitulo" hidden>
+              <header class="config-pagina-head">
+                <h2 id="configMensajesTitulo" class="wa-titulo" tabindex="-1"><svg class="wa-logo" aria-hidden="true" viewBox="0 0 24 24"><use href="/img/whatsapp.svg#emblema"></use></svg> Mensajes de WhatsApp</h2>
+                <p>Los mensajes con los que le recordás a un cliente lo que te debe. En Cuentas corrientes (y en Cuotas, si tenés socios) tocás <strong>Recordar</strong> y se abre tu WhatsApp con el mensaje listo: lo revisás y lo mandás vos.</p>
+              </header>
+              <form id="formMensajes" novalidate>
+                <div class="mensajes-lista" id="mensajesLista"></div>
+                <div class="mensajes-guardar">
+                  <button type="submit" class="btn btn-primary">Guardar mensajes</button>
+                </div>
+              </form>
+            </section>
+
             <section class="config-pagina col-admin" data-seccion="balanza" aria-labelledby="configBalanzaTitulo" hidden>
               <header class="config-pagina-head">
                 <h2 id="configBalanzaTitulo" tabindex="-1">Balanza</h2>

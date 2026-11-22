@@ -70,6 +70,7 @@ import "./dominios/mercado-libre.js";
 import "./dominios/mercado-pago.js";
 import "./dominios/whatsapp.js";
 import "./dominios/gmail.js";
+import "./dominios/mensajes.js";
 import "./dominios/cuentas-corrientes.js";
 import { categoriasGasto, gastos } from "./dominios/gastos.js";
 import "./dominios/pos.js";

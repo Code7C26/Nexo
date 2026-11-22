@@ -1290,6 +1290,33 @@ button { font-family: inherit; cursor: pointer; }
 .cc-chevron { color: var(--ink-muted); text-align: center; }
 .cc-chevron .ico { transition: transform var(--dur-2) var(--ease-out); }
 tr.is-abierta .cc-chevron .ico { transform: rotate(90deg); color: var(--accent); }
+
+/* Recordar una deuda por WhatsApp (hist. §219, core/recordar.js): el botón y,
+   abajo, hace cuánto se le recordó. */
+.cc-cuanto { margin-bottom: var(--sp-3); }
+.recordar { display: inline-flex; flex-direction: column; align-items: flex-start; gap: 2px; }
+.recordar .btn { white-space: nowrap; }
+.recordar-cuando { font-size: var(--txt-xs); color: var(--ink-muted); white-space: nowrap; }
+
+/* Configuración → Mensajes de WhatsApp (hist. §219): una tarjeta por
+   situación, los marcadores para sumar y cómo le llega, como una burbuja. */
+.mensajes-lista { display: grid; gap: var(--sp-4); }
+.mensajes-lista textarea { resize: vertical; min-height: 96px; }
+.mensajes-guardar { display: flex; justify-content: flex-end; margin-top: var(--sp-4); }
+.mensaje-marcadores { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); }
+.mensaje-marcador { border: 1px solid var(--line-strong); color: var(--ink); cursor: pointer; }
+.mensaje-marcador:hover { border-color: var(--accent); color: var(--accent); }
+.mensaje-vista-caja { display: grid; gap: var(--sp-1); }
+.mensaje-vista-caja .campo-ayuda { margin: 0; }
+.mensaje-vista {
+  margin: 0;
+  max-width: 46ch;
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--r-md) var(--r-md) var(--r-md) 2px;
+  background: var(--surface-sunk);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
 .cc-detalle-fila td { padding: 0; background: var(--surface-sunk); }
 .cc-detalle { width: 100%; border-collapse: collapse; }
 .cc-detalle td { padding: var(--sp-2) var(--sp-3); border-bottom: 1px solid var(--line); font-family: var(--font-mono); font-size: var(--txt-sm); }
@@ -9894,6 +9921,9 @@ a.segmento {
   /* El título ocupa las dos columnas si la fila no tiene importe. */
   .ledger-table.lista-movil tr:not(:has(> td.m-valor)) > td.m-titulo { grid-column: 1 / 3; }
   .ledger-table.lista-movil tr:not(:has(> td.m-estado)) > td.m-sub { grid-column: 1 / 3; }
+  /* Una fila oculta sigue oculta: el detalle de Cuentas corrientes se veía
+     abierto en el celular porque la regla de las filas le ganaba a [hidden]. */
+  .ledger-table.lista-movil tbody tr[hidden] { display: none; }
 
   /* La selección múltiple, el "Seleccionar todo" y lo que se edita en la
      fila (el precio de Productos) quedan para la ficha y la compu, como en
