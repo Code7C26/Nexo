@@ -1,9 +1,9 @@
 /**
  * dominios/gmail.js
- * Configuración → Gmail (hist. §187): conectar el Gmail del negocio para que
- * las facturas salgan desde ahí y no desde la casilla de Nexo. Sin conectar,
- * cómo funciona y el botón; conectado, la cuenta, el mail de prueba y
- * desconectar. Solo admin. Nexo pide solo el permiso de mandar (gmail.send).
+ * Configuración → Gmail (hist. §187): conectar el Gmail del negocio, que es
+ * desde donde salen las facturas por mail; sin conectarlo no se mandan (hist.
+ * §218). Sin conectar, cómo funciona y el botón; conectado, la cuenta, el
+ * mail de prueba y desconectar. Solo admin. Nexo pide solo el permiso de mandar (gmail.send).
  *
  * Al volver de Google, el servidor deja el resultado en ?gmail=.
  */
@@ -37,7 +37,7 @@ function pintarResumen(gmail) {
     ? `Las facturas salen desde ${gmail.direccion}`
     : gmail?.desconectado_por_google
       ? "Se desconectó: conectalo de nuevo"
-      : "Mandá las facturas desde tu mail";
+      : "Conectalo para mandar las facturas por mail";
 }
 alEntrarEnVista("configuracion", () => pintarResumen(negocio.gmail));
 
@@ -82,7 +82,7 @@ async function pintarGmail() {
   } else if (estado.desconectado_por_google) {
     estadoEl.innerHTML = `
       <p class="fe-estado-linea fe-estado-falta">${icono("circle-alert")}
-        <span>Google dejó de darle permiso a Nexo para mandar desde <strong>${esc(estado.direccion)}</strong>, y las facturas no salen hasta que lo conectes de nuevo. Si preferís que salgan desde Nexo, desconectalo.</span></p>`;
+        <span>Google dejó de darle permiso a Nexo para mandar desde <strong>${esc(estado.direccion)}</strong>, y las facturas no salen hasta que lo conectes de nuevo.</span></p>`;
     botonConectar("Conectar de nuevo", true);
   } else {
     estadoEl.innerHTML = `<p class="config-tarjeta-texto">Conectá la cuenta de Gmail del negocio. Te lleva a Google, elegís la cuenta y aceptás el permiso de mandar mails.</p>`;
@@ -96,10 +96,8 @@ async function pintarGmail() {
   btnPrueba.hidden = !estado.conectado || sinPlan;
   btnDesconectar.hidden = !estado.conectado && !estado.desconectado_por_google;
   document.getElementById("gmailSinConectar").textContent = sinPlan
-    ? "Con el plan Emprendedor, las facturas salen desde tu Gmail o, si no lo conectás, desde la casilla de Nexo con el nombre de tu negocio."
-    : estado.nexo_manda
-      ? `Mientras no lo conectes, las facturas salen desde la casilla de Nexo, con el nombre de ${negocio.nombre}.`
-      : "Mientras no lo conectes, las facturas no se pueden mandar por mail.";
+    ? "Con el plan Emprendedor, las facturas salen desde tu Gmail."
+    : "Mientras no lo conectes, las facturas no se pueden mandar por mail.";
 }
 registrar("pintar:gmail", pintarGmail);
 
@@ -129,12 +127,12 @@ btnPrueba.addEventListener("click", async () => {
 btnDesconectar.addEventListener("click", async () => {
   const ok = await confirmar({
     titulo: "Desconectar Gmail",
-    cuerpo: "Las facturas vuelven a salir desde la casilla de Nexo, con el nombre de tu negocio. Nexo le avisa a Google que suelte el permiso.",
+    cuerpo: "Las facturas dejan de mandarse por mail hasta que conectes un Gmail. Nexo le avisa a Google que suelte el permiso.",
     aceptar: "Desconectar"
   });
   if (!ok) return;
   await api("/api/gmail/desconectar", { method: "POST", error: "No se pudo desconectar Gmail." });
-  avisar("Gmail desconectado: las facturas salen desde Nexo.", "ok");
+  avisar("Gmail desconectado: las facturas ya no se mandan por mail.", "ok");
   await recargar("negocio");
   await pintarGmail();
 });

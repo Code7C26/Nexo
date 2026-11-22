@@ -18,7 +18,7 @@ import {
   totalDelRenglon
 } from './factura-proveedor.js';
 import { RENGLONES_MAX as RENGLONES_LISTA_MAX, asociarRenglones, leerLista, normalizarLecturaDeLista } from './lista-proveedor.js';
-import { armarMensaje, esMailValido, mailConfigurado, mandarMail, MailError, plantillaMail } from './mail.js';
+import { armarMensaje, esMailValido, mailConfigurado, mandarMail, plantillaMail } from './mail.js';
 import { ZONA_HORARIA, fechaDeHoy, fechaLocalDe, horaLocalDe, inicioDeHoyUTC, utcDeLocal } from './fecha.js';
 import { clavePublicaVapid, clavesVapidNuevas, direccionDePushValida, mandarAviso } from './webpush.js';
 import {
@@ -3986,10 +3986,9 @@ app.post('/api/facturas/:id/autorizar', asincrono(async (req, res) => {
 // Mandar la factura por mail (hist. §186), de a una desde la ficha o varias
 // desde el listado. El PDF lo arma el navegador, el mismo de "Descargar PDF"
 // (core/comprobante.js): armarlo acá pediría una librería de PDF o dibujar la
-// factura dos veces. El servidor comprueba que sea un PDF y lo manda con el
-// mail de Nexo, en nombre del negocio y con su mail para responder. El texto
-// es fijo: quien la manda solo elige a quién, así Nexo no sirve para mandar
-// cualquier cosa a cualquiera.
+// factura dos veces. El servidor comprueba que sea un PDF y lo manda desde el
+// Gmail del negocio, a su nombre. El texto es fijo: quien la manda solo elige
+// a quién, así Nexo no sirve para mandar cualquier cosa a cualquiera.
 const MAILS_FACTURA_MAX = 100; // por negocio y por hora
 const mailsFacturaPorNegocio = new Map();
 const PDF_FACTURA_MAX_BYTES = 4 * 1024 * 1024;
@@ -4021,14 +4020,12 @@ app.post('/api/facturas/:id/mail', express.json({ limit: '6mb' }), asincrono(asy
   if (pdf.length > PDF_FACTURA_MAX_BYTES) {
     return res.status(413).json({ error: 'El PDF de la factura pesa demasiado para mandarlo por mail.' });
   }
-  // Desde el Gmail del negocio si lo conectó (hist. §187); si Google le sacó
-  // el permiso, no sale desde Nexo sin que el negocio lo decida. El plan ya lo
-  // controló rechazoPorPlan: esta ruta es desde Emprendedor.
+  // Solo desde el Gmail del negocio (hist. §187, §218): la casilla de Nexo no
+  // manda facturas de nadie. El plan ya lo controló rechazoPorPlan: esta ruta
+  // es desde Emprendedor.
   const cuentaMail = cuentaMailDe(orgId);
   if (cuentaMail?.estado === 'desconectada') return res.status(409).json({ error: GMAIL_DESCONECTADO, codigo: 'gmail_desconectado' });
-  if (!cuentaMail && !mailConfigurado()) {
-    return res.status(503).json({ error: 'Este Nexo todavía no tiene configurado el envío de mails.' });
-  }
+  if (!cuentaMail) return res.status(409).json({ error: GMAIL_SIN_CONECTAR, codigo: 'gmail_sin_conectar' });
 
   const ahora = Date.now();
   const registro = mailsFacturaPorNegocio.get(orgId);
@@ -4038,26 +4035,20 @@ app.post('/api/facturas/:id/mail', express.json({ limit: '6mb' }), asincrono(asy
     return res.status(429).json({ error: `Mandaste ${MAILS_FACTURA_MAX} facturas en la última hora. Probá de nuevo en un rato.` });
   }
 
-  const negocio = db.prepare('SELECT nombre, email FROM organizaciones WHERE id = ?').get(orgId);
+  const negocio = db.prepare('SELECT nombre FROM organizaciones WHERE id = ?').get(orgId);
   const nombreNegocio = negocio.nombre.replace(/[\r\n]+/g, ' ').trim();
   const nro = comprobante(factura);
   const tipo = NOMBRE_TIPO_COMPROBANTE[factura.tipo] ?? 'Comprobante';
-  // Desde el Gmail del negocio, la respuesta ya le llega a él; desde Nexo, va
-  // al mail del negocio de Configuración.
-  const responderA = !cuentaMail && esMailValido(negocio.email ?? '') ? negocio.email : null;
+  // Sale del Gmail del negocio: la respuesta ya le llega a él.
   const saludo = factura.cliente === CONSUMIDOR_FINAL ? 'Hola' : `Hola, ${factura.cliente}`;
   const { texto, html } = plantillaMail({
     titulo: `${tipo} ${nro}`,
     parrafos: [
       `${saludo}. Te mandamos la ${tipo.toLowerCase()} ${nro} de ${nombreNegocio}, por ${pesosAviso(factura.neto)}.`,
-      cuentaMail
-        ? 'Va adjunta en PDF. Si tenés alguna consulta, respondé este mail.'
-        : responderA
-          ? `Va adjunta en PDF. Si tenés alguna consulta, respondé este mail y le llega a ${nombreNegocio}.`
-          : 'Va adjunta en PDF.'
+      'Va adjunta en PDF. Si tenés alguna consulta, respondé este mail.'
     ],
-    pie: cuentaMail ? `${tipo} emitida por ${nombreNegocio}.` : `Te la mandó ${nombreNegocio} desde Nexo.`,
-    marca: cuentaMail ? nombreNegocio : 'Nexo'
+    pie: `${tipo} emitida por ${nombreNegocio}.`,
+    marca: nombreNegocio
   });
   const envio = {
     para,
@@ -4068,17 +4059,12 @@ app.post('/api/facturas/:id/mail', express.json({ limit: '6mb' }), asincrono(asy
     adjuntos: [{ nombre: `${factura.tipo}-${nro}.pdf`, tipo: 'application/pdf', contenido: pdf }]
   };
   try {
-    if (cuentaMail) await mandarConGmail(cuentaMail, envio);
-    else await mandarMail({ ...envio, responderA });
+    await mandarConGmail(cuentaMail, envio);
   } catch (err) {
-    if (err instanceof gmail.GmailError) {
-      console.error(`[gmail] No se pudo mandar la factura ${facturaId}:`, err.message);
-      if (err.revocado) return res.status(409).json({ error: GMAIL_DESCONECTADO, codigo: 'gmail_desconectado' });
-      return res.status(502).json({ error: 'Gmail no mandó el mail. Probá de nuevo en unos minutos.' });
-    }
-    if (!(err instanceof MailError)) throw err;
-    console.error(`[mail] No se pudo mandar la factura ${facturaId}:`, err.message);
-    return res.status(502).json({ error: 'No pudimos mandar el mail. Probá de nuevo en unos minutos.' });
+    if (!(err instanceof gmail.GmailError)) throw err;
+    console.error(`[gmail] No se pudo mandar la factura ${facturaId}:`, err.message);
+    if (err.revocado) return res.status(409).json({ error: GMAIL_DESCONECTADO, codigo: 'gmail_desconectado' });
+    return res.status(502).json({ error: 'Gmail no mandó el mail. Probá de nuevo en unos minutos.' });
   }
 
   // El cliente sin mail queda con este, si quien la mandó lo pidió.
@@ -4091,9 +4077,7 @@ app.post('/api/facturas/:id/mail', express.json({ limit: '6mb' }), asincrono(asy
       entidad: 'factura',
       entidad_id: facturaId,
       valor_nuevo: JSON.stringify({ mail_enviado_a: para }),
-      detalle: cuentaMail
-        ? `${tipo} ${nro} mandada por mail a ${para}, desde ${cuentaMail.direccion}`
-        : `${tipo} ${nro} mandada por mail a ${para}`
+      detalle: `${tipo} ${nro} mandada por mail a ${para}, desde ${cuentaMail.direccion}`
     });
     if (guardarEnCliente) {
       db.prepare('UPDATE clientes SET email = ? WHERE id = ? AND organizacion_id = ?').run(para, factura.cliente_id, orgId);
@@ -4113,21 +4097,23 @@ app.post('/api/facturas/:id/mail', express.json({ limit: '6mb' }), asincrono(asy
     mail_enviado_a: para,
     mail_enviado_en: enviadoEn,
     guardado_en_cliente: guardarEnCliente,
-    desde: cuentaMail?.direccion ?? null
+    desde: cuentaMail.direccion
   });
 }));
 
 /* ---------- Gmail del negocio (hist. §187) ---------- */
 
-// Con su Gmail conectado, las facturas salen desde la casilla del negocio y
-// no desde la de Nexo (gmail.js: solo el permiso de mandar, nunca de leer).
-// Sin conectar, salen desde Nexo, a nombre del negocio. La vuelta de Google
-// está más arriba, antes de autenticar, con la de Mercado Pago.
-// - Desconectar (el negocio) borra la fila: vuelve a salir desde Nexo.
+// Las facturas salen solo desde el Gmail del negocio (gmail.js: solo el
+// permiso de mandar, nunca de leer). Sin conectarlo no se mandan: la casilla
+// de Nexo queda para los mails de Nexo (decisión del usuario, hist. §218). La
+// vuelta de Google está más arriba, antes de autenticar, con la de Mercado Pago.
+// - Desconectar (el negocio) borra la fila: deja de mandar facturas.
 // - Si Google deja de dar el permiso, la fila queda 'desconectada' y no sale
-//   nada hasta que el negocio reconecte o desconecte: no se pasa a Nexo solo.
+//   nada hasta que el negocio reconecte.
 const GMAIL_DESCONECTADO =
   'Google dejó de darle permiso a Nexo para mandar desde tu Gmail, y la factura no salió. Conectalo de nuevo en Configuración → Gmail.';
+const GMAIL_SIN_CONECTAR =
+  'Para mandar facturas por mail, el negocio tiene que conectar su Gmail en Configuración → Gmail.';
 
 function vueltaDeGmail(req) {
   return `${urlPublica(req)}/api/gmail/vuelta`;
@@ -4217,9 +4203,7 @@ app.get('/api/gmail', soloAdmin, (req, res) => {
   res.json({
     ...estadoGmail(req.usuario.organizacion_id),
     conectada_en: cuenta?.conectada_en ?? null,
-    conectada_por: quien ? quien.nombre || quien.email : null,
-    // Lo que pasa sin Gmail: si este Nexo puede mandar desde su casilla.
-    nexo_manda: mailConfigurado()
+    conectada_por: quien ? quien.nombre || quien.email : null
   });
 });
 
@@ -4260,7 +4244,7 @@ app.post('/api/gmail/prueba', soloAdmin, asincrono(async (req, res) => {
 }));
 
 // Le avisa a Google que suelte el permiso y borra la cuenta: las facturas
-// vuelven a salir desde Nexo.
+// dejan de mandarse por mail.
 app.post('/api/gmail/desconectar', soloAdmin, asincrono(async (req, res) => {
   const org = req.usuario.organizacion_id;
   const cuenta = cuentaMailDe(org);
@@ -4275,7 +4259,7 @@ app.post('/api/gmail/desconectar', soloAdmin, asincrono(async (req, res) => {
       entidad_id: org,
       operacion_tipo: 'gmail',
       valor_anterior: cuenta.direccion,
-      detalle: `Gmail desconectado: las facturas vuelven a salir desde Nexo`
+      detalle: `Gmail desconectado: las facturas dejan de mandarse por mail`
     });
   });
   res.json({ ok: true });

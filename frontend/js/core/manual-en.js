@@ -977,7 +977,7 @@ export const SECCIONES_EN = {
         "Open the invoice and tap **Send by email**, or tick several in **Invoices** and tap **Send by email**: each one goes to its customer's email.",
         "Check the email and tap **Send**. It goes with the PDF attached, in your business's name. If the customer had no email, you can save it on their record."
       ] },
-      "If you connect your business's Gmail in **Settings › Gmail**, invoices go out from your email: your customers reply to you and they stay in \"Sent\". Nexo only asks permission to send: it can't read or delete your emails. Without connecting it, they go out from Nexo in your name.",
+      "Invoices go out from your business's Gmail: connect it once in **Settings › Gmail** and your customers reply to you and they stay in \"Sent\". Nexo only asks permission to send: it can't read or delete your emails. Without connecting it, invoices can't be sent by email.",
       { nota: "It starts with the Entrepreneur plan, like electronic invoicing. An electronic invoice without a CAE can't be sent yet." }
     ]
   },

@@ -1098,14 +1098,27 @@ async function descargarPDFFacturasSeleccionadas(ids, btn) {
 // Una electrónica sin CAE no se manda: todavía no es una factura.
 const sePuedeMandar = (f) => !f.arca_estado || f.arca_estado === "autorizado";
 
-// Es desde Emprendedor, como la factura electrónica (hist. §187). En Gratis el
-// botón se ve igual y dice qué plan hace falta, en vez de abrir el envío.
-function mailDelPlan() {
-  if (negocio.plan?.integraciones) return true;
+// Es desde Emprendedor, como la factura electrónica (hist. §187), y solo desde
+// el Gmail del negocio (hist. §218). Si falta algo, el botón se ve igual y dice
+// qué, en vez de abrir el envío.
+function sePuedenMandarMails() {
+  if (!negocio.plan?.integraciones) {
+    avisar(
+      "Mandar las facturas por mail es desde el plan Emprendedor, como la factura electrónica. Mientras tanto, descargá el PDF.",
+      "atencion",
+      esAdmin() ? { texto: "Ver los planes", href: "#/configuracion/plan" } : null
+    );
+    return false;
+  }
+  const gmail = negocio.gmail ?? {};
+  if (gmail.conectado) return true;
+  const queFalta = gmail.desconectado_por_google ? "Tu Gmail se desconectó" : "Las facturas salen desde el Gmail del negocio";
   avisar(
-    "Mandar las facturas por mail es desde el plan Emprendedor, como la factura electrónica. Mientras tanto, descargá el PDF.",
+    esAdmin()
+      ? `${queFalta}: conectalo para mandarlas.`
+      : `${queFalta}. Pedile al administrador que lo conecte en Configuración → Gmail.`,
     "atencion",
-    esAdmin() ? { texto: "Ver los planes", href: "#/configuracion/plan" } : null
+    esAdmin() ? { texto: "Conectar Gmail", href: "#/configuracion/gmail" } : null
   );
   return false;
 }
@@ -1125,7 +1138,7 @@ async function mandarFacturaPorMail(f, para, guardarEnCliente = false) {
 // En serie, como la descarga en lote; si una falla se corta ahí, para no
 // seguir chocando contra el mismo problema (el mail caído, el límite).
 async function mandarFacturasSeleccionadas(ids, btn) {
-  if (!mailDelPlan()) return;
+  if (!sePuedenMandarMails()) return;
   if (ids.length > LIMITE_LOTE) {
     avisar(`Seleccioná menos de ${LIMITE_LOTE} facturas.`, "atencion");
     return;
@@ -1414,21 +1427,15 @@ const modalMailFactura = document.getElementById("modalMailFactura");
 const formMailFactura = document.getElementById("formMailFactura");
 document.getElementById("btnMailFactura").addEventListener("click", () => {
   const f = facturaFichaDatos;
-  if (!f || !mailDelPlan()) return;
+  if (!f || !sePuedenMandarMails()) return;
   formMailFactura.reset();
   formMailFactura.para.value = f.cliente_email ?? "";
   const guardar = formMailFactura.querySelector("[data-guardar-mail]");
   guardar.hidden = Boolean(f.cliente_email) || f.cliente === "Consumidor final";
   guardar.querySelector("[data-guardar-mail-texto]").textContent = `Guardarlo en la ficha de ${f.cliente}`;
-  // Desde el Gmail del negocio si lo conectó (hist. §187), o desde Nexo.
-  const gmail = negocio.gmail ?? {};
+  // Siempre desde el Gmail del negocio (hist. §187, §218).
   document.getElementById("modalMailFacturaNota").textContent = [
-    gmail.conectado
-      ? `Sale desde tu Gmail (${gmail.direccion}) con el PDF adjunto, y la respuesta te llega ahí.`
-      : gmail.desconectado_por_google
-        ? "Tu Gmail se desconectó: conectalo de nuevo en Configuración → Gmail para mandarla."
-        : `Sale desde la casilla de Nexo, a nombre de ${negocio.nombre}, con el PDF adjunto. Para que salga desde tu mail, conectá tu Gmail en Configuración.`,
-    !gmail.conectado && !gmail.desconectado_por_google && negocio.email ? `Si contesta, la respuesta te llega a ${negocio.email}.` : "",
+    `Sale desde tu Gmail (${negocio.gmail.direccion}) con el PDF adjunto, y la respuesta te llega ahí.`,
     f.mail_enviado_a ? `Ya se mandó a ${f.mail_enviado_a} el ${fechaHoraAR(f.mail_enviado_en)}.` : ""
   ]
     .filter(Boolean)
