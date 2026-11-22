@@ -1,11 +1,14 @@
 // Mandar la factura por mail (hist. §186): el PDF lo arma el navegador y el
-// servidor lo manda adjunto, en nombre del negocio, con un texto fijo.
+// servidor lo manda adjunto desde el Gmail del negocio, con un texto fijo. Sin
+// Gmail conectado no sale (hist. §218): la casilla de Nexo no manda facturas.
 import test, { before, after } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { armarMensaje } from '../mail.js';
 import { crearEmpleado, levantarServidor, registrarEmpresa } from './servidor-de-prueba.js';
+import { conectarGmail, levantarGoogleFalso } from './google-falso.js';
 
+let google;
 let servidor;
 let admin;
 let otro;
@@ -15,15 +18,18 @@ let producto;
 const PDF = Buffer.from('%PDF-1.4\n% factura de prueba\n').toString('base64');
 
 before(async () => {
-  servidor = await levantarServidor();
+  google = await levantarGoogleFalso();
+  servidor = await levantarServidor({ env: google.env });
   admin = await registrarEmpresa(servidor, { empresa: 'Librería Mail', usuario: 'libmail' });
   otro = await registrarEmpresa(servidor, { empresa: 'Otro Negocio', usuario: 'otromail' });
   await admin.put('/api/negocio', { email: 'hola@libreria.test' });
+  await conectarGmail(google, otro, 'otro@gmail.test');
   producto = (await admin.post('/api/productos', { nombre: 'Cuaderno', precio_venta: 5000, tipo: 'servicio' })).json.id;
 });
 
 after(async () => {
   await servidor?.cerrar();
+  google?.cerrar();
 });
 
 async function facturar(cliente) {
@@ -38,16 +44,30 @@ async function facturar(cliente) {
   return { facturaId: r.json.id, clienteId: cliente_id };
 }
 
-test('la factura sale por mail con el PDF adjunto, a nombre del negocio, y queda anotada', async () => {
+test('sin el Gmail del negocio conectado, la factura no sale: tampoco desde Nexo', async () => {
+  const { facturaId } = await facturar({ nombre: 'Sin Gmail', email: 'singmail@nexo.test' });
+  const r = await admin.post(`/api/facturas/${facturaId}/mail`, { para: 'singmail@nexo.test', pdf: PDF });
+  assert.equal(r.status, 409, r.texto);
+  assert.equal(r.json.codigo, 'gmail_sin_conectar');
+  assert.equal(google.mandadosA('singmail@nexo.test').length, 0);
+  assert.equal(servidor.leerMails('singmail@nexo.test').length, 0);
+  assert.equal((await admin.get(`/api/facturas/${facturaId}`)).json.mail_enviado_a, null);
+
+  // Desde acá, Librería Mail tiene su Gmail conectado.
+  await conectarGmail(google, admin, 'libreria@gmail.test');
+});
+
+test('la factura sale por mail con el PDF adjunto, desde el Gmail del negocio, y queda anotada', async () => {
   const { facturaId } = await facturar({ nombre: 'Marta', email: 'marta@nexo.test' });
   const r = await admin.post(`/api/facturas/${facturaId}/mail`, { para: 'marta@nexo.test', pdf: PDF });
   assert.equal(r.status, 200, r.texto);
   assert.equal(r.json.mail_enviado_a, 'marta@nexo.test');
+  assert.equal(r.json.desde, 'libreria@gmail.test');
 
-  const mail = servidor.leerMails('marta@nexo.test').at(-1);
+  const mail = google.mandadosA('marta@nexo.test').at(-1);
   assert.match(mail.asunto, /^Factura [ABC] 0001-\d{8} de Librería Mail$/);
-  assert.equal(mail.nombre, 'Librería Mail');
-  assert.equal(mail.responderA, 'hola@libreria.test');
+  assert.equal(mail.de, 'Librería Mail<libreria@gmail.test>');
+  assert.equal(mail.responderA, null, 'la respuesta ya le llega a su Gmail');
   assert.match(mail.texto, /Hola, Marta\. Te mandamos la factura .+ de Librería Mail, por \$ 5\.000\./);
   assert.equal(mail.adjuntos.length, 1);
   assert.equal(mail.adjuntos[0].tipo, 'application/pdf');
@@ -81,7 +101,7 @@ test('el mail que se escribe al mandarla queda en la ficha del cliente si se pid
 
 test('sin un PDF de verdad o sin un mail válido no sale nada', async () => {
   const { facturaId } = await facturar({ nombre: 'Pedro' });
-  const antes = servidor.leerMails('pedro@nexo.test').length;
+  const antes = google.mandadosA('pedro@nexo.test').length;
 
   const sinPdf = await admin.post(`/api/facturas/${facturaId}/mail`, { para: 'pedro@nexo.test' });
   assert.equal(sinPdf.status, 400);
@@ -94,7 +114,7 @@ test('sin un PDF de verdad o sin un mail válido no sale nada', async () => {
   const mailMalo = await admin.post(`/api/facturas/${facturaId}/mail`, { para: 'pedro@nexo.test\r\nBcc: x@y.com', pdf: PDF });
   assert.equal(mailMalo.status, 400);
 
-  assert.equal(servidor.leerMails('pedro@nexo.test').length, antes);
+  assert.equal(google.mandadosA('pedro@nexo.test').length, antes);
 });
 
 test('un PDF grande pasa (no lo corta el límite general de 100 KB)', async () => {
@@ -102,14 +122,14 @@ test('un PDF grande pasa (no lo corta el límite general de 100 KB)', async () =
   const grande = Buffer.concat([Buffer.from('%PDF-1.4\n'), Buffer.alloc(600 * 1024, 0x41)]).toString('base64');
   const r = await admin.post(`/api/facturas/${facturaId}/mail`, { para: 'grande@nexo.test', pdf: grande });
   assert.equal(r.status, 200, r.texto);
-  assert.ok(servidor.leerMails('grande@nexo.test').at(-1).adjuntos[0].bytes > 600 * 1024);
+  assert.ok(google.mandadosA('grande@nexo.test').at(-1).adjuntos[0].bytes > 600 * 1024);
 });
 
 test('otro negocio no puede mandar una factura ajena', async () => {
   const { facturaId } = await facturar({ nombre: 'Ajena' });
   const r = await otro.post(`/api/facturas/${facturaId}/mail`, { para: 'ajena@nexo.test', pdf: PDF });
   assert.equal(r.status, 404);
-  assert.equal(servidor.leerMails('ajena@nexo.test').length, 0);
+  assert.equal(google.mandadosA('ajena@nexo.test').length, 0);
 });
 
 test('en Gratis no se mandan facturas por mail: es desde Emprendedor, como la factura electrónica', async () => {
@@ -121,7 +141,7 @@ test('en Gratis no se mandan facturas por mail: es desde Emprendedor, como la fa
   const r = await gratis.post(`/api/facturas/${facturaId}/mail`, { para: 'vecina@nexo.test', pdf: PDF });
   assert.equal(r.status, 403);
   assert.equal(r.json.codigo, 'limite_plan');
-  assert.equal(servidor.leerMails('vecina@nexo.test').length, 0);
+  assert.equal(google.mandadosA('vecina@nexo.test').length, 0);
 });
 
 test('el empleado también la puede mandar', async () => {

@@ -50,6 +50,7 @@ const LISTADO_DE = {
   '/api/proveedores/:id': '/api/proveedores',
   '/api/ventas/:id': '/api/ventas',
   '/api/turnos-caja/:id': '/api/turnos-caja',
+  '/api/turnos-caja/:id/detalle': '/api/turnos-caja',
   '/api/socios/:id': '/api/socios',
   '/api/trabajos/:id': '/api/trabajos',
   '/api/abonos/:id': '/api/abonos',
@@ -64,7 +65,8 @@ const LISTADO_DE = {
   '/api/producciones/:id': '/api/producciones',
   '/api/productos/:id/componentes-venta': '/api/productos',
   '/api/productos/:id/precios-proveedores': '/api/productos',
-  '/api/proveedores/:id/precios': '/api/proveedores'
+  '/api/proveedores/:id/precios': '/api/proveedores',
+  '/api/negocios/:id/logo': '/api/negocios'
 };
 const IDS_POR_RUTA = 10;
 

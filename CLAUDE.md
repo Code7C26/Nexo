@@ -659,6 +659,12 @@ No depender exclusivamente de un campo "saldo" editable manualmente.
 
 El saldo debe poder reconstruirse a partir de los movimientos.
 
+Implementado hoy (hist. §219): recordar una deuda por WhatsApp. Cuentas
+corrientes y Cuotas abren el WhatsApp de quien cobra con el mensaje armado
+(Configuración › Mensajes de WhatsApp, editable con marcadores), y cada
+recordatorio queda anotado (`recordatorios_deuda`). Lo manda una persona: el
+envío automático pide la API de WhatsApp Business.
+
 ---
 
 # 13. TESORERÍA
@@ -810,9 +816,10 @@ la factura electrónica activa, cada factura y nota de crédito sale con CAE
 de ARCA; sin activarla, el comprobante sigue siendo interno. La factura
 guarda una foto de quien la emite y de para quién es, tomada al hacerla, y
 se imprime con el formato de las de ARCA (hist. §116). Se manda por mail con
-el PDF adjunto, de a una o varias (hist. §186): desde el Gmail del negocio si
-lo conectó en Configuración → Gmail (solo el permiso de mandar; hist. §187),
-o si no desde la casilla de Nexo a su nombre.
+el PDF adjunto, de a una o varias (hist. §186), siempre desde el Gmail del
+negocio, conectado en Configuración → Gmail (solo el permiso de mandar; hist.
+§187). Sin conectarlo no se mandan: la casilla de Nexo es solo para los mails
+de Nexo (decisión del usuario, hist. §218).
 
 Esto deja de ser una decisión definitiva y pasa a ser el orden de trabajo real
 (corrige la frase anterior "puede desarrollarse progresivamente", que sonaba

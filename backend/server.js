@@ -18,7 +18,7 @@ import {
   totalDelRenglon
 } from './factura-proveedor.js';
 import { RENGLONES_MAX as RENGLONES_LISTA_MAX, asociarRenglones, leerLista, normalizarLecturaDeLista } from './lista-proveedor.js';
-import { armarMensaje, esMailValido, mailConfigurado, mandarMail, MailError, plantillaMail } from './mail.js';
+import { armarMensaje, esMailValido, mailConfigurado, mandarMail, plantillaMail } from './mail.js';
 import { ZONA_HORARIA, fechaDeHoy, fechaLocalDe, horaLocalDe, inicioDeHoyUTC, utcDeLocal } from './fecha.js';
 import { clavePublicaVapid, clavesVapidNuevas, direccionDePushValida, mandarAviso } from './webpush.js';
 import {
@@ -87,6 +87,7 @@ import * as whatsapp from './whatsapp.js';
 import { ALCANCES_OFERTA, TIPOS_OFERTA, describirOferta, describirVigencia, mejorOferta } from '../frontend/js/core/ofertas.js';
 import { aplicarDescuento } from '../frontend/js/core/descuento.js';
 import { MAX_FILAS_PLANILLA, TIPOS_PLANILLA, interpretarFila } from '../frontend/js/core/planilla.js';
+import { MAX_MENSAJE, MENSAJES } from '../frontend/js/core/mensajes.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -3177,7 +3178,18 @@ app.patch('/api/clientes/:id', (req, res) => {
 // Un cliente es socio una sola vez (socios.cliente_id es UNIQUE): si dos son
 // socios no se unen solos.
 const CAMPOS_CONTACTO_CLIENTE = ['email', 'telefono', 'direccion', 'documento', 'notas', 'lista_precio_id', 'condicion_pago', 'condicion_iva'];
-const TABLAS_DEL_CLIENTE = ['ventas', 'facturas', 'presupuestos', 'movimientos_cc_clientes', 'trabajos', 'abonos', 'crm_oportunidades', 'crm_actividades', 'socios'];
+const TABLAS_DEL_CLIENTE = [
+  'ventas',
+  'facturas',
+  'presupuestos',
+  'movimientos_cc_clientes',
+  'trabajos',
+  'abonos',
+  'crm_oportunidades',
+  'crm_actividades',
+  'socios',
+  'recordatorios_deuda'
+];
 
 app.post('/api/clientes/:id/unir', soloAdmin, (req, res) => {
   const organizacionId = req.usuario.organizacion_id;
@@ -3986,10 +3998,9 @@ app.post('/api/facturas/:id/autorizar', asincrono(async (req, res) => {
 // Mandar la factura por mail (hist. §186), de a una desde la ficha o varias
 // desde el listado. El PDF lo arma el navegador, el mismo de "Descargar PDF"
 // (core/comprobante.js): armarlo acá pediría una librería de PDF o dibujar la
-// factura dos veces. El servidor comprueba que sea un PDF y lo manda con el
-// mail de Nexo, en nombre del negocio y con su mail para responder. El texto
-// es fijo: quien la manda solo elige a quién, así Nexo no sirve para mandar
-// cualquier cosa a cualquiera.
+// factura dos veces. El servidor comprueba que sea un PDF y lo manda desde el
+// Gmail del negocio, a su nombre. El texto es fijo: quien la manda solo elige
+// a quién, así Nexo no sirve para mandar cualquier cosa a cualquiera.
 const MAILS_FACTURA_MAX = 100; // por negocio y por hora
 const mailsFacturaPorNegocio = new Map();
 const PDF_FACTURA_MAX_BYTES = 4 * 1024 * 1024;
@@ -4021,14 +4032,12 @@ app.post('/api/facturas/:id/mail', express.json({ limit: '6mb' }), asincrono(asy
   if (pdf.length > PDF_FACTURA_MAX_BYTES) {
     return res.status(413).json({ error: 'El PDF de la factura pesa demasiado para mandarlo por mail.' });
   }
-  // Desde el Gmail del negocio si lo conectó (hist. §187); si Google le sacó
-  // el permiso, no sale desde Nexo sin que el negocio lo decida. El plan ya lo
-  // controló rechazoPorPlan: esta ruta es desde Emprendedor.
+  // Solo desde el Gmail del negocio (hist. §187, §218): la casilla de Nexo no
+  // manda facturas de nadie. El plan ya lo controló rechazoPorPlan: esta ruta
+  // es desde Emprendedor.
   const cuentaMail = cuentaMailDe(orgId);
   if (cuentaMail?.estado === 'desconectada') return res.status(409).json({ error: GMAIL_DESCONECTADO, codigo: 'gmail_desconectado' });
-  if (!cuentaMail && !mailConfigurado()) {
-    return res.status(503).json({ error: 'Este Nexo todavía no tiene configurado el envío de mails.' });
-  }
+  if (!cuentaMail) return res.status(409).json({ error: GMAIL_SIN_CONECTAR, codigo: 'gmail_sin_conectar' });
 
   const ahora = Date.now();
   const registro = mailsFacturaPorNegocio.get(orgId);
@@ -4038,26 +4047,20 @@ app.post('/api/facturas/:id/mail', express.json({ limit: '6mb' }), asincrono(asy
     return res.status(429).json({ error: `Mandaste ${MAILS_FACTURA_MAX} facturas en la última hora. Probá de nuevo en un rato.` });
   }
 
-  const negocio = db.prepare('SELECT nombre, email FROM organizaciones WHERE id = ?').get(orgId);
+  const negocio = db.prepare('SELECT nombre FROM organizaciones WHERE id = ?').get(orgId);
   const nombreNegocio = negocio.nombre.replace(/[\r\n]+/g, ' ').trim();
   const nro = comprobante(factura);
   const tipo = NOMBRE_TIPO_COMPROBANTE[factura.tipo] ?? 'Comprobante';
-  // Desde el Gmail del negocio, la respuesta ya le llega a él; desde Nexo, va
-  // al mail del negocio de Configuración.
-  const responderA = !cuentaMail && esMailValido(negocio.email ?? '') ? negocio.email : null;
+  // Sale del Gmail del negocio: la respuesta ya le llega a él.
   const saludo = factura.cliente === CONSUMIDOR_FINAL ? 'Hola' : `Hola, ${factura.cliente}`;
   const { texto, html } = plantillaMail({
     titulo: `${tipo} ${nro}`,
     parrafos: [
       `${saludo}. Te mandamos la ${tipo.toLowerCase()} ${nro} de ${nombreNegocio}, por ${pesosAviso(factura.neto)}.`,
-      cuentaMail
-        ? 'Va adjunta en PDF. Si tenés alguna consulta, respondé este mail.'
-        : responderA
-          ? `Va adjunta en PDF. Si tenés alguna consulta, respondé este mail y le llega a ${nombreNegocio}.`
-          : 'Va adjunta en PDF.'
+      'Va adjunta en PDF. Si tenés alguna consulta, respondé este mail.'
     ],
-    pie: cuentaMail ? `${tipo} emitida por ${nombreNegocio}.` : `Te la mandó ${nombreNegocio} desde Nexo.`,
-    marca: cuentaMail ? nombreNegocio : 'Nexo'
+    pie: `${tipo} emitida por ${nombreNegocio}.`,
+    marca: nombreNegocio
   });
   const envio = {
     para,
@@ -4068,17 +4071,12 @@ app.post('/api/facturas/:id/mail', express.json({ limit: '6mb' }), asincrono(asy
     adjuntos: [{ nombre: `${factura.tipo}-${nro}.pdf`, tipo: 'application/pdf', contenido: pdf }]
   };
   try {
-    if (cuentaMail) await mandarConGmail(cuentaMail, envio);
-    else await mandarMail({ ...envio, responderA });
+    await mandarConGmail(cuentaMail, envio);
   } catch (err) {
-    if (err instanceof gmail.GmailError) {
-      console.error(`[gmail] No se pudo mandar la factura ${facturaId}:`, err.message);
-      if (err.revocado) return res.status(409).json({ error: GMAIL_DESCONECTADO, codigo: 'gmail_desconectado' });
-      return res.status(502).json({ error: 'Gmail no mandó el mail. Probá de nuevo en unos minutos.' });
-    }
-    if (!(err instanceof MailError)) throw err;
-    console.error(`[mail] No se pudo mandar la factura ${facturaId}:`, err.message);
-    return res.status(502).json({ error: 'No pudimos mandar el mail. Probá de nuevo en unos minutos.' });
+    if (!(err instanceof gmail.GmailError)) throw err;
+    console.error(`[gmail] No se pudo mandar la factura ${facturaId}:`, err.message);
+    if (err.revocado) return res.status(409).json({ error: GMAIL_DESCONECTADO, codigo: 'gmail_desconectado' });
+    return res.status(502).json({ error: 'Gmail no mandó el mail. Probá de nuevo en unos minutos.' });
   }
 
   // El cliente sin mail queda con este, si quien la mandó lo pidió.
@@ -4091,9 +4089,7 @@ app.post('/api/facturas/:id/mail', express.json({ limit: '6mb' }), asincrono(asy
       entidad: 'factura',
       entidad_id: facturaId,
       valor_nuevo: JSON.stringify({ mail_enviado_a: para }),
-      detalle: cuentaMail
-        ? `${tipo} ${nro} mandada por mail a ${para}, desde ${cuentaMail.direccion}`
-        : `${tipo} ${nro} mandada por mail a ${para}`
+      detalle: `${tipo} ${nro} mandada por mail a ${para}, desde ${cuentaMail.direccion}`
     });
     if (guardarEnCliente) {
       db.prepare('UPDATE clientes SET email = ? WHERE id = ? AND organizacion_id = ?').run(para, factura.cliente_id, orgId);
@@ -4113,21 +4109,23 @@ app.post('/api/facturas/:id/mail', express.json({ limit: '6mb' }), asincrono(asy
     mail_enviado_a: para,
     mail_enviado_en: enviadoEn,
     guardado_en_cliente: guardarEnCliente,
-    desde: cuentaMail?.direccion ?? null
+    desde: cuentaMail.direccion
   });
 }));
 
 /* ---------- Gmail del negocio (hist. §187) ---------- */
 
-// Con su Gmail conectado, las facturas salen desde la casilla del negocio y
-// no desde la de Nexo (gmail.js: solo el permiso de mandar, nunca de leer).
-// Sin conectar, salen desde Nexo, a nombre del negocio. La vuelta de Google
-// está más arriba, antes de autenticar, con la de Mercado Pago.
-// - Desconectar (el negocio) borra la fila: vuelve a salir desde Nexo.
+// Las facturas salen solo desde el Gmail del negocio (gmail.js: solo el
+// permiso de mandar, nunca de leer). Sin conectarlo no se mandan: la casilla
+// de Nexo queda para los mails de Nexo (decisión del usuario, hist. §218). La
+// vuelta de Google está más arriba, antes de autenticar, con la de Mercado Pago.
+// - Desconectar (el negocio) borra la fila: deja de mandar facturas.
 // - Si Google deja de dar el permiso, la fila queda 'desconectada' y no sale
-//   nada hasta que el negocio reconecte o desconecte: no se pasa a Nexo solo.
+//   nada hasta que el negocio reconecte.
 const GMAIL_DESCONECTADO =
   'Google dejó de darle permiso a Nexo para mandar desde tu Gmail, y la factura no salió. Conectalo de nuevo en Configuración → Gmail.';
+const GMAIL_SIN_CONECTAR =
+  'Para mandar facturas por mail, el negocio tiene que conectar su Gmail en Configuración → Gmail.';
 
 function vueltaDeGmail(req) {
   return `${urlPublica(req)}/api/gmail/vuelta`;
@@ -4217,9 +4215,7 @@ app.get('/api/gmail', soloAdmin, (req, res) => {
   res.json({
     ...estadoGmail(req.usuario.organizacion_id),
     conectada_en: cuenta?.conectada_en ?? null,
-    conectada_por: quien ? quien.nombre || quien.email : null,
-    // Lo que pasa sin Gmail: si este Nexo puede mandar desde su casilla.
-    nexo_manda: mailConfigurado()
+    conectada_por: quien ? quien.nombre || quien.email : null
   });
 });
 
@@ -4260,7 +4256,7 @@ app.post('/api/gmail/prueba', soloAdmin, asincrono(async (req, res) => {
 }));
 
 // Le avisa a Google que suelte el permiso y borra la cuenta: las facturas
-// vuelven a salir desde Nexo.
+// dejan de mandarse por mail.
 app.post('/api/gmail/desconectar', soloAdmin, asincrono(async (req, res) => {
   const org = req.usuario.organizacion_id;
   const cuenta = cuentaMailDe(org);
@@ -4275,7 +4271,7 @@ app.post('/api/gmail/desconectar', soloAdmin, asincrono(async (req, res) => {
       entidad_id: org,
       operacion_tipo: 'gmail',
       valor_anterior: cuenta.direccion,
-      detalle: `Gmail desconectado: las facturas vuelven a salir desde Nexo`
+      detalle: `Gmail desconectado: las facturas dejan de mandarse por mail`
     });
   });
   res.json({ ok: true });
@@ -15394,8 +15390,69 @@ function saldosDeCuentasCorrientes(organizacionId) {
   };
 }
 
+// Recordarle una deuda por WhatsApp (hist. §219): el mensaje lo manda quien
+// toca Recordar, desde su WhatsApp (un enlace wa.me). Acá queda anotado quién,
+// cuándo y cuánto debía, con la deuda de hoy y no la que diga la pantalla.
+// La cuota de un socio dice su venta: se recuerda esa, no todo el saldo.
+app.post('/api/clientes/:id/recordatorios', (req, res) => {
+  const organizacionId = req.usuario.organizacion_id;
+  const clienteId = Number(req.params.id);
+  const tipo = req.body?.tipo;
+  if (!Object.hasOwn(MENSAJES, tipo)) return res.status(400).json({ error: 'No se sabe qué recordarle.' });
+  const cliente = db.prepare('SELECT id, nombre FROM clientes WHERE id = ? AND organizacion_id = ?').get(clienteId, organizacionId);
+  if (!cliente) return res.status(404).json({ error: 'Cliente no encontrado.' });
+  let ventaId = null;
+  let deuda;
+  if (tipo === 'cuota') {
+    const venta = db
+      .prepare("SELECT id FROM ventas WHERE id = ? AND cliente_id = ? AND organizacion_id = ? AND estado = 'activa'")
+      .get(Number(req.body?.venta_id), clienteId, organizacionId);
+    if (!venta) return res.status(404).json({ error: 'Cuota no encontrada.' });
+    ventaId = venta.id;
+    deuda = saldoDeLaVenta(venta.id);
+  } else {
+    deuda = saldosDeCuentasCorrientes(organizacionId).clientes.find((c) => c.id === clienteId)?.saldo ?? 0;
+  }
+  if (!(deuda > 0)) return res.status(409).json({ error: `${cliente.nombre} no debe nada: no hay qué recordarle.` });
+
+  const recordatorio = withTransaction(() => {
+    const { lastInsertRowid } = db
+      .prepare('INSERT INTO recordatorios_deuda (cliente_id, usuario_id, venta_id, tipo, deuda, organizacion_id) VALUES (?, ?, ?, ?, ?, ?)')
+      .run(clienteId, req.usuario.id, ventaId, tipo, deuda, organizacionId);
+    auditar(req, {
+      accion: 'crear',
+      entidad: 'cliente',
+      entidad_id: clienteId,
+      operacion_tipo: 'recordatorio',
+      operacion_id: Number(lastInsertRowid),
+      valor_nuevo: JSON.stringify({ tipo, deuda, venta_id: ventaId }),
+      detalle: `Le recordó por WhatsApp a ${cliente.nombre} que debe ${pesosAviso(deuda)}`
+    });
+    return db.prepare('SELECT fecha, deuda FROM recordatorios_deuda WHERE id = ?').get(lastInsertRowid);
+  });
+  res.status(201).json({ ...recordatorio, dias: 0 });
+});
+
+// El último recordatorio de cada cliente (o de cada cuota, por su venta), con
+// hace cuántos días fue en la zona del negocio: Cuentas corrientes y Cuotas lo
+// muestran para no insistir de más.
+function ultimosRecordatorios(organizacionId, columna) {
+  const hoy = fechaDeHoy();
+  return new Map(
+    db
+      .prepare(
+        `SELECT ${columna} AS clave, MAX(fecha) AS fecha FROM recordatorios_deuda
+          WHERE organizacion_id = ? AND ${columna} IS NOT NULL GROUP BY ${columna}`
+      )
+      .all(organizacionId)
+      .map((r) => [r.clave, { fecha: r.fecha, dias: diffDias(fechaLocalDe(r.fecha), hoy) }])
+  );
+}
+
 app.get('/api/cuentas-corrientes', (req, res) => {
   const { clientes: entidadesClientes, proveedores: entidadesProveedores } = saldosDeCuentasCorrientes(req.usuario.organizacion_id);
+  const recordados = ultimosRecordatorios(req.usuario.organizacion_id, 'cliente_id');
+  for (const c of entidadesClientes) c.recordatorio = recordados.get(c.id) ?? null;
 
   // Los totales solo suman deuda real (saldo > 0); un saldo a favor va
   // aparte y no compensa la deuda de otra entidad.
@@ -19802,7 +19859,7 @@ app.get('/api/negocio', (req, res) => {
     .prepare(
       `SELECT id, nombre, documento, direccion, telefono, email, condicion_iva, pie_comprobante,
               razon_social, ingresos_brutos, inicio_actividades, arca_punto_venta, arca_verificado, balanza_formato,
-              color_marca, logo_version, logo_encuadre
+              color_marca, logo_version, logo_encuadre, mensajes_whatsapp
          FROM organizaciones
         WHERE id = ?`
     )
@@ -19825,10 +19882,14 @@ app.get('/api/negocio', (req, res) => {
     balanza_formato: balanzaFormato,
     logo_version: logoVersion,
     logo_encuadre: logoEncuadre,
+    mensajes_whatsapp: mensajesWhatsapp,
     ...datos
   } = negocio;
   res.json({
     ...datos,
+    // Los mensajes de WhatsApp que el negocio cambió (hist. §219); los demás,
+    // los de partida de core/mensajes.js.
+    mensajes_whatsapp: mensajesWhatsapp ? JSON.parse(mensajesWhatsapp) : {},
     // El logo (hist. §212): su dirección, o null. color_marca va con datos.
     logo: urlLogo(negocio.id, logoVersion),
     // Cómo se encuadra en el cuadradito del menú (hist. §215).
@@ -19956,6 +20017,44 @@ app.put('/api/negocio/balanza', soloAdmin, (req, res) => {
     }
   });
   res.json({ balanza: guardado });
+});
+
+// Los mensajes de WhatsApp armados (hist. §219, core/mensajes.js): se guardan
+// solo los que cambió. Vacío o igual al de partida vuelve al de partida.
+function mensajesAGuardar(cuerpo) {
+  if (!cuerpo || typeof cuerpo !== 'object' || Array.isArray(cuerpo)) return { error: 'Los mensajes no son válidos.' };
+  const mensajes = {};
+  for (const [tipo, valor] of Object.entries(cuerpo)) {
+    if (!Object.hasOwn(MENSAJES, tipo) || (valor != null && typeof valor !== 'string')) {
+      return { error: 'Los mensajes no son válidos.' };
+    }
+    const texto = (valor ?? '').trim();
+    if (texto.length > MAX_MENSAJE) return { error: `Cada mensaje puede tener hasta ${MAX_MENSAJE} letras.` };
+    if (texto && texto !== MENSAJES[tipo].de_partida) mensajes[tipo] = texto;
+  }
+  return { mensajes };
+}
+
+app.put('/api/negocio/mensajes', soloAdmin, (req, res) => {
+  const { mensajes, error } = mensajesAGuardar(req.body?.mensajes);
+  if (error) return res.status(400).json({ error });
+  const id = req.usuario.organizacion_id;
+  const anterior = db.prepare('SELECT mensajes_whatsapp FROM organizaciones WHERE id = ?').get(id).mensajes_whatsapp;
+  const nuevo = Object.keys(mensajes).length ? JSON.stringify(mensajes) : null;
+  if (anterior !== nuevo) {
+    withTransaction(() => {
+      db.prepare('UPDATE organizaciones SET mensajes_whatsapp = ? WHERE id = ?').run(nuevo, id);
+      auditar(req, {
+        accion: 'editar',
+        entidad: 'organizacion',
+        entidad_id: id,
+        valor_anterior: anterior,
+        valor_nuevo: nuevo,
+        detalle: 'Mensajes de WhatsApp guardados'
+      });
+    });
+  }
+  res.json({ mensajes_whatsapp: mensajes });
 });
 
 app.put('/api/negocio', soloAdmin, (req, res) => {
@@ -22746,7 +22845,10 @@ app.get('/api/socios/cuotas', (req, res) => {
     .map((c) => decorarCuota(cuotaDeSuRenglon(c)));
   const socios = new Map(
     db
-      .prepare('SELECT socios.id, socios.numero, clientes.nombre FROM socios JOIN clientes ON clientes.id = socios.cliente_id WHERE socios.organizacion_id = ?')
+      .prepare(
+        `SELECT socios.id, socios.numero, socios.cliente_id, clientes.nombre, clientes.telefono
+           FROM socios JOIN clientes ON clientes.id = socios.cliente_id WHERE socios.organizacion_id = ?`
+      )
       .all(organizacionId)
       .map((s) => [s.id, s])
   );
@@ -22757,6 +22859,8 @@ app.get('/api/socios/cuotas', (req, res) => {
       .all(organizacionId)
       .map((f) => f.venta_id)
   );
+  // Recordar una cuota vencida por WhatsApp (hist. §219).
+  const recordadas = ultimosRecordatorios(organizacionId, 'venta_id');
   const porVenta = new Map();
   for (const c of filas) {
     const cobro = porVenta.get(c.venta_id);
@@ -22774,6 +22878,9 @@ app.get('/api/socios/cuotas', (req, res) => {
       socio_id: c.socio_id,
       numero: socio.numero,
       socio: socio.nombre,
+      cliente_id: socio.cliente_id,
+      telefono: socio.telefono,
+      recordatorio: recordadas.get(c.venta_id) ?? null,
       planes: [c.plan],
       desde: c.desde,
       hasta: c.hasta,

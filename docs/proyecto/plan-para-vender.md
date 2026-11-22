@@ -377,3 +377,33 @@ Anotadas sin tocarlas hasta que se decida escalar:
    CAEA, la IA paga con cupos, WhatsApp con el número real, Android y la
    Microsoft Store, y la migración a Postgres.
 4. **Después:** iOS, más integraciones y los planes con agregados.
+
+## 13. Próximas versiones (ideas que se guardan)
+
+La lista que pide el punto 12: lo que el usuario quiere sumar pero no se hace
+hasta decidir escalar, salvo que un negocio piloto no pueda trabajar sin eso.
+Cada una se planifica con el equipo al arrancarla (CLAUDE.md §27).
+
+- [ ] **(C) Permisos de usuario personalizables** (usuario, 22 de noviembre).
+  Un negocio no tiene solo al dueño y al que cobra en el mostrador: puede
+  tener un área de compras que maneje Compras, Proveedores y Stock y no vea
+  Ventas ni la caja, un contador que solo mire, un encargado de una sucursal.
+  Es el "permisos por sección" de Praxia que quedó pendiente del punto 4 del
+  plan (handoff): por sección, ver o editar, y por sucursal. Lo que implica:
+  - **Perfiles armados por el dueño** (Cajero, Compras, Contador…) con las
+    secciones que ve y las que edita, en vez de los dos roles fijos
+    admin/empleado. Los de partida reproducen los roles de hoy.
+  - **El servidor los hace cumplir** ruta por ruta: hoy cada ruta dice
+    `soloAdmin` o nada (`backend/permisos.js` es la tabla que se contrasta en
+    los tests), y pasaría a decir qué sección toca y si lee o escribe.
+  - **Lo sensible** (costos, márgenes, ganancia) pasa a ser un permiso más
+    ("ve los costos"), en vez del filtro por nombre de campo del rol empleado
+    (CLAUDE.md §35, deuda conocida).
+  - **Cambia el esquema** (perfiles y sus permisos, y el perfil de cada
+    persona en cada negocio): se explica la migración antes de tocarlo (§34).
+  - Encaja con los planes con agregados (punto 7): más usuarios o perfiles
+    a medida pueden ir en los planes de arriba.
+- [ ] **(C) El bot de WhatsApp de cada negocio** (pedido del profe, 22 de
+  noviembre): que mande los mensajes solo, vaya calificando a los contactos y
+  conteste consultas. Detalle en `handoff.md`, "Para más adelante" (el ARM);
+  depende del punto 5 y del costo por mensaje de Meta.

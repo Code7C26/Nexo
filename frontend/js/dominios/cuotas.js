@@ -8,6 +8,8 @@
  * como en la ficha del socio. Sobre GET /api/socios/cuotas y
  * POST /api/socios/:id/cobros (con venta_id). "Otro importe" abre el
  * "Registrar cobro" de Ventas: un pago parcial o el QR de Mercado Pago.
+ * Una vencida se recuerda por WhatsApp con un toque (hist. §219,
+ * core/recordar.js).
  */
 
 import { badge, esc, fechaAR, hoyISO, money } from "../core/formato.js";
@@ -16,6 +18,7 @@ import { api, refrescar } from "../core/api.js";
 import { alEntrarEnVista, invocar, recargar, registrar } from "../core/registro.js";
 import { LOCALE } from "../core/idioma.js";
 import { botonesDeMedios, cargarMediosDeCobro, confirmarCobroConMedio } from "../core/cobro-medio.js";
+import { anotarRecordatorio, botonRecordar } from "../core/recordar.js";
 
 let mes = hoyISO().slice(0, 7);
 let datos = { cuotas: [], totales: {} };
@@ -59,10 +62,21 @@ function estadoCuota(c) {
 const botonFacturar = (c) =>
   c.facturada || c.estado === "bonificada" ? "" : `<button type="button" class="btn btn-secundario btn-chico" data-facturar="${c.venta_id}">Facturar</button>`;
 
+const botonRecordarCuota = (c) =>
+  vencida(c)
+    ? botonRecordar({
+        telefono: c.telefono,
+        tipo: "cuota",
+        datos: { nombre: c.socio, plan: c.planes.join(" + "), deuda: c.saldo, vencimiento: c.desde },
+        recordatorio: c.recordatorio,
+        atributos: `data-recordar="${c.venta_id}"`
+      })
+    : "";
+
 function accionesCuota(c) {
   if (c.saldo <= 0) return `<div class="cuotas-cuentas">${botonFacturar(c)}</div>`;
   if (cobrando !== c.venta_id) {
-    return `<div class="cuotas-cuentas">${botonFacturar(c)}<button type="button" class="btn btn-secundario btn-chico" data-cobrar="${c.venta_id}">Cobrar</button></div>`;
+    return `<div class="cuotas-cuentas">${botonFacturar(c)}${botonRecordarCuota(c)}<button type="button" class="btn btn-secundario btn-chico" data-cobrar="${c.venta_id}">Cobrar</button></div>`;
   }
   return `<div class="cuotas-cuentas">${botonesDeMedios(medios, `data-venta="${c.venta_id}"`)}<button type="button" class="btn-link" data-otro="${c.venta_id}">Otro importe</button><button type="button" class="btn-link" data-cancelar>Cancelar</button></div>`;
 }
@@ -147,7 +161,19 @@ async function cobrar(boton) {
   pintar();
 }
 
+// Recordar abre WhatsApp (el enlace); acá se anota.
+async function anotar(enlace) {
+  const cuota = datos.cuotas.find((c) => c.venta_id === Number(enlace.dataset.recordar));
+  if (!cuota) return;
+  const recordatorio = await anotarRecordatorio(cuota.cliente_id, "cuota", cuota.venta_id);
+  if (!recordatorio) return;
+  cuota.recordatorio = recordatorio;
+  pintar();
+}
+
 cuerpo.addEventListener("click", (e) => {
+  const recordar = e.target.closest("[data-recordar]");
+  if (recordar) return anotar(recordar);
   const socio = e.target.closest("[data-socio]");
   if (socio) return invocar("abrirFicha:socio", Number(socio.dataset.socio));
   const facturar = e.target.closest("[data-facturar]");

@@ -676,7 +676,7 @@ const SECCIONES_ES = [
         "Abrí la factura y tocá **Mandar por mail**, o tildá varias en **Facturas** y tocá **Mandar por mail**: cada una va al mail de su cliente.",
         "Revisá el mail y tocá **Mandar**. Va con el PDF adjunto, a nombre de tu negocio. Si el cliente no tenía mail, lo podés guardar en su ficha."
       ] },
-      "Si conectás el Gmail de tu negocio en **Configuración › Gmail**, las facturas salen desde tu mail: tus clientes te contestan a vos y te quedan en \"Enviados\". Nexo solo pide permiso para mandar: no puede leer ni borrar tus mails. Sin conectarlo, salen desde Nexo a tu nombre.",
+      "Las facturas salen desde el Gmail de tu negocio: conectalo una vez en **Configuración › Gmail** y tus clientes te contestan a vos y te quedan en \"Enviados\". Nexo solo pide permiso para mandar: no puede leer ni borrar tus mails. Sin conectarlo, las facturas no se mandan por mail.",
       { nota: "Es desde el plan Emprendedor, como la factura electrónica. Una factura electrónica sin CAE todavía no se puede mandar." }
     ],
     ver: ["facturar", "factura-electronica"]

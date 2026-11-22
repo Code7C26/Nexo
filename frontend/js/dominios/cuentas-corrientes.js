@@ -3,6 +3,11 @@
  * Cuentas corrientes (a cobrar y a pagar). Movido tal cual desde app.js
  * (CLAUDE.md §31, Etapa B / F4); lo único que cambia es que las acciones de
  * otros dominios (fichas, cobrar, pagar) se invocan por nombre.
+ *
+ * A cobrar trae "Recordar" (hist. §219): el mensaje de WhatsApp armado, listo
+ * para mandar, y hace cuánto se le recordó (core/recordar.js). "Más de un mes"
+ * deja solo a los que deben hace más de 30 días, como el "quiénes deben" de
+ * Praxia.
  */
 
 import { celdaMovil, esc, fechaAR, money, numero } from "../core/formato.js";
@@ -13,6 +18,7 @@ import { descargarCSV } from "../core/csv.js";
 import { invocar, registrar } from "../core/registro.js";
 import { icono } from "../core/iconos.js";
 import { formatear } from "../core/idioma.js";
+import { anotarRecordatorio, botonRecordar } from "../core/recordar.js";
 
 /* ---------- Cuentas corrientes (a cobrar y a pagar) ---------- */
 
@@ -52,18 +58,33 @@ function ccMasVieja(entidad) {
   return conDeuda.find((o) => o.dias === entidad.dias_max) ?? conDeuda[0] ?? entidad.operaciones[0];
 }
 
-function renderCcTabla(bodyId, lista, filtros, { tipoLabel, tipoClave, accionLabel, abrirFicha, abrirAccion }) {
+// Vencido = vencida; todavía no = por_vencer (core/mensajes.js).
+// botonRecordar escapa lo que imprime.
+function celdaRecordar(e, masVieja) {
+  const tipo = e.dias_max > 0 ? "vencida" : "por_vencer";
+  const boton = botonRecordar({
+    telefono: e.telefono,
+    tipo,
+    datos: { nombre: e.nombre, deuda: e.saldo, vencimiento: masVieja.vencimiento, dias: tipo === "vencida" ? e.dias_max : null },
+    recordatorio: e.recordatorio,
+    atributos: `data-recordar="${Number(e.id)}" data-tipo="${tipo}"`
+  });
+  return `<td data-label="" class="m-accion">${boton}</td>`;
+}
+
+function renderCcTabla(bodyId, lista, filtros, { tipoLabel, tipoClave, accionLabel, abrirFicha, abrirAccion, recordar = false, sinFiltro = "" }) {
   const body = document.getElementById(bodyId);
   body.innerHTML = "";
+  const columnas = recordar ? 7 : 6;
 
   if (lista.length === 0) {
     if (filtros.filtros.length > 0) {
-      body.innerHTML = filaVaciaFiltrada(6);
+      body.innerHTML = filaVaciaFiltrada(columnas);
       body.querySelector(".tabla-vacia-limpiar").addEventListener("click", () => filtros.limpiar());
     } else {
       body.innerHTML = filaVacia(
-        6,
-        tipoClave === "cliente" ? "Nadie te debe: todo cobrado." : "No le debés nada a nadie: todo pagado."
+        columnas,
+        sinFiltro || (tipoClave === "cliente" ? "Nadie te debe: todo cobrado." : "No le debés nada a nadie: todo pagado.")
       );
     }
     return;
@@ -85,6 +106,7 @@ function renderCcTabla(bodyId, lista, filtros, { tipoLabel, tipoClave, accionLab
       <td data-label="Operaciones">${numero(cuantas)}</td>
       <td data-label="Vence">${esc(fechaAR(masVieja.vencimiento))}</td>
       <td data-label="Estado" class="m-estado"><span class="status ${CC_TRAMO_CLASE[masVieja.tramo]}">${CC_TRAMO_LABEL[masVieja.tramo]}</span></td>
+      ${recordar ? celdaRecordar(e, masVieja) : ""}
       <td data-label="" class="cc-chevron">${icono("chevron-right")}</td>
     `;
 
@@ -92,7 +114,7 @@ function renderCcTabla(bodyId, lista, filtros, { tipoLabel, tipoClave, accionLab
     detalle.className = "cc-detalle-fila";
     detalle.hidden = true;
     detalle.innerHTML = `
-      <td colspan="6">
+      <td colspan="${columnas}">
         <table class="cc-detalle">
           <tbody>
             ${e.operaciones
@@ -114,7 +136,7 @@ function renderCcTabla(bodyId, lista, filtros, { tipoLabel, tipoClave, accionLab
       </td>`;
 
     fila.addEventListener("click", (ev) => {
-      if (ev.target.closest("button")) return;
+      if (ev.target.closest("button, a")) return;
       detalle.hidden = !detalle.hidden;
       fila.classList.toggle("is-abierta", !detalle.hidden);
     });
@@ -152,14 +174,16 @@ function renderCuentasCorrientes(datos) {
 
   renderCcTabla(
     "ccCobrarBody",
-    filtrosCcCobrar.aplicar(por_cobrar),
+    filtrosCcCobrar.aplicar(por_cobrar).filter((e) => !soloMasDeUnMes || e.dias_max > 30),
     filtrosCcCobrar,
     {
       tipoLabel: "Cliente",
       tipoClave: "cliente",
       accionLabel: "Cobrar",
       abrirFicha: (id) => invocar("abrirFicha:cliente", id),
-      abrirAccion: (id) => invocar("cobrar:venta", id)
+      abrirAccion: (id) => invocar("cobrar:venta", id),
+      recordar: true,
+      sinFiltro: soloMasDeUnMes ? "Nadie te debe hace más de un mes." : ""
     }
   );
   renderCcTabla(
@@ -175,6 +199,29 @@ function renderCuentasCorrientes(datos) {
     }
   );
 }
+
+// "Más de un mes": los que deben hace más de 30 días.
+let soloMasDeUnMes = false;
+document.getElementById("ccCobrarCuanto").addEventListener("click", (e) => {
+  const boton = e.target.closest("[data-cuanto]");
+  if (!boton) return;
+  soloMasDeUnMes = boton.dataset.cuanto === "mes";
+  for (const b of e.currentTarget.querySelectorAll("[data-cuanto]")) b.setAttribute("aria-pressed", String(b === boton));
+  renderCuentasCorrientes(ccUltimaRespuesta);
+});
+
+// Recordar abre WhatsApp (el enlace); acá se anota, y la fila dice "Le
+// recordaste hoy".
+document.getElementById("ccCobrarBody").addEventListener("click", async (e) => {
+  const enlace = e.target.closest("[data-recordar]");
+  if (!enlace) return;
+  const id = Number(enlace.dataset.recordar);
+  const recordatorio = await anotarRecordatorio(id, enlace.dataset.tipo);
+  const cliente = ccUltimaRespuesta.por_cobrar.find((c) => c.id === id);
+  if (!recordatorio || !cliente) return;
+  cliente.recordatorio = recordatorio;
+  renderCuentasCorrientes(ccUltimaRespuesta);
+});
 
 function filtrarCcCobrar() {
   renderCuentasCorrientes(ccUltimaRespuesta);
@@ -215,7 +262,7 @@ let ccUltimaRespuesta = {
 };
 
 async function cargarCuentasCorrientes() {
-  tablaCargando("ccCobrarBody", 6);
+  tablaCargando("ccCobrarBody", 7);
   tablaCargando("ccPagarBody", 6);
   const datos = await api("/api/cuentas-corrientes");
   ccUltimaRespuesta = datos;

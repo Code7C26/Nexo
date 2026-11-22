@@ -2341,7 +2341,10 @@ for (const [tabla, columna] of [
   // El encuadre del logo en el menú (hist. §215): NULL, entero y centrado.
   ['organizaciones', 'logo_encuadre TEXT'],
   // En cuántas cuotas se vendió cada renglón (hist. §216): lo de antes, sin plan.
-  ['venta_items', 'plan_cuotas INTEGER']
+  ['venta_items', 'plan_cuotas INTEGER'],
+  // Los mensajes de WhatsApp que el negocio cambió (hist. §219): NULL, los de
+  // partida.
+  ['organizaciones', 'mensajes_whatsapp TEXT']
 ]) {
   if (!db.prepare(`PRAGMA table_info(${tabla})`).all().some((col) => col.name === columna.split(' ')[0])) {
     db.exec(`ALTER TABLE ${tabla} ADD COLUMN ${columna}`);

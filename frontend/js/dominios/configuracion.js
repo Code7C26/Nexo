@@ -757,6 +757,8 @@ const PAGINAS = {
   // Mercado Pago: dominios/mercado-pago.js (hist. §130). No es un canal de
   // venta: no depende del módulo Venta online.
   "mercado-pago": { admin: true, alEntrar: () => invocar("pintar:mercado-pago") },
+  // Los mensajes de WhatsApp para recordar deudas: dominios/mensajes.js (hist. §219).
+  mensajes: { admin: true, alEntrar: () => invocar("pintar:mensajes") },
   // Descargar los datos y dar de baja el negocio: dominios/baja.js (hist. §109).
   baja: { admin: true, alEntrar: () => invocar("pintar:baja") },
   // El plan de Nexo lo pinta dominios/plan.js (hist. §99).
