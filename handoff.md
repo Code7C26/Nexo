@@ -293,7 +293,18 @@ Tabla nueva `cuentas_mail`. Todo el envío por mail es desde Emprendedor, como l
 (`docs/proyecto/verificacion-google.md`): hechos la Gmail API, la vuelta, el
 permiso con su justificación, la marca (la de "Entrar con Google") y el dominio
 en Search Console (`frontend/googlef2d419cf3d874499.html`, PR #93; la app sigue
-"En producción"). **Falta** el video y enviarlo a verificar (van juntos).
+"En producción"). **Video hecho (22 de noviembre):** grabado por el usuario en
+Indumentaria (cliente "Cliente de prueba", venta #34916, factura B 0001-00000007,
+mandada a su propio mail), cortado y con subtítulos en inglés:
+`Descargas/nexo-gmail-verificacion.mp4` (2:21). **Falta** subirlo a YouTube
+(Oculto) y enviarlo a verificar. Antes, Google rechazó la **marca** (intento
+anterior) por tres cosas, arregladas el 22 de noviembre: el logo (parecido al de
+X: se sacó, es opcional), la privacidad con "dato a completar" (cargados
+`NEXO_TITULAR_*` en el `.env` y en el servidor) y el dominio verificado en
+Search Console por santinosolla22 en vez del dueño del proyecto
+(nexosystem.app@gmail.com, sumado como propietario). Se reenvía con "Corregí los
+problemas" 24 horas después; aprobada la marca, va el video. En inglés, el cartel verde de "Conectado a…"
+de Configuración → Gmail sigue en castellano (falta en `idioma/en.js`).
 Mientras tanto anda con el aviso de "app no verificada", hasta 100 cuentas.
 **Con §218 la verificación pasa a ser necesaria** para que cualquier negocio
 mande facturas por mail sin ese aviso.

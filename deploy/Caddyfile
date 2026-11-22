@@ -6,11 +6,14 @@
 
 	header {
 		Strict-Transport-Security "max-age=31536000"
-		# Publicado solo para pruebas hasta los términos (Fase 3 de la etapa
-		# 8b): que ningún buscador lo indexe. Sacar esta línea al lanzar.
-		X-Robots-Tag "noindex, nofollow"
 		-Server
 	}
+
+	# Solo la app y la API quedan fuera de los buscadores. La portada, los
+	# términos y la privacidad no: con noindex, la revisión de Google de la
+	# marca (verificacion-google.md) no tomaba la política de privacidad.
+	@privado path /app /app/* /api/*
+	header @privado X-Robots-Tag "noindex, nofollow"
 
 	reverse_proxy 127.0.0.1:3000
 }
