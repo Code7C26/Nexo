@@ -301,9 +301,11 @@ mandada a su propio mail), cortado y con subtítulos en inglés:
 anterior) por tres cosas, arregladas el 22 de noviembre: el logo (parecido al de
 X: se sacó, es opcional), la privacidad con "dato a completar" (cargados
 `NEXO_TITULAR_*` en el `.env` y en el servidor) y el dominio verificado en
-Search Console por santinosolla22 en vez del dueño del proyecto
-(nexosystem.app@gmail.com, sumado como propietario). Se reenvía con "Corregí los
-problemas" 24 horas después; aprobada la marca, va el video. En inglés, el cartel verde de "Conectado a…"
+Search Console por santinosolla22 en vez del dueño del proyecto (los dos son
+propietarios de las dos cosas ahora). Al reintentar quedó solo "la privacidad no
+tiene suficiente contenido": todo el sitio mandaba `X-Robots-Tag: noindex` (de la
+etapa de pruebas). PR #116: ahora solo en `/app` y `/api`, y la privacidad suma
+"Google user data" en inglés. Aprobada la marca, va el video. En inglés, el cartel verde de "Conectado a…"
 de Configuración → Gmail sigue en castellano (falta en `idioma/en.js`).
 Mientras tanto anda con el aviso de "app no verificada", hasta 100 cuentas.
 **Con §218 la verificación pasa a ser necesaria** para que cualquier negocio
