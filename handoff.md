@@ -2337,7 +2337,7 @@ Además: el CUIT de Nexo es el monotributo de Santino, no una sociedad (punto
 donde entrena el usuario (19 de noviembre); él habla con el dueño y lo que
 ese gimnasio no pueda trabajar sin tener, entra.
 
-**Hecho (22 de noviembre, hist. §217): menú de la cuenta y la lista de
+**Hecho y publicado (22 de noviembre, hist. §217, PR #114): menú de la cuenta y la lista de
 Configuración.** Pulido, pedido del usuario.
 - El pie de la sidebar es un solo botón (foto, rol, nombre) que abre el menú
   de la cuenta, como el de Notion: `dominios/cuenta-menu.js` (copia el patrón
