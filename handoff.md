@@ -123,7 +123,7 @@ negocio** (decisión del usuario). Sin Gmail conectado, "Mandar por mail" avisa
 y lleva a Configuración → Gmail (al empleado: que se lo pida al admin); el
 servidor responde 409 `gmail_sin_conectar`. La casilla de Nexo queda para
 los mails de Nexo. Google falso de los tests compartido en
-`backend/test/google-falso.js`. Commit local, sin publicar.
+`backend/test/google-falso.js`. Publicado (PR #115).
 
 **22 de noviembre, hist. §219: recordar una deuda por WhatsApp** (punto 9 del
 plan, mensajes armados de Praxia). Configuración › Cobros › **Mensajes de
@@ -133,7 +133,7 @@ abre WhatsApp con el mensaje listo y **Hace más de un mes** filtra; en Cuotas,
 la vencida también. Cada recordatorio queda anotado ("Le recordaste hace 3
 días"). Lo manda una persona: el envío automático es el "ARM" de "Para más
 adelante". Esquema aditivo: `organizaciones.mensajes_whatsapp` y tabla
-`recordatorios_deuda`. Test nuevo: `recordatorios`. Sin publicar.
+`recordatorios_deuda`. Test nuevo: `recordatorios`. Publicado (PR #115).
 
 **Lo que sigue:** el resto del punto 9: mensajes de WhatsApp armados y
 "quiénes deben" (que ya puede avisar de la cuota que vence), y puntos y
