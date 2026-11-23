@@ -1707,6 +1707,10 @@ CREATE TABLE IF NOT EXISTS usuario_organizaciones (
   -- el orden de las piezas, las ocultas y contra qué compara. NULL = el del
   -- tipo de negocio (tableroDelPreset en perfiles.js).
   tablero TEXT,
+  -- Cómo armó esta persona el menú en este negocio (hist. §224): JSON con las
+  -- secciones de arriba de todo, en orden, y las escondidas. NULL = el de
+  -- siempre (frontend/js/core/menu.js).
+  menu TEXT,
   PRIMARY KEY (usuario_id, organizacion_id)
 );
 CREATE INDEX IF NOT EXISTS idx_usuario_organizaciones_org ON usuario_organizaciones(organizacion_id);

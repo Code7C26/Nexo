@@ -75,7 +75,8 @@ export function variantesDeColor(hex) {
 }
 
 // Las variables de styles.css que lleva el color del negocio. --accent-on-dark
-// es el de la barra y la pantalla de entrada, negras en los dos temas.
+// es el de la barra y la pantalla de entrada: negras en el oscuro y blancas en
+// el claro, así que cada tema lleva la variante que se lee sobre su fondo.
 // Es CSS, no HTML: los valores los calcula variantesDeColor.
 const declarar = (variables) =>
   Object.entries(variables)
@@ -85,9 +86,9 @@ const declarar = (variables) =>
 function cssDeColor(hex) {
   const { oscuro, claro } = variantesDeColor(hex);
   const delTema = (v) => ({ accent: v.accent, "accent-hover": v.hover, "accent-bg": v.bg, "accent-contrast": v.contrast });
-  const deLaBarra = { "accent-on-dark": oscuro.accent, "accent-on-dark-ink": oscuro.contrast, "sidebar-active": oscuro.bg };
-  const raiz = declarar({ ...delTema(oscuro), ...deLaBarra });
-  const enClaro = declarar(delTema(claro));
+  const deLaBarra = (v) => ({ "accent-on-dark": v.accent, "accent-on-dark-ink": v.contrast, "sidebar-active": v.bg });
+  const raiz = declarar({ ...delTema(oscuro), ...deLaBarra(oscuro) });
+  const enClaro = declarar({ ...delTema(claro), ...deLaBarra(claro) });
   return `:root { ${raiz} }\n:root[data-tema="claro"] { ${enClaro} }`;
 }
 

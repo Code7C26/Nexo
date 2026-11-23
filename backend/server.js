@@ -99,6 +99,7 @@ import {
 } from '../frontend/js/core/puntos.js';
 import { MAX_FILAS_PLANILLA, TIPOS_PLANILLA, interpretarFila } from '../frontend/js/core/planilla.js';
 import { MAX_MENSAJE, MENSAJES } from '../frontend/js/core/mensajes.js';
+import { esListaDeSecciones, menuDeSiempre, normalizarMenu } from '../frontend/js/core/menu.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -17921,6 +17922,50 @@ app.put('/api/tablero', soloAdmin, (req, res) => {
 app.delete('/api/tablero', soloAdmin, (req, res) => {
   SQL_GUARDAR_TABLERO.run(null, req.usuario.id, req.usuario.organizacion_id);
   res.json(tableroDeLaPersona(req));
+});
+
+/* ---------- El menú de cada persona (hist. §224) ---------- */
+//
+// Qué secciones sube arriba de todo y cuáles esconde (frontend/js/core/menu.js).
+// Como el Resumen, es de la persona en este negocio y no va a la auditoría:
+// es una preferencia de pantalla. Es de los dos roles: el empleado también
+// arma su menú. No da permisos: una sección de admin sigue oculta para el
+// empleado aunque la suba, y el servidor responde 403 igual.
+const SQL_MENU_DE_LA_PERSONA = db.prepare(
+  'SELECT menu FROM usuario_organizaciones WHERE usuario_id = ? AND organizacion_id = ?'
+);
+const SQL_GUARDAR_MENU = db.prepare(
+  'UPDATE usuario_organizaciones SET menu = ? WHERE usuario_id = ? AND organizacion_id = ?'
+);
+
+function menuDeLaPersona(req) {
+  const fila = SQL_MENU_DE_LA_PERSONA.get(req.usuario.id, req.usuario.organizacion_id);
+  let guardado;
+  try {
+    guardado = fila?.menu ? JSON.parse(fila.menu) : null;
+  } catch {
+    guardado = null; // uno roto vuelve al de siempre, en vez de romper el menú
+  }
+  return { ...(guardado ? normalizarMenu(guardado) : menuDeSiempre()), personalizado: Boolean(guardado) };
+}
+
+app.get('/api/menu', (req, res) => {
+  res.json(menuDeLaPersona(req));
+});
+
+app.put('/api/menu', (req, res) => {
+  const { arriba, ocultas } = req.body ?? {};
+  if (!esListaDeSecciones(arriba) || !esListaDeSecciones(ocultas)) {
+    return res.status(400).json({ error: 'Las secciones del menú no son válidas.' });
+  }
+  SQL_GUARDAR_MENU.run(JSON.stringify(normalizarMenu({ arriba, ocultas })), req.usuario.id, req.usuario.organizacion_id);
+  res.json(menuDeLaPersona(req));
+});
+
+// Volver al de siempre.
+app.delete('/api/menu', (req, res) => {
+  SQL_GUARDAR_MENU.run(null, req.usuario.id, req.usuario.organizacion_id);
+  res.json(menuDeLaPersona(req));
 });
 
 /* ---------- Asistente (operaciones por texto) ---------- */

@@ -40,9 +40,10 @@ const MODULO_DE_VISTA = {
 
 // Un título y un dominio por vista, para que la topbar diga siempre
 // dónde está el usuario (antes su <h1> era la fecha de hoy en las 14
-// pantallas). El dominio es el mismo agrupamiento por el que ya está
-// ordenado el <nav>: Resumen -> Maestros -> embudo de venta -> embudo de
-// compra -> Stock -> Finanzas -> Papelera.
+// pantallas). El dominio es el agrupamiento interno de cada vista ("Maestros"
+// son el catálogo y los clientes); el <nav> ya no lo muestra con ese nombre:
+// arriba de todo, sin grupo, y después embudo de venta -> embudo de compra ->
+// Stock -> Finanzas -> Administración (hist. §224).
 //
 // Las vistas de ficha (no están en el nav, se abren desde una fila de
 // tabla) llevan además "nav" — qué ítem del menú se marca activo — y

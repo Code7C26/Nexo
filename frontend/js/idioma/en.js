@@ -6254,5 +6254,22 @@ export default {
   "Le quitó": "Removed",
   "En esta venta se canjeó un premio: para cambiarla, anulala y cargala de nuevo.": "A reward was redeemed in this sale: to change it, void it and enter it again.",
   "Una venta con algo en cuotas no lleva premios de descuento.": "A sale with something in installments doesn’t take discount rewards.",
-  "No hay nada para cobrar con el QR.": "There’s nothing to charge with the QR."
+  "No hay nada para cobrar con el QR.": "There’s nothing to charge with the QR.",
+
+  // El menú de cada persona (hist. §224)
+  "Más secciones": "More sections",
+  "Menú": "Menu",
+  "Qué va arriba y qué escondés": "What goes on top and what you hide",
+  "Subí arriba de todo lo que más usás y escondé lo que no. Es tuyo: los demás del negocio arman el suyo.": "Move what you use most to the top and hide what you don’t. It’s yours: everyone else in the business sets up their own.",
+  "Arriba de todo": "On top",
+  "Arrastrá cada sección desde sus tres rayas para cambiar el orden. Sacá la tilde para esconderla: queda en “Más secciones”, al final del menú.": "Drag each section by its three lines to change the order. Untick it to hide it: it goes to “More sections”, at the end of the menu.",
+  "Volver al de siempre": "Back to the default",
+  "No se pudo cargar tu menú.": "Your menu could not be loaded.",
+  "Poner arriba": "Move to top",
+  "Sacar de arriba": "Remove from top",
+  "No se pudo guardar el menú.": "The menu could not be saved.",
+  "Listo: el menú quedó como lo armaste.": "Done: the menu is set up the way you made it.",
+  "No se pudo volver al menú de siempre.": "Could not go back to the default menu.",
+  "Volvió el menú de siempre.": "The default menu is back.",
+  "Las secciones del menú no son válidas.": "The menu sections are not valid."
 };

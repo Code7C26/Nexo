@@ -114,8 +114,8 @@
   --naranja:       #FB923C;
   --naranja-bg:    rgba(251, 146, 60, 0.15);
 
-  /* La sidebar es negra en los dos temas: es identidad de marca (el
-     logo es blanco y negro), no una preferencia de lectura del tema. */
+  /* La sidebar va con el marco: negra en el oscuro (el negro de marca) y
+     blanca en el claro (ver :root[data-tema="claro"]). */
   --sidebar-bg:      var(--frame);
   --sidebar-ink:     #EDEDED;
   --sidebar-ink-2:   #B5B5B5;
@@ -188,13 +188,15 @@
   --marco: 8px;
 }
 
-/* Tema claro, adaptado: el cromo sigue negro y la hoja es un gris muy
-   claro, no el lienzo blanco de Dub; las tarjetas sí son blancas. Lo fija
-   el botón de tema (localStorage "nexo.tema"); sin elección, la app
-   arranca oscura. */
+/* Tema claro: todo blanco, la barra lateral incluida (pedido del usuario,
+   23 de noviembre): la barra, el marco y la hoja son el mismo blanco, y los
+   separa el borde fino de la hoja. El negro de marca queda para el tema
+   oscuro, que es el de partida. Lo fija Configuración → Apariencia
+   (localStorage "nexo.tema"). */
 :root[data-tema="claro"] {
-  --bg:            #F5F5F5;
-  --sheet-line:    #000000;
+  --frame:         #FFFFFF;
+  --bg:            #FFFFFF;
+  --sheet-line:    #E5E5E5;
   --surface:       #FFFFFF;
   --surface-sunk:  #F5F5F5;
   --surface-hover: #FAFAFA;
@@ -229,7 +231,18 @@
   --naranja:       #C2410C;
   --naranja-bg:    #FFEDD5;
 
-  --pill-bg:       #121212;
+  --pill-bg:       #FFFFFF;
+
+  /* La barra lateral en blanco: tinta oscura, y la sección activa con el
+     tinte azul de Dub sobre blanco. */
+  --sidebar-ink:     #171717;
+  --sidebar-ink-2:   #525252;
+  --sidebar-ink-3:   #737373;
+  --sidebar-line:    #E5E5E5;
+  --sidebar-hover:   #F5F5F5;
+  --sidebar-active:  #EFF4FF;
+  --accent-on-dark:  #2563EB;
+  --accent-on-dark-ink: #FFFFFF;
 
   --shadow-md: 0 8px 20px rgba(0, 0, 0, 0.08), 0 2px 4px rgba(0, 0, 0, 0.04);
   --shadow-lg: 0 20px 48px rgba(0, 0, 0, 0.18), 0 4px 12px rgba(0, 0, 0, 0.08);
@@ -343,6 +356,9 @@ button { font-family: inherit; cursor: pointer; }
   object-fit: contain;
 }
 
+/* El logo es blanco: sobre la barra blanca del tema claro va en negro. */
+:root[data-tema="claro"] .brand-mark { filter: invert(1); }
+
 .brand-name {
   font-family: var(--font-display);
   font-size: 22px;
@@ -394,6 +410,11 @@ button { font-family: inherit; cursor: pointer; }
   font-size: 15px;
   font-weight: 700;
 }
+
+:root[data-tema="claro"] .negocio-inicial:not(.negocio-logo) { background: #F0F0F0; color: var(--sidebar-ink); }
+/* El logo del negocio ya va sobre blanco (ver abajo): en la barra blanca,
+   con un borde para que no se pierda. */
+:root[data-tema="claro"] .negocio-logo { box-shadow: inset 0 0 0 1px var(--sidebar-line); }
 
 .negocio-inicial .ico { width: 16px; height: 16px; }
 
@@ -522,6 +543,35 @@ button { font-family: inherit; cursor: pointer; }
 
 .nav-seccion:first-child .nav-grupo { margin-top: 0; }
 
+/* Un grupo que se quedó sin secciones (la persona las subió o las escondió,
+   dominios/menu.js) no deja su título solo. */
+.nav-seccion:not(:has(> .nav-item)) { display: none; }
+
+/* Lo escondido del menú, al final (hist. §224): un renglón como los demás que
+   se abre con sus secciones adentro. */
+.nav-mas { margin-top: var(--sp-4); }
+.nav-mas[hidden] { display: none; }
+.nav-mas-boton {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 34px;
+  padding: 0 var(--sp-3);
+  border-radius: var(--r-sm);
+  color: var(--sidebar-ink-3);
+  font-size: var(--txt-sm);
+  font-weight: 500;
+  list-style: none;
+  cursor: pointer;
+  transition: background var(--dur-1) ease, color var(--dur-1) ease;
+}
+.nav-mas-boton::-webkit-details-marker { display: none; }
+.nav-mas-boton:hover { background: var(--sidebar-hover); color: var(--sidebar-ink); }
+.nav-mas-boton .ico { width: 18px; height: 18px; }
+.nav-mas-flecha { margin-left: auto; transition: transform var(--dur-2) ease; }
+.nav-mas[open] .nav-mas-flecha { transform: rotate(180deg); }
+.nav-mas-items { display: flex; flex-direction: column; gap: 2px; margin-top: 2px; }
+
 .nav-item {
   position: relative;
   display: flex;
@@ -556,6 +606,8 @@ button { font-family: inherit; cursor: pointer; }
   background: var(--sidebar-active);
   color: #FFFFFF;
 }
+
+:root[data-tema="claro"] .nav-item.is-active { color: var(--sidebar-ink); }
 
 .nav-item.is-active .ico { color: var(--accent-on-dark); }
 
@@ -651,6 +703,9 @@ button { font-family: inherit; cursor: pointer; }
 }
 
 .perfil-avatar:hover { filter: brightness(0.94); }
+
+/* Sobre la barra blanca del tema claro, el círculo va gris para despegarse. */
+:root[data-tema="claro"] .perfil-avatar { background: #F0F0F0; color: var(--sidebar-ink); }
 
 /* Con foto de perfil (hist. §212), la foto llena el círculo. */
 .perfil-avatar img,
@@ -2596,7 +2651,7 @@ input.precio-sin-configurar::placeholder {
   padding: 0 var(--sp-3);
 }
 
-.barra-seleccion .btn-link:hover { color: #FFFFFF; }
+.barra-seleccion .btn-link:hover { color: var(--sidebar-ink); }
 
 /* El "display: flex" de arriba tiene la misma especificidad que la regla
    [hidden] del user-agent stylesheet, y por venir después en la cascada le
@@ -4088,6 +4143,13 @@ html[data-ejemplo] #btnCompraFactura { display: none; }
   /* Velo sobre el contenido mientras el drawer está abierto: una sombra
      extendida, sin un elemento extra en el HTML. */
   .sidebar.is-open { box-shadow: 0 0 0 100vmax rgba(0, 0, 0, 0.45); }
+
+  /* Con el cajón abierto la página de atrás queda quieta: si se movía, el
+     dedo arrastraba la página en vez del menú y después el menú no se
+     dejaba mover (pedido del usuario). core/barra-inferior.js frena además
+     el arrastre fuera del cajón, para los Safari que ignoran esto. */
+  :root:has(.sidebar.is-open),
+  :root:has(.sidebar.is-open) body { overflow: hidden; overscroll-behavior: none; }
   #btnColapsar { display: none; }
 
   /* La topbar (nombre de la pantalla + fecha) vivía en el flujo normal
@@ -4134,6 +4196,11 @@ html[data-ejemplo] #btnCompraFactura { display: none; }
     margin: 0;
     border: 0;
     border-radius: 0;
+    /* Nada de adentro hace la página más ancha que el celular: si algo se
+       pasa, se corta acá. Si no, el navegador deja alejar el zoom y la app se
+       ve chiquita con una franja vacía al costado. clip y no hidden: no arma
+       un scroll propio, así los encabezados sticky siguen andando. */
+    overflow-x: clip;
   }
 
   .topbar h1 { font-size: 24px; }
@@ -4668,9 +4735,8 @@ html[data-ejemplo] #btnCompraFactura { display: none; }
    sesión vence con un modal abierto, el login tiene que taparlo. Fondo
    opaco (no semitransparente como .modal), porque atrás no hay nada que
    deba seguir siendo visible: la app ni se cargó todavía. */
-/* Fondo en el negro de marca en los dos temas, no var(--bg): igual
-   criterio que la sidebar y el marco (es identidad de marca, no una
-   preferencia de lectura del tema). La tarjeta sí sigue al tema. */
+/* Fondo del marco, no var(--bg): igual que la sidebar, negro en el oscuro
+   y blanco en el claro. La tarjeta sigue al tema. */
 /* Con scroll propio y la tarjeta centrada con margin: auto (no con
    align-items: center): si la tarjeta es más alta que la ventana (la lista
    de "Probar sin registrarse" en una compu baja), arranca arriba y se
@@ -5358,11 +5424,14 @@ html[data-ejemplo] #btnCompraFactura { display: none; }
     #0A0A0A;
 }
 
+/* El claro es todo blanco, la barra incluida: la hoja se separa por el borde. */
+.tema-muestra-claro { background: #FFFFFF; }
 .tema-muestra-claro > span:first-child {
+  border: 1px solid #E5E5E5;
   background:
     linear-gradient(#D4D4D4, #D4D4D4) 10px 10px / 40% 6px no-repeat,
-    linear-gradient(#FFFFFF, #FFFFFF) 10px 24px / 75% 30px no-repeat,
-    #F5F5F5;
+    linear-gradient(#F5F5F5, #F5F5F5) 10px 24px / 75% 30px no-repeat,
+    #FFFFFF;
 }
 
 /* ---------- Configuración (#/configuracion/<página>) ---------- */
@@ -6002,7 +6071,7 @@ html[data-ejemplo] #btnCompraFactura { display: none; }
   overflow: hidden;
   border: 1px solid var(--line);
   border-radius: var(--r-sm);
-  background: #000000;
+  background: var(--frame);
 }
 
 .marca-previa-barra {
@@ -6020,7 +6089,7 @@ html[data-ejemplo] #btnCompraFactura { display: none; }
   margin: 0 0 var(--sp-2);
   font-size: var(--txt-xs);
   font-weight: 600;
-  color: #EDEDED;
+  color: var(--sidebar-ink);
 }
 .marca-previa-negocio > span:last-child {
   overflow: hidden;
@@ -6033,11 +6102,11 @@ html[data-ejemplo] #btnCompraFactura { display: none; }
   padding: 4px var(--sp-2);
   border-radius: var(--r-xs);
   font-size: var(--txt-xs);
-  color: #B5B5B5;
+  color: var(--sidebar-ink-2);
 }
 .marca-previa-item.is-active {
   background: var(--sidebar-active);
-  color: #FFFFFF;
+  color: var(--sidebar-ink);
   box-shadow: inset 2px 0 0 var(--accent-on-dark);
 }
 
@@ -6048,6 +6117,7 @@ html[data-ejemplo] #btnCompraFactura { display: none; }
   gap: var(--sp-2);
   margin: 6px 6px 6px 0;
   padding: var(--sp-3);
+  border: 1px solid var(--sheet-line);
   border-radius: var(--r-xs);
   background: var(--bg);
 }
@@ -9181,15 +9251,21 @@ a.segmento {
     min-width: 0;
   }
 
-  /* Los filtros de Socios y Trabajos, en un solo renglón de lado a lado. */
+  /* Los filtros de Socios y Trabajos, en un solo renglón de lado a lado. Si
+     no entran (Socios tiene seis), el renglón se desliza de costado, como las
+     cifras de arriba: antes empujaban la página más ancha que el celular y el
+     navegador dejaba alejar el zoom. */
   .socios-herramientas .segmentos {
     display: flex;
     flex-wrap: nowrap;
     width: 100%;
+    overflow-x: auto;
+    scrollbar-width: none;
   }
+  .socios-herramientas .segmentos::-webkit-scrollbar { display: none; }
 
   .socios-herramientas .segmento {
-    flex: 1 1 auto;
+    flex: 1 0 auto;
     padding: 0 var(--sp-2);
     white-space: nowrap;
   }
@@ -10992,6 +11068,28 @@ a.asistente-guia-whatsapp:hover { border-color: var(--line-strong); }
   border-radius: var(--r-sm);
 }
 .tablero-fila.is-arrastrando .tablero-arrastrar { cursor: grabbing; color: var(--ink); }
+/* Configuración → Menú (hist. §224, dominios/menu.js): las mismas filas que el
+   Personalizar del Resumen, con el ícono de cada sección como en el menú. */
+.menu-subtitulo { margin: var(--sp-5) 0 0; font-size: var(--txt-sm); font-weight: 650; }
+.menu-subtitulo:first-child { margin-top: 0; }
+.menu-subtitulo + .form-note { margin: var(--sp-1) 0 0; }
+.config-pagina .tablero-lista { margin: var(--sp-2) 0 0; }
+.form label.menu-elegir {
+  flex-direction: row;
+  align-items: center;
+  gap: var(--sp-3);
+  font-size: var(--txt-sm);
+  color: var(--ink);
+}
+.menu-elegir strong { font-weight: 500; }
+.menu-elegir input { margin-top: 0; }
+.menu-elegir .ico { flex: none; width: 18px; height: 18px; color: var(--ink-muted); }
+.tablero-fila.is-oculta .menu-elegir .ico { opacity: 0.5; }
+.menu-mover { flex: none; align-self: center; margin: 0; font-size: var(--txt-xs); white-space: nowrap; }
+.tablero-fila:not(:has(.tablero-arrastrar)) { min-height: 56px; }
+.config-pagina .config-tarjeta-pie .btn-link[hidden] { display: none; }
+.config-pagina .config-tarjeta-pie:has(> .btn-link[hidden]) { justify-content: flex-end; }
+
 .tablero-acciones { justify-content: space-between; }
 .tablero-acciones .btn[hidden] { display: none; }
 @media (max-width: 860px) {

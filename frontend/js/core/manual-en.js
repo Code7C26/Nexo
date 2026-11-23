@@ -73,6 +73,23 @@ export const SECCIONES_EN = {
       "Without a connection, Nexo opens and shows the latest data it loaded, with a notice at the top. To enter something new you need internet."
     ]
   },
+  menu: {
+    titulo: "Setting up your menu",
+    pantalla: "Settings › Menu",
+    preguntas: ["how do i change the menu order", "how do i hide a menu section", "how do i put a section at the top", "where did a section i hid go", "how do i go back to the default menu"],
+    palabras: ["menu", "sidebar", "sections", "order", "reorder", "hide", "top", "favorites", "shortcuts", "customize"],
+    bloques: [
+      "At the top, the menu has the everyday things: the Summary, the assistant, your products and your customers. Below come the groups: Sales, Purchases, Stock, Finance and Administration.",
+      { pasos: [
+        "Go to **Settings › Menu**.",
+        "Tap **Move to top** on the sections you use most (Sales, Expenses). At the top you order them by dragging them by their three lines.",
+        "Untick what you don't use: it goes to **More sections**, at the end of the menu, one tap away.",
+        "Tap **Save**."
+      ] },
+      "The menu is yours: each person in the business sets up their own, and it follows you on your phone and computer. **Back to the default** leaves it as it came.",
+      { nota: "Setting up the menu doesn't grant permissions: what your role can't see doesn't show up even if you move it to the top." }
+    ]
+  },
   "cargar-producto": {
     titulo: "Adding a product or a service",
     pantalla: "Products",

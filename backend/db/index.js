@@ -2275,6 +2275,12 @@ if (!db.prepare('PRAGMA table_info(usuario_organizaciones)').all().some((col) =>
   db.exec('ALTER TABLE usuario_organizaciones ADD COLUMN tablero TEXT');
 }
 
+// El menú de cada persona (hist. §224, ver schema.sql). Igual que el tablero:
+// aditiva y nula, sin backfill (NULL es el menú de siempre).
+if (!db.prepare('PRAGMA table_info(usuario_organizaciones)').all().some((col) => col.name === 'menu')) {
+  db.exec('ALTER TABLE usuario_organizaciones ADD COLUMN menu TEXT');
+}
+
 // Mercado Pago (hist. §130, ver schema.sql): integraciones.plataforma suma
 // 'mercadopago' e integracion_log.tipo suma 'pago'. Mismo método que el
 // rebuild de movimientos_stock de arriba: se cambia solo el CHECK del CREATE

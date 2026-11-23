@@ -385,6 +385,10 @@ export const RUTAS_PERMISOS = {
   'GET /api/tablero': 'admin',
   'PUT /api/tablero': 'admin',
   'DELETE /api/tablero': 'admin',
+  // El menú de cada persona (hist. §224): los dos roles arman el suyo.
+  'GET /api/menu': 'ambos',
+  'PUT /api/menu': 'ambos',
+  'DELETE /api/menu': 'ambos',
   'GET /api/asistente/capacidades': 'ambos',
   'POST /api/asistente/interpretar': 'ambos',
   'POST /api/asistente/transcribir': 'ambos',

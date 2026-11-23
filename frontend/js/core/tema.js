@@ -20,6 +20,8 @@ export function temaActual() {
 // el cambio venga del botón de la sidebar.
 export function aplicarTema(tema) {
   document.documentElement.setAttribute("data-tema", tema);
+  // La barra del navegador del celular, del color de la app (como arranque.js).
+  document.querySelector('meta[name="theme-color"]')?.setAttribute("content", tema === "claro" ? "#FFFFFF" : "#000000");
   try {
     localStorage.setItem("nexo.tema", tema);
   } catch {

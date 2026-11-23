@@ -5,6 +5,9 @@
 try {
   const guardado = localStorage.getItem("nexo.tema");
   if (guardado) document.documentElement.setAttribute("data-tema", guardado);
+  // La barra del navegador del celular, del color de la app: blanca en el
+  // claro (core/tema.js la cambia al elegir).
+  if (guardado === "claro") document.querySelector('meta[name="theme-color"]')?.setAttribute("content", "#FFFFFF");
   // El color del negocio (hist. §212, core/marca.js), el de la última vez:
   // va después de styles.css y pisa el azul antes de pintar.
   const marca = localStorage.getItem("nexo.marca");
