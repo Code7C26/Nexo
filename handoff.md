@@ -148,7 +148,7 @@ pantallas, el CSS y todos los módulos; y el Resumen salta cuando aparecen
 ola y no en la última (completo ~2 s antes en el celular). **Falta, y es lo
 que más se nota:** achicar el HTML inicial (todas las pantallas adentro) y no
 cargar de entrada los datos de lo que no se mira (se planifica antes, §27).
-Sin publicar.
+Publicado (PR #117).
 
 **22 de noviembre, hist. §221: el celular, más cómodo** (pedido del usuario:
 "las opciones son muy grandes"; investigado en
@@ -158,7 +158,7 @@ plegado, cifras más chicas, el período en un renglón deslizable, los totales
 de las listas en una franja deslizable, las listas sin la tarjeta que las
 envolvía (título y Filtrar en un renglón, acciones deslizables), sin "Exportar
 CSV", y tres piezas del Resumen en filas de dos líneas. Resumen de 13 a 9,3
-pantallas; la primera fila de Ventas de 421 a 207 px. Sin publicar.
+pantallas; la primera fila de Ventas de 421 a 207 px. Publicado (PR #117).
 
 **22 de noviembre, hist. §222: las fichas, el CRM y los formularios en el
 celular** (sigue §221). Las tablas de las fichas pasan a filas de dos líneas
@@ -166,7 +166,7 @@ celular** (sigue §221). Las tablas de las fichas pasan a filas de dos líneas
 datos vacíos y con los botones en un renglón; las listas del CRM sin la
 tarjeta; en los formularios no se muestra una lista con una sola opción, y en
 "Nueva venta" los productos empiezan a 322 px en vez de 566. La compu queda
-igual. **Falta:** que el usuario lo pruebe en su teléfono. Sin publicar.
+igual. **Falta:** que el usuario lo pruebe en su teléfono. Publicado (PR #117).
 
 **Lo que sigue:** el resto del punto 9: mensajes de WhatsApp armados y
 "quiénes deben" (que ya puede avisar de la cuota que vence), y puntos y
