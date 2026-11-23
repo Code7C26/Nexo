@@ -10436,6 +10436,10 @@ a.asistente-guia-whatsapp:hover { border-color: var(--line-strong); }
 .tablero:not(.is-listo) > .pieza { opacity: 0; animation: tablero-aparecer 0s 1.5s forwards; }
 @keyframes tablero-aparecer { to { opacity: 1; } }
 
+/* La primera entrada al Resumen: lo de abajo espera a "Primeros pasos" y
+   "Para hoy" para no saltar cuando aparecen (dominios/primeros-pasos.js). */
+.esperando-arriba :is(#resumenControles, #resumenRangoNota, #tablero) { visibility: hidden; }
+
 .tablero {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
