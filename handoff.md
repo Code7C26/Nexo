@@ -11,7 +11,7 @@
 
 - Al cerrar una etapa, se hacen tres cosas:
   - su relato completo se agrega al final de `docs/proyecto/handoff-historico.md` con el
-    siguiente número (hoy el último es §222);
+    siguiente número (hoy el último es §223);
   - acá se actualizan "Estado actual" y "Qué sigue";
   - si cambió alguna decisión vigente, se actualiza también esa lista.
 - Nunca apilar secciones "Última etapa" en este archivo: así fue como llegó a
@@ -148,7 +148,7 @@ pantallas, el CSS y todos los módulos; y el Resumen salta cuando aparecen
 ola y no en la última (completo ~2 s antes en el celular). **Falta, y es lo
 que más se nota:** achicar el HTML inicial (todas las pantallas adentro) y no
 cargar de entrada los datos de lo que no se mira (se planifica antes, §27).
-Sin publicar.
+Publicado (PR #117).
 
 **22 de noviembre, hist. §221: el celular, más cómodo** (pedido del usuario:
 "las opciones son muy grandes"; investigado en
@@ -158,7 +158,7 @@ plegado, cifras más chicas, el período en un renglón deslizable, los totales
 de las listas en una franja deslizable, las listas sin la tarjeta que las
 envolvía (título y Filtrar en un renglón, acciones deslizables), sin "Exportar
 CSV", y tres piezas del Resumen en filas de dos líneas. Resumen de 13 a 9,3
-pantallas; la primera fila de Ventas de 421 a 207 px. Sin publicar.
+pantallas; la primera fila de Ventas de 421 a 207 px. Publicado (PR #117).
 
 **22 de noviembre, hist. §222: las fichas, el CRM y los formularios en el
 celular** (sigue §221). Las tablas de las fichas pasan a filas de dos líneas
@@ -166,11 +166,32 @@ celular** (sigue §221). Las tablas de las fichas pasan a filas de dos líneas
 datos vacíos y con los botones en un renglón; las listas del CRM sin la
 tarjeta; en los formularios no se muestra una lista con una sola opción, y en
 "Nueva venta" los productos empiezan a 322 px en vez de 566. La compu queda
-igual. **Falta:** que el usuario lo pruebe en su teléfono. Sin publicar.
+igual. **Falta:** que el usuario lo pruebe en su teléfono. Publicado (PR #117).
 
-**Lo que sigue:** el resto del punto 9: mensajes de WhatsApp armados y
-"quiénes deben" (que ya puede avisar de la cuota que vence), y puntos y
-premios.
+**22 y 23 de noviembre, hist. §223: puntos y premios** (punto 9 del plan, de
+Praxia; investigado en `docs/investigaciones/investigacion-puntos.md`).
+Módulo `puntos` (Configuración → Funciones, ningún tipo lo trae prendido):
+- **#/puntos** (admin): un punto cada $ X cobrados y a cuántos meses vencen,
+  los premios (descuento en % o en $, o un producto de regalo), quién tiene
+  puntos y los últimos canjes.
+- **En el mostrador**, con el cliente elegido, "Canjear un premio". Al cobrar
+  dice cuánto sumó y ofrece "Mandárselo por WhatsApp".
+- **En la ficha del cliente**: el saldo, el historial, "Avisarle sus puntos"
+  y "Sumar o quitar" (admin).
+- **Cómo cuenta**: la regla se congela en cada venta (cambiarla vale para lo
+  que viene), y el saldo sale de las ventas y los canjes, sin contador. Anular
+  una venta saca lo que dio y devuelve lo canjeado.
+- **Mensajes de WhatsApp nuevos**: "Después de una compra" y "Tus puntos".
+- **Esquema aditivo**: columnas de puntos en `organizaciones` y `ventas`, y
+  tablas `premios` y `puntos_movimientos`.
+- **Verificación**: test nuevo `puntos`; `npm test` 534 de 534. Probado en el
+  navegador, en la compu y en el celular.
+- **Falta**: canjear desde Ventas (hoy solo el mostrador), el descuento en
+  ciertos productos o categorías y una pieza del Resumen con lo canjeado.
+- Commit en `solla`, sin publicar.
+
+**Lo que sigue:** el punto 10 si da (el resumen del día por WhatsApp o mail),
+y lo que el usuario vea al probar los puntos en el mostrador.
 
 **19 de noviembre, hist. §205 (publicado, PR #106):** en Planes se elimina un plan que nunca hizo
 nadie (con su servicio del catálogo); el que algún socio hizo solo se pausa.
@@ -2493,9 +2514,10 @@ datos reales; la demo no la necesita.
    CSV; faltan las variantes nuevas y los precios por lista).
 8. ~~**Logo y colores del negocio:**~~ (hecho, hist. §212) en la factura, el ticket, el menú y la
    pantalla de entrada del gimnasio; la foto de perfil, en el mismo paso.
-9. **El resto de Praxia** (puntos 5 a 9): puntos y premios; ~~mensajes de
-   WhatsApp armados por situación y "quiénes deben", con el recordatorio
-   listo~~ (hecho, hist. §219: los de deuda; faltan los de compra y puntos);
+9. **El resto de Praxia** (puntos 5 a 9): ~~puntos y premios~~ (hecho, hist.
+   §223); ~~mensajes de WhatsApp armados por situación y "quiénes deben", con
+   el recordatorio listo~~ (hecho, hist. §219 los de deuda y §223 los de
+   compra y puntos);
    ~~"Para revisar" en el Resumen~~ (hecho, hist. §213); ~~gastos
    fijos que se repiten~~ (hecho, hist. §214).
 10. Si da: **el resumen del día** por WhatsApp o mail, y **vender sin

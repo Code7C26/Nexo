@@ -592,6 +592,10 @@ frente al IVA (vacía = consumidor final) decide, con la del negocio, la letra
 del comprobante (hist. §113). El proveedor tiene la suya (hist. §114).
 Clientes y proveedores repetidos se unen en uno (el admin elige cuál queda y
 todo lo del otro pasa a ese; hist. §176, §177).
+Puntos y premios (hist. §223), módulo `puntos`: un punto cada $ X cobrados,
+con la regla congelada en cada venta (`ventas.puntos_cada`), y premios
+(descuento o producto de regalo) que se canjean en el mostrador. El saldo sale
+de las ventas y de `puntos_movimientos` (canjes y ajustes), sin contador.
 
 ---
 

@@ -14,7 +14,7 @@
 // se vende mientras no hay nada cargado (hist. §78, §88); sin él, "productos".
 // `etapas_crm` son las etapas abiertas con que nace el embudo de consultas
 // (hist. §89); Ganada y Perdida son comunes a todos y no se listan.
-export const MODULOS = ['pos', 'canales', 'crm', 'presupuestos', 'trabajos', 'abonos', 'compras', 'stock', 'produccion', 'socios'];
+export const MODULOS = ['pos', 'canales', 'crm', 'presupuestos', 'trabajos', 'abonos', 'compras', 'stock', 'produccion', 'socios', 'puntos'];
 export const MODULOS_INFO = {
   pos: { nombre: 'Punto de venta', descripcion: 'Cobrá en el mostrador, con lector de códigos y turno de caja.', icono: 'scan-barcode' },
   // Lo de vender por internet (hist. §128): las tiendas conectadas (Tienda
@@ -36,7 +36,14 @@ export const MODULOS_INFO = {
     descripcion: 'Si hacés lo que vendés: la receta de cada cosa, lo que te costó cada una, y la caja o la bolsa que se usan al vender.',
     icono: 'chef-hat'
   },
-  socios: { nombre: 'Socios y cuotas', descripcion: 'Planes, cuotas que se generan solas y control de ingreso en la recepción.', icono: 'id-card' }
+  socios: { nombre: 'Socios y cuotas', descripcion: 'Planes, cuotas que se generan solas y control de ingreso en la recepción.', icono: 'id-card' },
+  // El programa de fidelidad (hist. §223): ningún tipo lo trae prendido, porque
+  // la regla (cada cuántos pesos un punto) la tiene que decidir el negocio.
+  puntos: {
+    nombre: 'Puntos y premios',
+    descripcion: 'Tus clientes suman puntos con lo que pagan y los canjean por descuentos o regalos en el mostrador.',
+    icono: 'gift'
+  }
 };
 export const PERFILES_RUBRO = {
   // El más chico (hist. §99): quien vende por su cuenta y quiere saber cuánto

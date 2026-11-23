@@ -34,7 +34,8 @@ const MODULO_DE_VISTA = {
   "socio-detalle": "socios",
   "planes-socio": "socios",
   clases: "socios",
-  "venta-online": "canales"
+  "venta-online": "canales",
+  puntos: "puntos"
 };
 
 // Un título y un dominio por vista, para que la topbar diga siempre
@@ -58,6 +59,8 @@ const VISTAS_CONSTRUIDAS = {
   productos: { titulo: "Productos", termino: "Plural", dominio: "Maestros" },
   // Las ofertas (hist. §133): se entra desde Productos, que queda marcada.
   ofertas: { titulo: "Ofertas", dominio: "Maestros", nav: "productos" },
+  // Puntos y premios (hist. §223): la regla, los premios y quién tiene puntos.
+  puntos: { titulo: "Puntos y premios", dominio: "Maestros" },
   // Con el módulo crm, la página de clientes es el CRM (hist. §91).
   clientes: { titulo: "Clientes", tituloConModulo: ["crm", "CRM"], dominio: "Maestros" },
   pos: { titulo: "Punto de venta", dominio: "Embudo de venta" },
@@ -143,6 +146,7 @@ const VISTAS_SOLO_ADMIN = new Set([
   "proveedor-lista",
   "planes-socio",
   "ofertas",
+  "puntos",
   "venta-online",
   "cierre"
 ]);

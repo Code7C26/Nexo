@@ -86,6 +86,17 @@ import * as whatsapp from './whatsapp.js';
 // se importa el módulo del frontend, que es puro, en vez de copiarlo.
 import { ALCANCES_OFERTA, TIPOS_OFERTA, describirOferta, describirVigencia, mejorOferta } from '../frontend/js/core/ofertas.js';
 import { aplicarDescuento } from '../frontend/js/core/descuento.js';
+import {
+  MAX_MESES_VENCIMIENTO,
+  MAX_PUNTOS,
+  TIPOS_PREMIO,
+  aplicarPremios,
+  describirPremio,
+  puntosDeLaVenta,
+  saldoDePuntos,
+  textoPuntos,
+  venceDe
+} from '../frontend/js/core/puntos.js';
 import { MAX_FILAS_PLANILLA, TIPOS_PLANILLA, interpretarFila } from '../frontend/js/core/planilla.js';
 import { MAX_MENSAJE, MENSAJES } from '../frontend/js/core/mensajes.js';
 
@@ -799,7 +810,9 @@ const RUTAS_DE_CAJA = [
   ['GET', /^\/clientes(\/\d+)?$/],
   ['POST', /^\/clientes$/],
   ['PATCH', /^\/clientes\/\d+$/],
-  ['GET', /^\/(componentes-venta|medios-cobro|ofertas|categorias-gasto)$/],
+  ['GET', /^\/(componentes-venta|medios-cobro|ofertas|categorias-gasto|premios)$/],
+  // Los puntos del cliente, para canjear un premio (hist. §223).
+  ['GET', /^\/clientes\/\d+\/puntos$/],
   ['GET', /^\/ventas\/\d+$/],
   ['POST', /^\/ventas\/\d+\/(cobros|facturar|qr|revisar-pagos)$/],
   ['GET', /^\/facturas\/\d+$/],
@@ -3188,7 +3201,9 @@ const TABLAS_DEL_CLIENTE = [
   'crm_oportunidades',
   'crm_actividades',
   'socios',
-  'recordatorios_deuda'
+  'recordatorios_deuda',
+  // Sus canjes y ajustes de puntos (hist. §223); los de sus ventas van con ellas.
+  'puntos_movimientos'
 ];
 
 app.post('/api/clientes/:id/unir', soloAdmin, (req, res) => {
@@ -9138,6 +9153,505 @@ function normalizarCanal(canal) {
 // una transacción — así la conversión de un presupuesto puede meter en la
 // misma transacción la venta y la marca del presupuesto, sin que quede
 // una venta creada con el presupuesto sin convertir.
+/* ---------- Puntos y premios (hist. §223) ---------- */
+
+// El programa de fidelidad del negocio (core/puntos.js, investigado en
+// docs/investigaciones/investigacion-puntos.md): un punto cada $ X cobrados,
+// con la regla y el vencimiento congelados en cada venta (ventas.puntos_cada),
+// y premios que se canjean en el mostrador. Suma solo con el módulo prendido y
+// la regla armada, y nunca a "Consumidor final". El saldo no se guarda: sale
+// de las ventas y de puntos_movimientos (canjes y ajustes).
+const LARGO_NOMBRE_PREMIO = 80;
+const LARGO_MOTIVO_PUNTOS = 200;
+
+function programaDePuntos(organizacionId) {
+  const fila = db.prepare('SELECT puntos_cada, puntos_vencen_meses FROM organizaciones WHERE id = ?').get(organizacionId);
+  const prendido = perfilDeEmpresa(organizacionId).modulos.includes('puntos');
+  return {
+    prendido,
+    activo: prendido && fila?.puntos_cada > 0,
+    puntos_cada: fila?.puntos_cada ?? null,
+    vencen_meses: fila?.puntos_vencen_meses ?? null
+  };
+}
+
+// La regla de hoy queda en la venta: cambiarla después no le cambia los puntos
+// a nadie. Dentro de la transacción de la venta.
+function congelarPuntos(ventaId, clienteId, fecha, organizacionId) {
+  const programa = programaDePuntos(organizacionId);
+  if (!programa.activo) return;
+  if (db.prepare('SELECT nombre FROM clientes WHERE id = ?').get(clienteId)?.nombre === CONSUMIDOR_FINAL) return;
+  db.prepare('UPDATE ventas SET puntos_cada = ?, puntos_vencen = ? WHERE id = ?').run(
+    programa.puntos_cada,
+    venceDe(fecha, programa.vencen_meses),
+    ventaId
+  );
+}
+
+// Lo que mueve los puntos: cada venta que suma, con lo cobrado sin lo devuelto,
+// y cada canje o ajuste que sigue en pie (el de una venta anulada ya no). Con
+// clienteId, solo los de ese cliente. Los eventos son los de core/puntos.js,
+// con su origen para el historial.
+function eventosDePuntos(organizacionId, clienteId = null) {
+  const deCliente = clienteId == null ? [] : [clienteId];
+  const ventas = db
+    .prepare(
+      `SELECT ventas.id, ventas.cliente_id, ventas.fecha, ventas.puntos_cada, ventas.puntos_vencen,
+              (SELECT COALESCE(SUM(cantidad * precio_unitario), 0) FROM venta_items WHERE venta_id = ventas.id) AS total,
+              (SELECT COALESCE(SUM(importe), 0) FROM cobros WHERE venta_id = ventas.id) AS cobrado,
+              ${SUBQUERY_DEVUELTO_VENTA} AS devuelto
+         FROM ventas
+         JOIN clientes ON clientes.id = ventas.cliente_id
+        WHERE ventas.organizacion_id = ? AND ventas.estado = 'activa' AND ventas.puntos_cada IS NOT NULL
+          AND clientes.nombre <> ? ${clienteId == null ? '' : 'AND ventas.cliente_id = ?'}`
+    )
+    .all(organizacionId, CONSUMIDOR_FINAL, ...deCliente);
+  const movimientos = db
+    .prepare(
+      `SELECT puntos_movimientos.id, puntos_movimientos.cliente_id, puntos_movimientos.tipo, puntos_movimientos.puntos,
+              puntos_movimientos.descripcion, puntos_movimientos.venta_id, puntos_movimientos.monto, puntos_movimientos.vence,
+              COALESCE(ventas.fecha, fecha_local(puntos_movimientos.fecha)) AS fecha
+         FROM puntos_movimientos
+         LEFT JOIN ventas ON ventas.id = puntos_movimientos.venta_id
+        WHERE puntos_movimientos.organizacion_id = ? AND (puntos_movimientos.venta_id IS NULL OR ventas.estado = 'activa')
+          ${clienteId == null ? '' : 'AND puntos_movimientos.cliente_id = ?'}`
+    )
+    .all(organizacionId, ...deCliente);
+  return [
+    ...ventas.map((v) => ({
+      cliente_id: v.cliente_id,
+      tipo: 'venta',
+      venta_id: v.id,
+      fecha: v.fecha,
+      vence: v.puntos_vencen,
+      descripcion: `Venta #${v.id}`,
+      puntos: puntosDeLaVenta(Math.min(v.cobrado, v.total - v.devuelto), v.puntos_cada)
+    })),
+    ...movimientos
+  ];
+}
+
+// El saldo de cada cliente del negocio que tuvo puntos alguna vez.
+function saldosDePuntos(organizacionId) {
+  const porCliente = new Map();
+  for (const e of eventosDePuntos(organizacionId)) {
+    if (!porCliente.has(e.cliente_id)) porCliente.set(e.cliente_id, []);
+    porCliente.get(e.cliente_id).push(e);
+  }
+  const hoy = fechaDeHoy();
+  return new Map([...porCliente].map(([id, eventos]) => [id, saldoDePuntos(eventos, hoy)]));
+}
+
+function puntosDelCliente(organizacionId, clienteId) {
+  const eventos = eventosDePuntos(organizacionId, clienteId);
+  return { ...saldoDePuntos(eventos, fechaDeHoy()), eventos };
+}
+
+// Los premios del negocio, con lo que se ve de cada uno y cuántas veces se
+// canjeó (el que se canjeó no se borra, se pausa).
+function premiosDelNegocio(organizacionId, { soloActivos = false } = {}) {
+  return db
+    .prepare(
+      `SELECT premios.id, premios.nombre, premios.puntos, premios.tipo, premios.valor, premios.producto_id, premios.variante_id,
+              premios.activo, productos.nombre AS producto,
+              (SELECT COUNT(*) FROM puntos_movimientos WHERE puntos_movimientos.premio_id = premios.id) AS canjes
+         FROM premios
+         LEFT JOIN productos ON productos.id = premios.producto_id
+        WHERE premios.organizacion_id = ? ${soloActivos ? 'AND premios.activo = 1' : ''}
+        ORDER BY premios.activo DESC, premios.puntos, premios.nombre`
+    )
+    .all(organizacionId)
+    .map((p) => {
+      const producto = p.variante_id ? `${p.producto} — ${combinacionVariante(p.variante_id)}` : p.producto;
+      return { ...p, activo: Boolean(p.activo), producto, descripcion: describirPremio(p, producto) };
+    });
+}
+
+// Valida lo que llega para crear o editar un premio, o lanza ErrorValidacion.
+function datosDePremio(organizacionId, cuerpo) {
+  const nombre = typeof cuerpo?.nombre === 'string' ? cuerpo.nombre.trim() : '';
+  if (!nombre) throw new ErrorValidacion('Ponele un nombre al premio.');
+  if (nombre.length > LARGO_NOMBRE_PREMIO) throw new ErrorValidacion(`El nombre puede tener hasta ${LARGO_NOMBRE_PREMIO} letras.`);
+  const puntos = Number(cuerpo.puntos);
+  if (!Number.isInteger(puntos) || puntos < 1 || puntos > MAX_PUNTOS) {
+    throw new ErrorValidacion('Poné cuántos puntos cuesta el premio, en números enteros.');
+  }
+  const { tipo } = cuerpo;
+  if (!Object.hasOwn(TIPOS_PREMIO, tipo)) throw new ErrorValidacion('Elegí qué es el premio.');
+  if (tipo === 'producto') {
+    const productoId = Number(cuerpo.producto_id);
+    const producto = esIdValido(productoId)
+      ? db.prepare('SELECT id, activo FROM productos WHERE id = ? AND organizacion_id = ?').get(productoId, organizacionId)
+      : null;
+    if (!producto || !producto.activo) throw new ErrorValidacion('Elegí qué producto se lleva de regalo.');
+    const variantes = db.prepare('SELECT id FROM producto_variantes WHERE producto_id = ? AND activo = 1').all(productoId);
+    const varianteId = cuerpo.variante_id == null || cuerpo.variante_id === '' ? null : Number(cuerpo.variante_id);
+    if (variantes.length && !variantes.some((v) => v.id === varianteId)) {
+      throw new ErrorValidacion('Ese producto tiene variantes: elegí cuál se lleva de regalo.');
+    }
+    return { nombre, puntos, tipo, valor: null, producto_id: productoId, variante_id: variantes.length ? varianteId : null };
+  }
+  if (!esNumeroValido(cuerpo.valor) || redondear2(cuerpo.valor) <= 0) {
+    throw new ErrorValidacion(tipo === 'porcentaje' ? 'Poné el porcentaje de descuento.' : 'Poné el monto de descuento.');
+  }
+  const valor = redondear2(cuerpo.valor);
+  if (tipo === 'porcentaje' && valor > 100) throw new ErrorValidacion('El descuento no puede pasar del 100 %.');
+  return { nombre, puntos, tipo, valor, producto_id: null, variante_id: null };
+}
+
+const premioRepetido = (organizacionId, nombre, id = 0) =>
+  Boolean(db.prepare('SELECT 1 FROM premios WHERE organizacion_id = ? AND nombre = ? AND id <> ?').get(organizacionId, nombre, id));
+
+// El precio de lista de hoy de un producto o una variante, en la lista
+// predeterminada: lo que vale el premio de producto para el cliente.
+function precioDeListaHoy(productoId, varianteId, organizacionId) {
+  const listaId = db.prepare('SELECT id FROM listas_precios WHERE es_predeterminada = 1 AND organizacion_id = ?').get(organizacionId)?.id ?? null;
+  if (varianteId) {
+    return (
+      db
+        .prepare(
+          `SELECT COALESCE(variante_precios.precio, producto_variantes.precio_venta, productos.precio_venta) AS precio
+             FROM producto_variantes
+             JOIN productos ON productos.id = producto_variantes.producto_id
+             LEFT JOIN variante_precios ON variante_precios.variante_id = producto_variantes.id AND variante_precios.lista_precio_id = ?
+            WHERE producto_variantes.id = ?`
+        )
+        .get(listaId, varianteId)?.precio ?? 0
+    );
+  }
+  return db.prepare('SELECT precio_venta FROM productos WHERE id = ?').get(productoId)?.precio_venta ?? 0;
+}
+
+// Los premios que se canjean en una venta del mostrador: los ids que llegan,
+// del negocio y activos, para un cliente de verdad al que le alcanzan los
+// puntos. Devuelve { error } o { premios, puntos }.
+function premiosDelCanje(canjes, clienteId, organizacionId) {
+  if (canjes == null || (Array.isArray(canjes) && canjes.length === 0)) return { premios: [], puntos: 0 };
+  if (!Array.isArray(canjes) || canjes.some((id) => !esIdValido(Number(id)))) return { error: 'Los premios no son válidos.' };
+  if (!programaDePuntos(organizacionId).prendido) return { error: 'Los puntos no están prendidos en este negocio.' };
+  const cliente = clienteId
+    ? db.prepare('SELECT id, nombre FROM clientes WHERE id = ? AND organizacion_id = ?').get(Number(clienteId), organizacionId)
+    : null;
+  if (!cliente || cliente.nombre === CONSUMIDOR_FINAL) return { error: 'Para canjear un premio, elegí el cliente.' };
+  const activos = premiosDelNegocio(organizacionId, { soloActivos: true });
+  const premios = canjes.map((id) => activos.find((p) => p.id === Number(id)));
+  if (premios.some((p) => !p)) return { error: 'Uno de los premios ya no está: volvé a elegirlos.' };
+  const puntos = premios.reduce((acc, p) => acc + p.puntos, 0);
+  const { saldo } = puntosDelCliente(organizacionId, cliente.id);
+  if (puntos > saldo) {
+    return { error: `${cliente.nombre} tiene ${textoPuntos(Math.max(0, saldo))} y los premios suman ${textoPuntos(puntos)}.` };
+  }
+  return { premios, puntos };
+}
+
+// Cómo queda el premio en el historial: "10 % menos: 10 % de descuento", o solo
+// el nombre si ya lo dice ("Medialuna de regalo").
+const nombreDelPremio = (premio) =>
+  premio.nombre.trim().toLowerCase() === premio.descripcion.trim().toLowerCase() ? premio.nombre : `${premio.nombre}: ${premio.descripcion}`;
+
+// Anota los canjes de una venta recién creada. regalos: el renglón de cada
+// premio de producto (venta_items.id), en el orden de los premios; montos: lo
+// que bajó cada premio de descuento. Dentro de la transacción de la venta.
+function registrarCanjes(req, { ventaId, clienteId, premios, regalos, montos, organizacionId }) {
+  const insertar = db.prepare(
+    `INSERT INTO puntos_movimientos (organizacion_id, cliente_id, tipo, puntos, descripcion, venta_id, venta_item_id, premio_id, monto, usuario_id)
+     VALUES (?, ?, 'canje', ?, ?, ?, ?, ?, ?, ?)`
+  );
+  let regalo = 0;
+  let descuento = 0;
+  for (const premio of premios) {
+    const esRegalo = premio.tipo === 'producto';
+    const renglon = esRegalo ? regalos[regalo++] : null;
+    const monto = esRegalo ? redondear2(precioDeListaHoy(premio.producto_id, premio.variante_id, organizacionId)) : montos[descuento++];
+    const { lastInsertRowid } = insertar.run(
+      organizacionId,
+      clienteId,
+      -premio.puntos,
+      nombreDelPremio(premio),
+      ventaId,
+      renglon,
+      premio.id,
+      monto,
+      req.usuario.id
+    );
+    anotarEmpleado(req, 'puntos_movimientos', Number(lastInsertRowid));
+    auditar(req, {
+      accion: 'crear',
+      entidad: 'venta',
+      entidad_id: ventaId,
+      operacion_tipo: 'canje',
+      operacion_id: Number(lastInsertRowid),
+      detalle: `Canje de "${premio.nombre}" por ${textoPuntos(premio.puntos)} en la venta #${ventaId}`
+    });
+  }
+}
+
+// Lo que el mostrador le cuenta al cliente al cobrar: cuántos puntos sumó con
+// esta venta (lo cobrado; lo fiado suma al pagarlo) y cuántos tiene. null sin
+// el programa o a "Consumidor final".
+function puntosDeLaVentaHecha(ventaId, organizacionId) {
+  if (!programaDePuntos(organizacionId).prendido) return null;
+  const venta = db
+    .prepare('SELECT ventas.cliente_id, clientes.nombre FROM ventas JOIN clientes ON clientes.id = ventas.cliente_id WHERE ventas.id = ?')
+    .get(ventaId);
+  if (!venta || venta.nombre === CONSUMIDOR_FINAL) return null;
+  const { saldo, eventos } = puntosDelCliente(organizacionId, venta.cliente_id);
+  const ganados = eventos.find((e) => e.tipo === 'venta' && e.venta_id === ventaId)?.puntos ?? 0;
+  const canjeados = -eventos.filter((e) => e.tipo === 'canje' && e.venta_id === ventaId).reduce((acc, e) => acc + e.puntos, 0);
+  return { ganados, canjeados, saldo };
+}
+
+app.get('/api/premios', (req, res) => {
+  const programa = programaDePuntos(req.usuario.organizacion_id);
+  res.json({ ...programa, premios: programa.prendido ? premiosDelNegocio(req.usuario.organizacion_id, { soloActivos: true }) : [] });
+});
+
+// La página de Puntos (solo admin): la regla, los premios, quién tiene puntos
+// y los últimos canjes y ajustes.
+app.get('/api/puntos', soloAdmin, (req, res) => {
+  const organizacionId = req.usuario.organizacion_id;
+  const saldos = saldosDePuntos(organizacionId);
+  const clientes = db
+    .prepare('SELECT id, nombre, telefono FROM clientes WHERE organizacion_id = ? AND nombre <> ?')
+    .all(organizacionId, CONSUMIDOR_FINAL)
+    .filter((c) => saldos.has(c.id) && saldos.get(c.id).saldo !== 0)
+    .map((c) => ({ ...c, ...saldos.get(c.id) }))
+    .sort((a, b) => b.saldo - a.saldo || a.nombre.localeCompare(b.nombre, 'es'));
+  const movimientos = db
+    .prepare(
+      `SELECT puntos_movimientos.id, puntos_movimientos.tipo, puntos_movimientos.puntos, puntos_movimientos.descripcion,
+              puntos_movimientos.venta_id, puntos_movimientos.monto, puntos_movimientos.fecha, clientes.nombre AS cliente,
+              puntos_movimientos.cliente_id, ventas.estado AS venta_estado
+         FROM puntos_movimientos
+         JOIN clientes ON clientes.id = puntos_movimientos.cliente_id
+         LEFT JOIN ventas ON ventas.id = puntos_movimientos.venta_id
+        WHERE puntos_movimientos.organizacion_id = ?
+        ORDER BY puntos_movimientos.fecha DESC, puntos_movimientos.id DESC
+        LIMIT 30`
+    )
+    .all(organizacionId);
+  const desde = `${fechaDeHoy().slice(0, 7)}-01`;
+  const delMes = db
+    .prepare(
+      `SELECT COUNT(*) AS canjes, COALESCE(-SUM(puntos_movimientos.puntos), 0) AS puntos, COALESCE(SUM(puntos_movimientos.monto), 0) AS monto
+         FROM puntos_movimientos JOIN ventas ON ventas.id = puntos_movimientos.venta_id
+        WHERE puntos_movimientos.organizacion_id = ? AND puntos_movimientos.tipo = 'canje' AND ventas.estado = 'activa'
+          AND ventas.fecha >= ?`
+    )
+    .get(organizacionId, desde);
+  res.json({
+    programa: programaDePuntos(organizacionId),
+    premios: premiosDelNegocio(organizacionId),
+    clientes,
+    movimientos,
+    totales: {
+      clientes: clientes.filter((c) => c.saldo > 0).length,
+      puntos: clientes.reduce((acc, c) => acc + Math.max(0, c.saldo), 0),
+      canjes_mes: { ...delMes, monto: redondear2(delMes.monto) }
+    }
+  });
+});
+
+app.put('/api/puntos/programa', soloAdmin, (req, res) => {
+  const organizacionId = req.usuario.organizacion_id;
+  const { puntos_cada: cada, vencen_meses: meses } = req.body ?? {};
+  const puntosCada = cada == null || cada === '' ? null : Number(cada);
+  if (puntosCada !== null && (!esNumeroValido(puntosCada) || redondear2(puntosCada) <= 0)) {
+    throw new ErrorValidacion('Poné cada cuántos pesos se suma un punto.');
+  }
+  const vencenMeses = meses == null || meses === '' ? null : Number(meses);
+  if (vencenMeses !== null && (!Number.isInteger(vencenMeses) || vencenMeses < 1 || vencenMeses > MAX_MESES_VENCIMIENTO)) {
+    throw new ErrorValidacion(`Los puntos pueden vencer entre 1 y ${MAX_MESES_VENCIMIENTO} meses después.`);
+  }
+  const anterior = db.prepare('SELECT puntos_cada, puntos_vencen_meses FROM organizaciones WHERE id = ?').get(organizacionId);
+  const nuevo = { puntos_cada: puntosCada === null ? null : redondear2(puntosCada), puntos_vencen_meses: vencenMeses };
+  const cambios = diffCampos(anterior, nuevo, ['puntos_cada', 'puntos_vencen_meses']);
+  if (cambios) {
+    withTransaction(() => {
+      db.prepare('UPDATE organizaciones SET puntos_cada = ?, puntos_vencen_meses = ? WHERE id = ?').run(
+        nuevo.puntos_cada,
+        nuevo.puntos_vencen_meses,
+        organizacionId
+      );
+      auditar(req, {
+        accion: 'editar',
+        entidad: 'organizacion',
+        entidad_id: organizacionId,
+        valor_anterior: cambios.anterior,
+        valor_nuevo: cambios.nuevo,
+        detalle: nuevo.puntos_cada
+          ? `Puntos: uno cada $${nuevo.puntos_cada}${nuevo.puntos_vencen_meses ? `, vencen a los ${nuevo.puntos_vencen_meses} meses` : ', no vencen'}`
+          : 'Puntos: dejan de sumarse'
+      });
+    });
+  }
+  res.json(programaDePuntos(organizacionId));
+});
+
+app.post('/api/premios', soloAdmin, (req, res) => {
+  const organizacionId = req.usuario.organizacion_id;
+  const datos = datosDePremio(organizacionId, req.body);
+  if (premioRepetido(organizacionId, datos.nombre)) throw new ErrorValidacion('Ya hay un premio con ese nombre.');
+  const id = withTransaction(() => {
+    const { lastInsertRowid } = db
+      .prepare('INSERT INTO premios (organizacion_id, nombre, puntos, tipo, valor, producto_id, variante_id) VALUES (?, ?, ?, ?, ?, ?, ?)')
+      .run(organizacionId, datos.nombre, datos.puntos, datos.tipo, datos.valor, datos.producto_id, datos.variante_id);
+    auditar(req, {
+      accion: 'crear',
+      entidad: 'organizacion',
+      entidad_id: organizacionId,
+      operacion_tipo: 'premio',
+      operacion_id: Number(lastInsertRowid),
+      valor_nuevo: JSON.stringify(datos),
+      detalle: `Premio "${datos.nombre}" por ${textoPuntos(datos.puntos)}`
+    });
+    return Number(lastInsertRowid);
+  });
+  res.status(201).json({ id });
+});
+
+const premioDelNegocio = (id, organizacionId) =>
+  db.prepare('SELECT * FROM premios WHERE id = ? AND organizacion_id = ?').get(id, organizacionId);
+
+// Editar un premio vale para los canjes que vienen: cada canje guardó su foto.
+app.put('/api/premios/:id', soloAdmin, (req, res) => {
+  const organizacionId = req.usuario.organizacion_id;
+  const premio = premioDelNegocio(Number(req.params.id), organizacionId);
+  if (!premio) return res.status(404).json({ error: 'Premio no encontrado.' });
+  const datos = datosDePremio(organizacionId, req.body);
+  if (premioRepetido(organizacionId, datos.nombre, premio.id)) throw new ErrorValidacion('Ya hay un premio con ese nombre.');
+  const campos = ['nombre', 'puntos', 'tipo', 'valor', 'producto_id', 'variante_id'];
+  const cambios = diffCampos(premio, datos, campos);
+  if (cambios) {
+    withTransaction(() => {
+      db.prepare('UPDATE premios SET nombre = ?, puntos = ?, tipo = ?, valor = ?, producto_id = ?, variante_id = ? WHERE id = ?').run(
+        ...campos.map((c) => datos[c]),
+        premio.id
+      );
+      auditar(req, {
+        accion: 'editar',
+        entidad: 'organizacion',
+        entidad_id: organizacionId,
+        operacion_tipo: 'premio',
+        operacion_id: premio.id,
+        valor_anterior: cambios.anterior,
+        valor_nuevo: cambios.nuevo,
+        detalle: `Premio "${datos.nombre}" editado`
+      });
+    });
+  }
+  res.json({ id: premio.id });
+});
+
+app.patch('/api/premios/:id', soloAdmin, (req, res) => {
+  const premio = premioDelNegocio(Number(req.params.id), req.usuario.organizacion_id);
+  if (!premio) return res.status(404).json({ error: 'Premio no encontrado.' });
+  if (typeof req.body?.activo !== 'boolean') throw new ErrorValidacion('Decí si el premio queda activo o pausado.');
+  const activo = req.body.activo ? 1 : 0;
+  if (activo !== premio.activo) {
+    withTransaction(() => {
+      db.prepare('UPDATE premios SET activo = ? WHERE id = ?').run(activo, premio.id);
+      auditar(req, {
+        accion: 'editar',
+        entidad: 'organizacion',
+        entidad_id: premio.organizacion_id,
+        operacion_tipo: 'premio',
+        operacion_id: premio.id,
+        valor_anterior: JSON.stringify({ activo: premio.activo }),
+        valor_nuevo: JSON.stringify({ activo }),
+        detalle: `Premio "${premio.nombre}" ${activo ? 'activado' : 'pausado'}`
+      });
+    });
+  }
+  res.json({ id: premio.id, activo: Boolean(activo) });
+});
+
+// Solo el que nunca se canjeó: si no, el historial de alguien se quedaría sin
+// su premio. El canjeado se pausa.
+app.delete('/api/premios/:id', soloAdmin, (req, res) => {
+  const premio = premioDelNegocio(Number(req.params.id), req.usuario.organizacion_id);
+  if (!premio) return res.status(404).json({ error: 'Premio no encontrado.' });
+  if (db.prepare('SELECT 1 FROM puntos_movimientos WHERE premio_id = ?').get(premio.id)) {
+    return res.status(409).json({ error: 'Ese premio ya se canjeó: pausalo, así no se ofrece más.' });
+  }
+  withTransaction(() => {
+    db.prepare('DELETE FROM premios WHERE id = ?').run(premio.id);
+    auditar(req, {
+      accion: 'anular',
+      entidad: 'organizacion',
+      entidad_id: premio.organizacion_id,
+      operacion_tipo: 'premio',
+      operacion_id: premio.id,
+      valor_anterior: JSON.stringify(premio),
+      detalle: `Premio "${premio.nombre}" eliminado`
+    });
+  });
+  res.json({ id: premio.id });
+});
+
+// Los puntos de un cliente: el saldo, cuándo vencen los próximos y de dónde
+// salió cada uno, lo más nuevo primero. Lo ven los dos roles (el mostrador).
+app.get('/api/clientes/:id/puntos', (req, res) => {
+  const organizacionId = req.usuario.organizacion_id;
+  const cliente = db.prepare('SELECT id, nombre FROM clientes WHERE id = ? AND organizacion_id = ?').get(Number(req.params.id), organizacionId);
+  if (!cliente) return res.status(404).json({ error: 'Cliente no encontrado.' });
+  const programa = programaDePuntos(organizacionId);
+  if (!programa.prendido || cliente.nombre === CONSUMIDOR_FINAL) {
+    return res.json({ programa, saldo: 0, vencidos: 0, proximo: null, historial: [] });
+  }
+  const { saldo, vencidos, proximo, eventos } = puntosDelCliente(organizacionId, cliente.id);
+  // Lo más nuevo primero; el mismo día, cada venta con sus canjes abajo, y los
+  // ajustes a mano después.
+  const orden = { venta: 0, canje: 1, ajuste: 2 };
+  const historial = eventos
+    .filter((e) => e.puntos)
+    .sort(
+      (a, b) =>
+        b.fecha.localeCompare(a.fecha) || (b.venta_id ?? 0) - (a.venta_id ?? 0) || orden[a.tipo] - orden[b.tipo] || (b.id ?? 0) - (a.id ?? 0)
+    )
+    .slice(0, 50)
+    .map(({ tipo, venta_id: ventaId, fecha, puntos, descripcion, vence }) => ({ tipo, venta_id: ventaId, fecha, puntos, descripcion, vence }));
+  res.json({ programa, saldo, vencidos, proximo, historial });
+});
+
+// Sumar o quitar puntos a mano (pasar las tarjetitas de papel, un regalo): con
+// el motivo, y sin dejar a nadie en negativo. Lo sumado vence como lo de una
+// venta de hoy.
+app.post('/api/clientes/:id/puntos', soloAdmin, (req, res) => {
+  const organizacionId = req.usuario.organizacion_id;
+  const cliente = db.prepare('SELECT id, nombre FROM clientes WHERE id = ? AND organizacion_id = ?').get(Number(req.params.id), organizacionId);
+  if (!cliente) return res.status(404).json({ error: 'Cliente no encontrado.' });
+  if (cliente.nombre === CONSUMIDOR_FINAL) throw new ErrorValidacion('A "Consumidor final" no se le suman puntos.');
+  const programa = programaDePuntos(organizacionId);
+  if (!programa.prendido) throw new ErrorValidacion('Los puntos no están prendidos en este negocio.');
+  const puntos = Number(req.body?.puntos);
+  if (!Number.isInteger(puntos) || puntos === 0 || Math.abs(puntos) > MAX_PUNTOS) {
+    throw new ErrorValidacion('Poné cuántos puntos se suman o se quitan, en números enteros.');
+  }
+  const motivo = typeof req.body?.motivo === 'string' ? req.body.motivo.trim() : '';
+  if (!motivo) throw new ErrorValidacion('Contá por qué, así queda en su historial.');
+  if (motivo.length > LARGO_MOTIVO_PUNTOS) throw new ErrorValidacion(`El motivo puede tener hasta ${LARGO_MOTIVO_PUNTOS} letras.`);
+  const { saldo } = puntosDelCliente(organizacionId, cliente.id);
+  if (puntos < 0 && saldo + puntos < 0) throw new ErrorValidacion(`${cliente.nombre} tiene ${textoPuntos(Math.max(0, saldo))}: no se le pueden quitar más.`);
+  withTransaction(() => {
+    const { lastInsertRowid } = db
+      .prepare(
+        `INSERT INTO puntos_movimientos (organizacion_id, cliente_id, tipo, puntos, descripcion, vence, usuario_id)
+         VALUES (?, ?, 'ajuste', ?, ?, ?, ?)`
+      )
+      .run(organizacionId, cliente.id, puntos, motivo, puntos > 0 ? venceDe(fechaDeHoy(), programa.vencen_meses) : null, req.usuario.id);
+    auditar(req, {
+      accion: 'crear',
+      entidad: 'cliente',
+      entidad_id: cliente.id,
+      operacion_tipo: 'puntos',
+      operacion_id: Number(lastInsertRowid),
+      detalle: `${puntos > 0 ? 'Le sumó' : 'Le quitó'} ${textoPuntos(Math.abs(puntos))} a "${cliente.nombre}": ${motivo}`
+    });
+  });
+  res.status(201).json({ saldo: puntosDelCliente(organizacionId, cliente.id).saldo });
+});
+
 /* ---------- Ventas en cuotas (hist. §216) ---------- */
 
 // Financiación del negocio, no de una tarjeta: un producto puede tener planes
@@ -9336,6 +9850,8 @@ function crearVenta({
   }
   if (!carga_inicial) {
     registrarConsumosVenta({ venta_id: nuevaVentaId, items, consumos, deposito_id: depositoResuelto, organizacion_id });
+    // Los puntos (hist. §223): la regla de hoy queda en la venta.
+    congelarPuntos(nuevaVentaId, clienteRow.id, fechaVenta, organizacion_id);
   }
   // En cuotas, lo que falta queda en la cuenta del cliente: tiene que ser uno
   // de verdad, no "Consumidor final".
@@ -9496,6 +10012,10 @@ app.put('/api/ventas/:id', (req, res) => {
   // y se carga de nuevo.
   if (SQL_CUOTAS_DE_VENTA.get(ventaId) || (Array.isArray(items) && items.some((i) => i?.plan_cuotas))) {
     return res.status(400).json({ error: 'Esta venta es en cuotas: para cambiarla, anulala y cargala de nuevo.' });
+  }
+  // El canje (hist. §223) cuelga de sus renglones y de sus precios.
+  if (db.prepare("SELECT 1 FROM puntos_movimientos WHERE venta_id = ? AND tipo = 'canje'").get(ventaId)) {
+    return res.status(400).json({ error: 'En esta venta se canjeó un premio: para cambiarla, anulala y cargala de nuevo.' });
   }
   const errorItems = validarItemsVenta(items);
   if (errorItems) {
@@ -15390,6 +15910,8 @@ function saldosDeCuentasCorrientes(organizacionId) {
   };
 }
 
+const TIPOS_RECORDATORIO = ['por_vencer', 'vencida', 'cuota'];
+
 // Recordarle una deuda por WhatsApp (hist. §219): el mensaje lo manda quien
 // toca Recordar, desde su WhatsApp (un enlace wa.me). Acá queda anotado quién,
 // cuándo y cuánto debía, con la deuda de hoy y no la que diga la pantalla.
@@ -15398,7 +15920,8 @@ app.post('/api/clientes/:id/recordatorios', (req, res) => {
   const organizacionId = req.usuario.organizacion_id;
   const clienteId = Number(req.params.id);
   const tipo = req.body?.tipo;
-  if (!Object.hasOwn(MENSAJES, tipo)) return res.status(400).json({ error: 'No se sabe qué recordarle.' });
+  // Solo los de deuda: los de compra y puntos (hist. §223) no se anotan.
+  if (!TIPOS_RECORDATORIO.includes(tipo)) return res.status(400).json({ error: 'No se sabe qué recordarle.' });
   const cliente = db.prepare('SELECT id, nombre FROM clientes WHERE id = ? AND organizacion_id = ?').get(clienteId, organizacionId);
   if (!cliente) return res.status(404).json({ error: 'Cliente no encontrado.' });
   let ventaId = null;
@@ -21209,7 +21732,7 @@ const ventasEsperandoQr = new Map();
 const VIDA_QR_MS = 60 * 60 * 1000;
 
 app.post('/api/pos/ventas', (req, res) => {
-  const { turno_caja_id, cliente_id, cobros = [], consumos, descuento = null, qr_mercadopago: conQr = false } = req.body;
+  const { turno_caja_id, cliente_id, cobros = [], consumos, descuento = null, qr_mercadopago: conQr = false, canjes = [] } = req.body;
   let { items } = req.body;
   const organizacionId = req.usuario.organizacion_id;
   if (conQr && !mercadoPagoConectado(organizacionId)) return res.status(409).json({ error: SIN_MERCADO_PAGO });
@@ -21220,20 +21743,45 @@ app.post('/api/pos/ventas', (req, res) => {
   if (!turno || turno.estado !== 'abierto') {
     return res.status(400).json({ error: 'Abrí la caja antes de vender.' });
   }
-  const errorItems = validarItemsVenta(items);
+  // Los premios que se canjean (hist. §223): los de producto suman su renglón
+  // a $ 0, que sale del stock como cualquier otro; con ellos la venta puede ser
+  // solo el regalo.
+  const canje = premiosDelCanje(canjes, cliente_id, organizacionId);
+  if (canje.error) return res.status(400).json({ error: canje.error });
+  const regalos = canje.premios
+    .filter((p) => p.tipo === 'producto')
+    .map((p) => ({ producto_id: p.producto_id, variante_id: p.variante_id, cantidad: 1, precio_unitario: 0 }));
+  const errorItems = validarItemsVenta(Array.isArray(items) ? [...items, ...regalos] : items);
   if (errorItems) return res.status(400).json({ error: errorItems });
   // En cuotas (hist. §216): el precio es el del plan, y el total y lo que queda
   // en la cuenta salen de ahí. El descuento a mano no va con un plan.
   if (items.some((i) => i?.plan_cuotas)) {
     if (descuento !== null) return res.status(400).json({ error: 'Una venta con algo en cuotas no lleva descuento a mano.' });
+    if (canje.premios.some((p) => p.tipo !== 'producto')) {
+      return res.status(400).json({ error: 'Una venta con algo en cuotas no lleva premios de descuento.' });
+    }
     try {
       items = preciosDeLosPlanes(items);
     } catch (err) {
       return res.status(400).json({ error: mensajeDeError(err) });
     }
   }
+  // Los premios de descuento bajan primero, con el mismo reparto que el
+  // descuento a mano (core/puntos.js), y lo que bajó cada uno queda en el canje.
+  const premiosDescuento = canje.premios.filter((p) => p.tipo !== 'producto');
+  let montosPremios = [];
+  if (premiosDescuento.length) {
+    const conPremios = aplicarPremios(
+      items.map((i) => ({ cantidad: Number(i.cantidad), precio: Number(i.precio_unitario) })),
+      premiosDescuento
+    );
+    if (conPremios.error) return res.status(400).json({ error: conPremios.error });
+    items = items.map((i, k) => ({ ...i, precio_unitario: conPremios.renglones[k].precio, descuento: conPremios.renglones[k].descuento }));
+    montosPremios = conPremios.montos;
+  }
   // El descuento a mano (hist. §175): los precios llegan sin él, y acá se
   // reparte entre los renglones con las mismas reglas que muestra la pantalla.
+  // Con un premio, va sobre lo que quedó, y el renglón guarda los dos juntos.
   let montoDescuento = 0;
   if (descuento !== null) {
     const conDescuento = aplicarDescuento(
@@ -21241,9 +21789,15 @@ app.post('/api/pos/ventas', (req, res) => {
       descuento
     );
     if (conDescuento.error) return res.status(400).json({ error: conDescuento.error });
-    items = items.map((i, k) => ({ ...i, precio_unitario: conDescuento.renglones[k].precio, descuento: conDescuento.renglones[k].descuento }));
+    items = items.map((i, k) => ({
+      ...i,
+      precio_unitario: conDescuento.renglones[k].precio,
+      descuento: redondear2((Number(i.descuento) || 0) + conDescuento.renglones[k].descuento)
+    }));
     montoDescuento = conDescuento.monto;
   }
+  const renglonesPagos = items.length;
+  items = [...items, ...regalos];
   exigirLugarEnPlan(organizacionId, 'ventas_mes');
   // La caja vende del depósito de su sucursal (hist. §193); sin sucursal, del
   // predeterminado, y la venta queda sin depósito propio, como antes.
@@ -21258,6 +21812,7 @@ app.post('/api/pos/ventas', (req, res) => {
   if (cobrado > total) {
     return res.status(400).json({ error: 'Los cobros superan el total de la venta.' });
   }
+  if (conQr && !(total > 0)) return res.status(400).json({ error: 'No hay nada para cobrar con el QR.' });
   // Tampoco se le fía si llega el id del propio "Consumidor final".
   const esConsumidorFinal =
     cliente_id &&
@@ -21282,6 +21837,18 @@ app.post('/api/pos/ventas', (req, res) => {
       const { cliente_id: clienteId } = db.prepare('SELECT cliente_id FROM ventas WHERE id = ?').get(id);
       db.prepare('UPDATE ventas SET turno_caja_id = ? WHERE id = ?').run(turno.id, id);
       anotarEmpleado(req, 'ventas', id);
+      if (canje.premios.length) {
+        // Los renglones se insertan en orden: después de los pagos, los regalos.
+        const renglones = db.prepare('SELECT id FROM venta_items WHERE venta_id = ? ORDER BY id').all(id).map((r) => r.id);
+        registrarCanjes(req, {
+          ventaId: id,
+          clienteId,
+          premios: canje.premios,
+          regalos: renglones.slice(renglonesPagos),
+          montos: montosPremios,
+          organizacionId
+        });
+      }
       auditar(req, {
         accion: 'crear',
         entidad: 'venta',
@@ -21322,7 +21889,7 @@ app.post('/api/pos/ventas', (req, res) => {
     return res.status(400).json({ error: mensajeDeError(err) });
   }
   if (conQr) ventasEsperandoQr.set(ventaId, { organizacionId, creado: Date.now() });
-  res.status(201).json({ id: ventaId, total, cobrado });
+  res.status(201).json({ id: ventaId, total, cobrado, puntos: puntosDeLaVentaHecha(ventaId, organizacionId) });
 });
 
 // El cliente no pagó el QR: la venta se anula (vuelve el stock) y el carrito

@@ -32,7 +32,11 @@ const ejemplo = (tipo) => ({
   deuda: pesosMensaje(tipo === "cuota" ? 28000 : 45000),
   vencimiento: enDias(tipo === "por_vencer" ? 5 : -12),
   dias: 12,
-  plan: "Musculación"
+  plan: "Musculación",
+  total: pesosMensaje(18500),
+  ganados: "18 puntos",
+  puntos: "240 puntos",
+  vencen: enDias(90)
 });
 
 const situaciones = () => Object.entries(MENSAJES).filter(([, m]) => !m.modulo || moduloActivo(m.modulo));

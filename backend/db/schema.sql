@@ -491,7 +491,14 @@ CREATE TABLE IF NOT EXISTS ventas (
   canal TEXT,
   -- Quién la atendió en una caja vinculada (hist. §199): el empleado que puso
   -- su PIN. NULL fuera de la caja (la vendió la cuenta de la auditoría).
-  empleado_id INTEGER REFERENCES empleados(id)
+  empleado_id INTEGER REFERENCES empleados(id),
+  -- Los puntos de la venta (hist. §223), congelados el día que se hizo, como
+  -- el costo: cada cuántos pesos cobrados da un punto y cuándo vencen. Los
+  -- puntos en sí no se guardan: salen de lo cobrado sin lo devuelto
+  -- (core/puntos.js). NULL = no suma (sin el programa, a "Consumidor final"
+  -- o de antes de Nexo); puntos_vencen NULL con regla = no vencen.
+  puntos_cada REAL,
+  puntos_vencen TEXT
 );
 
 CREATE TABLE IF NOT EXISTS venta_items (
@@ -546,6 +553,56 @@ CREATE TABLE IF NOT EXISTS venta_cuotas (
   vencimiento TEXT NOT NULL,
   importe REAL NOT NULL CHECK (importe >= 0),
   UNIQUE (venta_id, numero)
+);
+
+-- Puntos y premios (hist. §223, docs/investigaciones/investigacion-puntos.md).
+-- El catálogo de premios del negocio: un porcentaje o un monto de descuento
+-- sobre la venta, o un producto (o una variante) de regalo. Un premio que ya
+-- se canjeó no se borra: se pausa (activo = 0).
+CREATE TABLE IF NOT EXISTS premios (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  organizacion_id INTEGER NOT NULL REFERENCES organizaciones(id),
+  nombre TEXT NOT NULL,
+  puntos INTEGER NOT NULL CHECK (puntos > 0),
+  tipo TEXT NOT NULL CHECK (tipo IN ('porcentaje', 'monto', 'producto')),
+  -- El porcentaje o el monto; NULL en un producto.
+  valor REAL,
+  producto_id INTEGER REFERENCES productos(id),
+  variante_id INTEGER REFERENCES producto_variantes(id),
+  activo INTEGER NOT NULL DEFAULT 1 CHECK (activo IN (0, 1)),
+  creado_en TEXT NOT NULL DEFAULT (datetime('now')),
+  CHECK ((tipo = 'producto') = (producto_id IS NOT NULL)),
+  CHECK (tipo = 'producto' OR valor > 0),
+  UNIQUE (organizacion_id, nombre)
+);
+
+-- Lo que mueve los puntos de un cliente fuera de lo que ganó con sus ventas
+-- (eso sale de ventas.puntos_cada): los canjes y los ajustes a mano. El saldo
+-- se rearma siempre desde las ventas y estas filas, nunca de un contador.
+-- - canje: puntos negativos, siempre de una venta (venta_id); con el premio y
+--   lo que valió en pesos (monto), y en un producto, su renglón
+--   (venta_item_id). Si la venta se anula, el canje deja de contar.
+-- - ajuste: a favor o en contra, con el motivo en descripcion (pasar las
+--   tarjetitas de papel, un regalo). El de a favor vence como los de una
+--   venta de ese día (vence).
+-- descripcion es la foto del premio o del motivo, que no cambia si después
+-- se edita el premio.
+CREATE TABLE IF NOT EXISTS puntos_movimientos (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  organizacion_id INTEGER NOT NULL REFERENCES organizaciones(id),
+  cliente_id INTEGER NOT NULL REFERENCES clientes(id),
+  tipo TEXT NOT NULL CHECK (tipo IN ('canje', 'ajuste')),
+  puntos INTEGER NOT NULL CHECK (puntos <> 0),
+  descripcion TEXT NOT NULL,
+  venta_id INTEGER REFERENCES ventas(id),
+  venta_item_id INTEGER REFERENCES venta_items(id),
+  premio_id INTEGER REFERENCES premios(id),
+  monto REAL,
+  vence TEXT,
+  usuario_id INTEGER REFERENCES usuarios(id),
+  empleado_id INTEGER REFERENCES empleados(id),
+  fecha TEXT NOT NULL DEFAULT (datetime('now')),
+  CHECK (tipo <> 'canje' OR (venta_id IS NOT NULL AND puntos < 0))
 );
 
 -- Un presupuesto es una OFERTA, no una operación: no toca stock, no
@@ -1518,7 +1575,13 @@ CREATE TABLE IF NOT EXISTS organizaciones (
   -- JSON {"por_vencer": "...", "vencida": "...", "cuota": "..."}: solo los
   -- que editó. NULL o una clave que falta = el de partida
   -- (frontend/js/core/mensajes.js).
-  mensajes_whatsapp TEXT
+  mensajes_whatsapp TEXT,
+  -- El programa de puntos (hist. §223): cada cuántos pesos cobrados se suma
+  -- un punto y a cuántos meses vencen. NULL = el programa no está armado (no
+  -- suma nadie); puntos_vencen_meses NULL = no vencen. Cada venta se lleva su
+  -- copia (ventas.puntos_cada): cambiar esto vale para lo que se vende después.
+  puntos_cada REAL,
+  puntos_vencen_meses INTEGER
 );
 
 -- nombre queda separado de usuario (el de login) porque la columna
