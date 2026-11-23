@@ -188,7 +188,7 @@ Módulo `puntos` (Configuración → Funciones, ningún tipo lo trae prendido):
   navegador, en la compu y en el celular.
 - **Falta**: canjear desde Ventas (hoy solo el mostrador), el descuento en
   ciertos productos o categorías y una pieza del Resumen con lo canjeado.
-- Commit en `solla`, sin publicar.
+- Publicado (PR #118).
 
 **Lo que sigue:** el punto 10 si da (el resumen del día por WhatsApp o mail),
 y lo que el usuario vea al probar los puntos en el mostrador.
