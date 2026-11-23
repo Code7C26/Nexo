@@ -76,6 +76,8 @@ function normalizar(ruta, json) {
   if (ruta === '/api/auditoria' && Array.isArray(json)) {
     return json.map((f) => (f.accion === 'login' ? { ...f, fecha: '<hora del login>' } : f));
   }
+  // Cada base genera su clave de notificaciones al pedirla por primera vez.
+  if (ruta === '/api/notificaciones' && json?.clave_publica) return { ...json, clave_publica: '<clave de esta base>' };
   if (ruta === '/api/usuarios' && Array.isArray(json)) {
     return json.map((u) => ('ultimo_acceso' in u ? { ...u, ultimo_acceso: '<hora del login>' } : u));
   }
@@ -233,9 +235,13 @@ async function principal() {
       for (const [rol] of sesiones) {
         const [a, b] = await Promise.all([versiones.ref[rol].get(ruta), versiones.nuevo[rol].get(ruta)]);
         const rutaBase = ruta.split('?')[0];
+        // Lo que no es JSON (una vuelta de Google que termina en la página de
+        // la app) se compara sin los finales de línea: el worktree los saca
+        // con CRLF y el árbol de trabajo puede tenerlos con LF.
+        const texto = (r) => r.texto?.replace(/\r\n/g, '\n');
         const difs = diferencias(
-          { status: a.status, json: normalizar(rutaBase, a.json) ?? a.texto },
-          { status: b.status, json: normalizar(rutaBase, b.json) ?? b.texto }
+          { status: a.status, json: normalizar(rutaBase, a.json) ?? texto(a) },
+          { status: b.status, json: normalizar(rutaBase, b.json) ?? texto(b) }
         );
         comparadas++;
         if (difs.length) {

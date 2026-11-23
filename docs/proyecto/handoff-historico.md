@@ -15436,3 +15436,108 @@ por Meta: queda para el "ARM" de después (ver handoff, "Para más adelante").
   situaciones (gracias por tu compra, puntos), el recordatorio desde la ficha
   del cliente, y la entrada del manual (se completa al final, junto con el
   resto).
+
+## §220 — 22 de noviembre de 2026: el celular, la traducción y la regresión
+
+Pulido, pedido del usuario: "en la versión de celular es como que media tosca,
+hay cosas que se traban, y en la barra lateral no se llega a ver la parte del
+usuario".
+
+- **El pie del cajón (la cuenta) no se alcanzaba en el celular:** la sidebar
+  medía `100vh`, que en el celular es la pantalla sin la barra del navegador,
+  y el pie quedaba debajo. Ahora `100dvh`, el pie despeja la rayita del iPhone
+  (`env(safe-area-inset-bottom)`) y `overscroll-behavior: contain` (el scroll
+  del cajón ya no sigue en la página de atrás al llegar al final).
+- **Barra de abajo** (`core/barra-inferior.js`): rearmaba sus destinos (con
+  `innerText` y `checkVisibility`, que recalculan la pantalla) por cada cambio
+  de clase del menú. Ahora un cambio solo de clases (la sección activa, el
+  cajón abierto) solo mueve lo marcado.
+- **Medición del celular** (Chrome con la CPU 4 veces más lenta, el Resumen de
+  "Baseline SA"): ya cargado, el scroll va a 60 cuadros por segundo (el blur de
+  las barras no es el problema). Lo que traba es **el arranque**: unos 7,5 s de
+  cuadros largos y el Resumen completo a los ~7 s. El primer pedido de datos
+  sale recién a los 5,8 s: antes se lee `index.html` (510 KB, todas las
+  pantallas adentro; ~8.200 elementos y se ven ~2.200), `styles.css`
+  (340 KB) y se evalúan todos los módulos (`app.js` 400 KB, ~0,5 s). Los datos
+  pesan 66 KB y cada pedido tarda ~20 ms: la red no es el problema. Además,
+  `cargarTodo` trae todas las secciones antes que el Resumen, y "Para hoy" y
+  "Primeros pasos" aparecen arriba cuando el esqueleto ya está y lo empujan
+  (CLS 0,80). **Propuesto, no hecho:** cargar primero la pantalla que se mira
+  y el resto después, y sacar del HTML inicial las pantallas que no se usan
+  al entrar (cambia el arranque de toda la app: se planifica antes, §27).
+- **El Resumen primero** (`cargarTodo` en `app.js`): si se entra al Resumen,
+  sus cifras se piden apenas llega el negocio, en la primera ola, y no después
+  de las cinco; "Últimos movimientos" queda cargando hasta que llegan ventas,
+  compras y gastos. Medido con 4G y la CPU 4 veces más lenta: el Resumen
+  completo pasó de ~4 s a ~1,8 s después del primer pedido de datos. Entrando
+  por otra pantalla, y para el empleado (que no tiene Resumen), queda igual.
+- **Traducción:** `npm run i18n` descartaba todo texto que empieza con punto
+  (". Las facturas…", lo que sigue a un `<strong>`). Aparecieron y se
+  tradujeron 10, entre ellos el cartel de Gmail.
+- **`npm run regresion` anda de nuevo:** el login ya no fallaba; las 14
+  diferencias eran del entorno (el worktree sale con CRLF y la página de la
+  app volvía distinta por los finales de línea; cada base genera su clave de
+  notificaciones). El script las ignora: 308 comparaciones, 0 distintas.
+- `npm test`: 523 de 523. Lint e i18n en verde.
+
+## §221 — 22 de noviembre de 2026: el celular, más cómodo (tamaños)
+
+Pedido del usuario: en el celular "las opciones son muy grandes, entonces
+tenés que andar recorriendo todo"; investigar cómo están armadas las apps y
+que lo básico sea cómodo. La investigación y el antes y después están en
+`docs/investigaciones/investigacion-celular.md`, punto 5 (Apple, Nielsen Norman,
+Shopify, Square, Hoober).
+
+- **El Resumen ya no salta al cargar:** la primera vez, controles y tablero
+  esperan invisibles (con su lugar) a "Primeros pasos" y "Para hoy", con un
+  tope de 1,5 s (`dominios/primeros-pasos.js`, clase `esperando-arriba`).
+  CLS de 0,98 a 0, medido con y sin el arreglo.
+- **Todo lo que sigue es solo del celular** (la compu queda igual, revisado):
+  - Primeros pasos plegado: los hechos se esconden y solo el que sigue lleva
+    su explicación y el botón grande.
+  - Las cifras del Resumen más chicas, el período, comparar y Personalizar en
+    un solo renglón deslizable, "Para hoy" con "Ver todo" al lado.
+  - La franja de totales de las listas (`.ledger-strip`) es un renglón de
+    cifras chicas que se desliza; "Exportar CSV" no se muestra.
+  - Las listas (`.panel` con una `.lista-movil`) sin la tarjeta que las
+    envolvía: título y "Filtrar" en un renglón, y las acciones (Categorías,
+    Ofertas…) en una fila de botones deslizable.
+  - "Últimos movimientos", "Mejores clientes" y "Evolución del resultado" en
+    filas de dos líneas (la evolución muestra los últimos 7 períodos).
+  - En el punto de venta, "¿Esta es la compu del mostrador?" va al final.
+- Resumen de 13 a 9,3 pantallas; la primera fila de Ventas de 421 a 207 px,
+  Stock de 400 a 224, Cuentas corrientes de 569 a 254.
+- Falta: el CRM (otra estructura), los formularios y las fichas, y probarlo en
+  un teléfono de verdad. `npm test`: 523 de 523; lint e i18n en verde.
+
+## §222 — 22 de noviembre de 2026: el celular, más cómodo (fichas, CRM y formularios)
+
+Sigue §221: lo que había quedado ("el CRM, los formularios y las fichas").
+Medido igual (390 × 780, Lola Indumentaria de ejemplo sobre una copia de la
+base); la tabla está en `docs/investigaciones/investigacion-celular.md`,
+punto 5.
+
+- **Las fichas, en filas de dos líneas:** 22 tablas de fichas pasan a
+  `lista-movil` con `m-titulo`, `m-valor`, `m-estado`, `m-accion` y
+  `celdaMovil()` (app.js, trabajos.js, abonos.js, socios.js, produccion.js).
+  En la compu no cambia nada; "Venta #468" y "Compra #12" llevan la palabra
+  con `.solo-celular` y en la compu siguen siendo "#468". La lista de precios
+  del proveedor no se tocó (tiene su "Cambiar" en la fila).
+- **Las fichas conservan sus tarjetas:** la regla que saca la tarjeta de las
+  listas (§221) se limita a las vistas que no son `-detalle` y a
+  `.trabajos-pestana` (así llega al CRM y a Trabajos). Lleva `:not([hidden])`:
+  con el `display: grid`, un panel oculto ("Cuotas" de una venta que no es en
+  cuotas) aparecía vacío.
+- **Datos vacíos:** `camposFicha()` marca `.ficha-vacio` y en el celular no se
+  muestran. Las acciones de la ficha van en un renglón (`flex-wrap`).
+- **Formularios:** en el celular, un `<select>` con una sola opción con valor
+  no se muestra (`option:only-child:not([value=""])`: una vacía o con solo
+  "Elegí…" sí, porque falta algo). "Nueva venta" junta Fecha y Condición de
+  pago y "Nuevo gasto" Importe y Cuenta en una `.form-fila` (también en la
+  compu, donde queda bien).
+- **Lista vacía:** el aviso salía corrido 110 px (el `::before` de la
+  etiqueta): ahora va centrado en todas.
+- Nota de prueba: una base vacía es "instalación nueva" y manda al alta; para
+  entrar a un negocio de ejemplo hace falta una copia de la base local.
+- `npm test`: 523 de 523. Lint e i18n en verde. Falta probarlo en un teléfono
+  de verdad.

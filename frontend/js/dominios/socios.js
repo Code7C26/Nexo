@@ -750,11 +750,12 @@ function pintarFicha(s) {
             const saldo = cuotas.reduce((acc, x) => acc + x.saldo, 0);
             return `
     <tr>
-      <td data-label="Período">${esc(fechaAR(c.desde))} al ${esc(fechaAR(hasta))}</td>
+      <td data-label="Período" class="m-titulo">${esc(fechaAR(c.desde))} al ${esc(fechaAR(hasta))}</td>
       <td data-label="Plan">${esc(cuotas.map((x) => x.plan).join(" + "))}<span class="celda-meta">${esc(detalle)}</span></td>
-      <td data-label="Importe" class="align-right mono">${money(importe)}</td>
-      <td data-label="Estado">${badgeCuota({ ...c, saldo })}</td>
-      <td data-label="Venta"><button type="button" class="btn-link" data-venta="${c.venta_id}">#${c.venta_id}</button></td>
+      <td data-label="Importe" class="align-right mono m-valor">${money(importe)}</td>
+      <td data-label="Estado" class="m-estado">${badgeCuota({ ...c, saldo })}</td>
+      ${celdaMovil(cuotas.map((x) => x.plan).join(" + "))}
+      <td data-label="Venta" class="m-accion"><button type="button" class="btn-link" data-venta="${c.venta_id}">#${c.venta_id}</button></td>
     </tr>`;
           })
           .join("");
@@ -766,9 +767,10 @@ function pintarFicha(s) {
           .map(
             (i) => `
     <tr>
-      <td data-label="Cuándo">${esc(fechaHoraAR(i.fecha))}</td>
-      <td data-label="Cómo estaba">${i.al_dia ? badge("status-cobrado", "Al día").html : badge("status-vencido", `Debía ${money(i.deuda)}`).html}</td>
+      <td data-label="Cuándo" class="m-titulo">${esc(fechaHoraAR(i.fecha))}</td>
+      <td data-label="Cómo estaba" class="m-estado">${i.al_dia ? badge("status-cobrado", "Al día").html : badge("status-vencido", `Debía ${money(i.deuda)}`).html}</td>
       <td data-label="Lo atendió">${esc(i.usuario)}</td>
+      ${celdaMovil(i.usuario)}
     </tr>`
           )
           .join("");

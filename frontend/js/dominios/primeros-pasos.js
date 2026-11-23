@@ -238,7 +238,18 @@ async function cargarPrimerosPasos() {
 
 // El Resumen tiene un solo handler de entrada (core/registro.js guarda uno por
 // vista): también pinta "Para hoy" de las consultas (dominios/crm.js).
+// La primera vez, esto y "Para hoy" aparecían arriba cuando el tablero ya
+// estaba y lo empujaban entero para abajo (hist. §220). Hasta que los dos se
+// resuelven, lo de abajo espera invisible (con su lugar), con un tope para
+// que nunca quede escondido.
+const vistaResumen = panel.closest(".view");
+let primeraEntrada = true;
 alEntrarEnVista("dashboard", () => {
-  cargarPrimerosPasos();
-  invocar("pintar:paraHoyResumen");
+  const arriba = Promise.allSettled([cargarPrimerosPasos(), invocar("pintar:paraHoyResumen")]);
+  if (!primeraEntrada) return;
+  primeraEntrada = false;
+  vistaResumen.classList.add("esperando-arriba");
+  Promise.race([arriba, new Promise((listo) => setTimeout(listo, 1500))]).then(() =>
+    vistaResumen.classList.remove("esperando-arriba")
+  );
 });

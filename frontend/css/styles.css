@@ -4062,10 +4062,17 @@ html[data-ejemplo] #btnCompraFactura { display: none; }
   /* Sin hamburguesa en el celular: el cajón lo abre "Más", de la barra de
      abajo (hist. §95). */
 
+  /* 100dvh y no 100vh: en el celular 100vh es la pantalla sin la barra del
+     navegador, y el pie (la cuenta) quedaba debajo de ella, sin poder
+     llegarle. El pie despeja la rayita de inicio del iPhone, y el scroll del
+     cajón no sigue en la página de atrás al llegar al final. */
   .sidebar {
     position: fixed;
     inset: 0 auto 0 0;
     width: min(300px, 84vw);
+    height: 100dvh;
+    padding-bottom: calc(var(--sp-4) + env(safe-area-inset-bottom));
+    overscroll-behavior: contain;
     z-index: 55;
     transform: translateX(-100%);
     transition: transform var(--dur-3) var(--ease-out);
@@ -4155,19 +4162,79 @@ html[data-ejemplo] #btnCompraFactura { display: none; }
      formularios a pantalla completa, hist. §97). */
   .sidebar:not(.is-open) { box-shadow: none; }
 
-  /* De a dos tarjetas por renglón; la cifra que concluye ocupa el
-     renglón entero. */
+  /* Los totales, en un solo renglón de cifras chicas que se desliza de
+     costado si no entran, como las cifras del inicio de Shopify
+     (investigacion-celular.md, punto 5). Antes eran tarjetas de a dos por
+     renglón y empujaban la lista media pantalla para abajo. El borde
+     derecho se esfuma solo en el margen, donde asoma lo que sigue. */
   .ledger-strip {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    display: flex;
     gap: var(--sp-2);
+    margin: 0 -16px var(--sp-4);
+    padding: 0 16px;
+    overflow-x: auto;
+    scrollbar-width: none;
+    -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 16px), transparent);
+    mask-image: linear-gradient(to right, #000 calc(100% - 16px), transparent);
   }
+  .ledger-strip::-webkit-scrollbar { display: none; }
 
-  .ledger-item:last-child:nth-child(odd of .ledger-item),
-  .ledger-strip:has(.ledger-item-total) .ledger-item { grid-column: 1 / -1; }
+  .ledger-strip > .ledger-item { flex: 1 0 auto; gap: 2px; padding: var(--sp-2) var(--sp-3); }
 
   .ledger-strip:has(+ .ledger-strip) { margin-bottom: var(--sp-2); }
 
-  .ledger-value { font-size: 20px; }
+  .ledger-value { font-size: 17px; white-space: nowrap; overflow-wrap: normal; }
+  .ledger-strip .ledger-item-total .ledger-value { font-size: 20px; }
+  .ledger-strip .ledger-icono { width: 22px; height: 22px; }
+  .ledger-strip .ledger-icono .ico { width: 13px; height: 13px; }
+
+  /* Exportar a una planilla es tarea de la compu. */
+  [id^="btnExportar"] { display: none; }
+
+  /* "¿Esta es la compu del mostrador?" casi nunca es el teléfono: va al
+     final del punto de venta, no antes de abrir la caja. */
+  .view[data-view="pos"]:not([hidden]) { display: flex; flex-direction: column; }
+  #posCompu { order: 1; }
+
+  /* Las listas sin la tarjeta que las envuelve: margen y borde dobles que
+     comían ancho y alto, como una lista nativa. También las que van en una
+     pestaña (el CRM, Trabajos). Las fichas conservan sus tarjetas: separan
+     una parte de la otra. Con :not([hidden]), un panel oculto (las cuotas
+     de una venta que no es en cuotas) no reaparece por el display. */
+  :is(.view:not([data-view$="-detalle"]), .trabajos-pestana) > .panel:not([hidden]):has(> .tabla-scroll > .lista-movil) {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: var(--sp-2) var(--sp-3);
+    padding: 0;
+    background: none;
+    border: 0;
+    box-shadow: none;
+  }
+  :is(.view:not([data-view$="-detalle"]), .trabajos-pestana) > .panel:not([hidden]):has(> .tabla-scroll > .lista-movil) > * { grid-column: 1 / -1; margin-top: 0; margin-bottom: 0; }
+  /* Arriba, el título y "Filtrar" en un renglón (con filtros puestos, sus
+     chips vuelven a ocupar el ancho); abajo, las acciones de la lista
+     (Categorías, Ofertas…) en un renglón de botones que se desliza. */
+  :is(.view:not([data-view$="-detalle"]), .trabajos-pestana) > .panel:not([hidden]):has(> .tabla-scroll > .lista-movil) > .panel-head { display: contents; }
+  :is(.view:not([data-view$="-detalle"]), .trabajos-pestana) > .panel:not([hidden]):has(> .tabla-scroll > .lista-movil) > .panel-head > * { grid-column: 1 / -1; }
+  :is(.view:not([data-view$="-detalle"]), .trabajos-pestana) > .panel:not([hidden]):has(> .tabla-scroll > .lista-movil) > .panel-head > h2 { grid-column: 1; grid-row: 1; }
+  :is(.view:not([data-view$="-detalle"]), .trabajos-pestana) > .panel:not([hidden]):has(> .tabla-scroll > .lista-movil) > .filtros:not(:has(> :nth-child(2))) { grid-column: 2; grid-row: 1; }
+  :is(.view:not([data-view$="-detalle"]), .trabajos-pestana) > .panel:not([hidden]):has(> .tabla-scroll > .lista-movil) > .panel-head > .panel-acciones {
+    grid-column: 1 / -1;
+    flex-wrap: nowrap;
+    margin: 0 -16px;
+    padding: 0 16px;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  :is(.view:not([data-view$="-detalle"]), .trabajos-pestana) > .panel:not([hidden]):has(> .tabla-scroll > .lista-movil) > .panel-head > .panel-acciones::-webkit-scrollbar { display: none; }
+  :is(.view:not([data-view$="-detalle"]), .trabajos-pestana) > .panel:not([hidden]):has(> .tabla-scroll > .lista-movil) > .panel-head > .panel-acciones > .btn:not(.btn-nuevo) {
+    flex: none;
+    min-height: 40px;
+    padding-inline: var(--sp-3);
+    font-size: var(--txt-sm);
+  }
+  :is(.view:not([data-view$="-detalle"]), .trabajos-pestana) > .panel:not([hidden]):has(> .tabla-scroll > .lista-movil) > .tabla-scroll { margin-top: var(--sp-2); }
 
   .panel-head {
     flex-direction: column;
@@ -4188,10 +4255,28 @@ html[data-ejemplo] #btnCompraFactura { display: none; }
   .ficha-datos { grid-template-columns: 1fr 1fr; }
   .ficha-datos dd { overflow-wrap: anywhere; }
 
+  /* Las acciones, en un renglón parejo (Ticket, Devolver y Editar entran
+     juntos); si no entran, el resto baja y se estira. */
   [data-view$="-detalle"] .panel-acciones {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    display: flex;
+    flex-wrap: wrap;
   }
+  [data-view$="-detalle"] .panel-acciones > .btn {
+    flex: 1 1 auto;
+    min-height: 44px;
+    padding-inline: var(--sp-3);
+  }
+
+  /* Una lista para elegir con una sola opción (un solo depósito, una sola
+     lista de precios) no tiene nada que elegir: en el celular no se
+     muestra, y lo que vale se manda igual. Una vacía o con solo "Elegí…"
+     sí se muestra: ahí falta algo. */
+  .modal .form > label:has(> select > option:only-child:not([value=""])) { display: none; }
+
+  /* Lo que no está cargado no se muestra, como en los contactos del
+     teléfono: "Email —" o "Notas —" ocupaban media ficha. Se carga con
+     Editar, y en la compu se ve todo. */
+  .ficha-datos > .ficha-vacio { display: none; }
 
   .ledger-table, .ledger-table tbody, .ledger-table tr, .ledger-table td {
     display: block;
@@ -4233,6 +4318,11 @@ html[data-ejemplo] #btnCompraFactura { display: none; }
   .ledger-table td.col-sel {
     padding-bottom: 8px;
   }
+
+  /* Lo mismo en el aviso de lista vacía, que no tiene etiqueta: el hueco
+     corría la primera línea a la derecha. Va centrado, como en la compu. */
+  .ledger-table td.tabla-vacia::before { display: none; }
+  .ledger-table td.tabla-vacia { padding: var(--sp-6) var(--sp-3); text-align: center !important; }
 
   /* .cc-detalle es una <table> propia anidada dentro de un <td colspan>
      de .ledger-table (detalle de cuenta corriente al expandir una fila):
@@ -7658,10 +7748,19 @@ html[data-ejemplo] #btnCompraFactura { display: none; }
 
 .primeros-paso .btn { flex: none; }
 
+/* En el celular, plegada (investigacion-celular.md, punto 5): los pasos hechos
+   se esconden (queda la cuenta de arriba), y solo el que sigue muestra su
+   explicación y su botón grande; los demás son un renglón con "Ir". */
 @media (max-width: 860px) {
-  .primeros-pasos-head { flex-direction: column; }
-  .primeros-paso { flex-wrap: wrap; }
-  .primeros-paso .btn { width: 100%; justify-content: center; min-height: 44px; }
+  .primeros-pasos-head { align-items: baseline; }
+  .primeros-pasos-head .btn-link { flex: none; font-size: var(--txt-sm); }
+  .primeros-pasos-barra { margin: var(--sp-3) 0; }
+  .primeros-paso.es-hecho { display: none; }
+  .primeros-paso { padding: var(--sp-2) var(--sp-3); }
+  .primeros-paso:not(.es-siguiente) .primeros-paso-texto span { display: none; }
+  .primeros-paso .btn { min-height: 44px; }
+  .primeros-paso.es-siguiente { flex-wrap: wrap; padding: var(--sp-3); }
+  .primeros-paso.es-siguiente .btn { width: 100%; justify-content: center; }
 }
 
 /* Agenda de trabajos (dominios/trabajos.js, hist. §80): la semana con sus
@@ -9924,6 +10023,9 @@ a.segmento {
   /* Una fila oculta sigue oculta: el detalle de Cuentas corrientes se veía
      abierto en el celular porque la regla de las filas le ganaba a [hidden]. */
   .ledger-table.lista-movil tbody tr[hidden] { display: none; }
+  /* La evolución del resultado: los últimos 7 períodos (el gráfico de arriba
+     muestra todos). */
+  .ledger-table.lista-movil #evolucionBody > tr:nth-last-child(n + 8) { display: none; }
 
   /* La selección múltiple, el "Seleccionar todo" y lo que se edita en la
      fila (el precio de Productos) quedan para la ficha y la compu, como en
@@ -10429,6 +10531,10 @@ a.asistente-guia-whatsapp:hover { border-color: var(--line-strong); }
 .tablero:not(.is-listo) > .pieza { opacity: 0; animation: tablero-aparecer 0s 1.5s forwards; }
 @keyframes tablero-aparecer { to { opacity: 1; } }
 
+/* La primera entrada al Resumen: lo de abajo espera a "Primeros pasos" y
+   "Para hoy" para no saltar cuando aparecen (dominios/primeros-pasos.js). */
+.esperando-arriba :is(#resumenControles, #resumenRangoNota, #tablero) { visibility: hidden; }
+
 .tablero {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
@@ -10497,14 +10603,34 @@ a.asistente-guia-whatsapp:hover { border-color: var(--line-strong); }
 
 /* En el celular los períodos se deslizan de costado en vez de partirse
    en dos renglones. */
+/* Y todo en un solo renglón (investigacion-celular.md, punto 5): el período,
+   contra qué se compara y "Personalizar", que es lo menos usado, al final.
+   El borde derecho se esfuma para avisar que sigue. */
 @container resumen (max-width: 640px) {
-  .resumen-barra > #resumenPeriodo {
+  .resumen-barra {
     flex-wrap: nowrap;
-    max-width: 100%;
     overflow-x: auto;
     scrollbar-width: none;
+    -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 32px), transparent);
+    mask-image: linear-gradient(to right, #000 calc(100% - 32px), transparent);
+    padding-right: var(--sp-6);
   }
-  .resumen-acciones { margin-left: 0; }
+  .resumen-barra::-webkit-scrollbar { display: none; }
+  .resumen-barra > #resumenPeriodo,
+  .resumen-acciones { flex: none; flex-wrap: nowrap; margin-left: 0; }
+  .resumen-acciones .segmentos { flex-wrap: nowrap; }
+  .resumen-acciones .btn { min-height: 38px; white-space: nowrap; }
+  .resumen-rango { margin-bottom: var(--sp-3); }
+
+  /* Las cifras miden lo que su número: menos aire y la línea chica más baja.
+     Con .kpis adelante: las reglas de .kpi están más abajo en el archivo. */
+  .kpis > .kpi { gap: 2px; padding: var(--sp-3) var(--sp-3) 0; }
+  .kpis > .kpi > :last-child:not(.kpi-linea) { margin-bottom: var(--sp-3); }
+  .kpis > .kpi > .kpi-linea { height: 22px; margin: auto calc(-1 * var(--sp-3)) 0; padding-top: var(--sp-1); }
+  .kpis > .kpi > .kpi-linea:empty { height: var(--sp-3); }
+  .kpis > .kpi .kpi-titulo { margin-bottom: 0; }
+
+  .para-hoy-resumen .panel-head { flex-direction: row; align-items: center; margin-bottom: var(--sp-2); }
 }
 
 /* ---------- Las tarjetas de cifras ---------- */

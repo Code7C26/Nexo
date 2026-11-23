@@ -72,7 +72,8 @@ export function pareceTexto(texto) {
   const sin = texto.replace(/\{\d+\}/g, ' ').replace(/\s+/g, ' ').trim();
   if (sin.replace(LETRAS, '').length < 2) return false;
   if (SQL.test(sin)) return false;
-  if (/^(https?:|mailto:|tel:|data:|blob:|wss?:|\/|#|\.|\[|@|\$|&)/.test(sin)) return false;
+  // El punto solo, no: ". Las facturas…" es lo que sigue a un <strong>.
+  if (/^(https?:|mailto:|tel:|data:|blob:|wss?:|\/|#|\.(?! [A-ZÁÉÍÓÚÑ¿¡])|\[|@|\$|&)/.test(sin)) return false;
   if (/[{}<>=\\|]|=>|\(\)|^\w+\(|;\S/.test(sin)) return false;
   // Un solo token sin espacios: id, clase, clave, nombre de archivo,
   // constante o camelCase. Pasan las palabras que arrancan en mayúscula

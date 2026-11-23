@@ -44,6 +44,13 @@ let firma = "";
 
 function pintar() {
   if (!celular.matches) return;
+  armar();
+  marcar();
+}
+
+// Mide el menú (innerText y checkVisibility recalculan la pantalla): solo
+// cuando pudo cambiar qué secciones hay.
+function armar() {
   const items = PRIORIDAD.map((v) => sidebar.querySelector(`.nav-item[data-view="${v}"]`))
     .filter((item) => item && visible(item))
     .slice(0, LUGARES);
@@ -70,7 +77,9 @@ function pintar() {
         ${icono("menu")}<span>Más</span>
       </button>`;
   }
+}
 
+function marcar() {
   const abierto = sidebar.classList.contains("is-open");
   const activo = abierto ? null : sidebar.querySelector(".nav-item.is-active")?.dataset.view;
   for (const enlace of barra.querySelectorAll("a.barra-inferior-item")) {
@@ -111,25 +120,32 @@ document.addEventListener(
   true
 );
 
-// Cambian los destinos con los módulos, el rol, el nombre del catálogo y la
-// sección activa (todo eso vive en el menú o en <html>).
-let pendiente = false;
-function repintar() {
-  if (pendiente) return;
-  pendiente = true;
+// Cambian los destinos con los módulos, el rol y el nombre del catálogo (todo
+// eso vive en el menú o en <html>). Un cambio de clase en el menú es la
+// sección activa o el cajón abierto: solo se mueve lo marcado, sin medir.
+let pendiente = null;
+function repintar(soloMarcas) {
+  if (pendiente) {
+    if (!soloMarcas) pendiente.armar = true;
+    return;
+  }
+  pendiente = { armar: !soloMarcas };
   requestAnimationFrame(() => {
-    pendiente = false;
-    pintar();
+    const { armar: hayQueArmar } = pendiente;
+    pendiente = null;
+    if (!celular.matches) return;
+    if (hayQueArmar) armar();
+    marcar();
   });
 }
-new MutationObserver(repintar).observe(sidebar, {
+new MutationObserver((cambios) => repintar(cambios.every((c) => c.type === "attributes"))).observe(sidebar, {
   subtree: true,
   childList: true,
   characterData: true,
   attributes: true,
   attributeFilter: ["class"]
 });
-new MutationObserver(repintar).observe(document.documentElement, {
+new MutationObserver(() => repintar(false)).observe(document.documentElement, {
   attributes: true,
   attributeFilter: ["data-modulos", "data-rol"]
 });

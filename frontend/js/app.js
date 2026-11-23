@@ -247,13 +247,14 @@ function renderTablaEvolucion(serie) {
       const margen = p.ventas > 0 ? porcentaje((p.ganancia_bruta / p.ventas) * 100) : "—";
       return `
     <tr>
-      <td data-label="Período">${esc(p.etiqueta)}${p.parcial ? " (parcial)" : ""}</td>
+      <td data-label="Período" class="m-titulo">${esc(p.etiqueta)}${p.parcial ? " (parcial)" : ""}</td>
       <td data-label="Ventas" class="align-right mono">${money(p.ventas)}</td>
       <td data-label="Costo" class="align-right mono">${money(p.costo_mercaderia)}</td>
       <td data-label="Ganancia bruta" class="align-right mono">${money(p.ganancia_bruta)}</td>
       <td data-label="Margen" class="align-right mono">${margen}</td>
       <td data-label="Gastos" class="align-right mono">${money(p.gastos_operativos)}</td>
-      <td data-label="Resultado" class="align-right mono ${p.resultado < 0 ? "saldo-negativo" : ""}">${money(p.resultado)}</td>
+      <td data-label="Resultado" class="align-right mono m-valor ${p.resultado < 0 ? "saldo-negativo" : ""}">${money(p.resultado)}</td>
+      ${celdaMovil(["Ventas", money(p.ventas)], ["margen", margen])}
     </tr>`;
     })
     .join("");
@@ -519,9 +520,15 @@ function renderTendencia(serie) {
 
 // Las tres operaciones que mueven plata, juntas y ordenadas por fecha. Se
 // arma con los cachés que ya tienen las otras pantallas, así que no
-// necesita un fetch propio.
+// necesita un fetch propio. Al entrar al Resumen sus cifras salen antes que
+// esos cachés (cargarTodo): hasta que llegan, la tabla queda cargando.
+let movimientosListos = false;
 function renderUltimosMovimientos(rango = {}) {
   const body = document.getElementById("movimientosBody");
+  if (!movimientosListos) {
+    tablaCargando("movimientosBody", 4);
+    return;
+  }
 
   const dentroDelRango = (fecha) =>
     (!rango.desde || fecha >= rango.desde) && (!rango.hasta || fecha <= rango.hasta);
@@ -561,10 +568,11 @@ function renderUltimosMovimientos(rango = {}) {
     <tr>
       <td data-label="Fecha">${esc(fechaAR(m.fecha))}</td>
       <td data-label="Tipo">${esc(m.tipo)}</td>
-      <td data-label="Detalle" class="celda-wrap">${esc(m.detalle)}</td>
-      <td data-label="Importe" class="align-right mono ${m.signo < 0 ? "saldo-negativo" : ""}">${
+      <td data-label="Detalle" class="celda-wrap m-titulo">${esc(m.detalle)}</td>
+      <td data-label="Importe" class="align-right mono m-valor ${m.signo < 0 ? "saldo-negativo" : ""}">${
         m.signo < 0 ? "-" : "+"
       }${money(m.importe)}</td>
+      ${celdaMovil(m.tipo, fechaAR(m.fecha))}
     </tr>`
     )
     .join("");
@@ -687,12 +695,13 @@ function renderReporteClientes(lista) {
     .map(
       (c) => `
     <tr>
-      <td data-label="Cliente"><button type="button" class="btn-link reporte-cliente-ficha" data-id="${c.id}">${esc(c.nombre)}</button></td>
+      <td data-label="Cliente" class="m-titulo"><button type="button" class="btn-link reporte-cliente-ficha" data-id="${c.id}">${esc(c.nombre)}</button></td>
       <td data-label="Ventas" class="align-right mono">${numero(c.cantidad_ventas)}</td>
-      <td data-label="Total" class="align-right mono">${money(c.ventas)}</td>
+      <td data-label="Total" class="align-right mono m-valor">${money(c.ventas)}</td>
       <td data-label="Ticket promedio" class="align-right mono">${money(c.ticket_promedio)}</td>
       <td data-label="Ganancia" class="align-right mono ${c.ganancia < 0 ? "saldo-negativo" : ""}">${money(c.ganancia)}</td>
       <td data-label="Última compra">${esc(fechaAR(c.ultima_compra) || "—")}</td>
+      ${celdaMovil(c.cantidad_ventas === 1 ? t("1 venta") : formatear("{0} ventas", numero(c.cantidad_ventas)), ["ganancia", money(c.ganancia)], ["última", fechaAR(c.ultima_compra)])}
     </tr>`
     )
     .join("");
@@ -1389,10 +1398,11 @@ async function abrirFichaFactura(id) {
       .map(
         (i) => `
       <tr>
-        <td data-label="Producto">${esc(i.producto)}</td>
+        <td data-label="Producto" class="m-titulo">${esc(i.producto)}</td>
         <td data-label="Cantidad" class="align-right mono">${numero(i.cantidad)}</td>
         <td data-label="Precio unit." class="align-right mono">${money(i.precio_unitario)}</td>
-        <td data-label="Subtotal" class="align-right mono">${money(i.subtotal)}</td>
+        <td data-label="Subtotal" class="align-right mono m-valor">${money(i.subtotal)}</td>
+      ${celdaMovil(`${numero(i.cantidad)} × ${money(i.precio_unitario)}`)}
       </tr>`
       )
       .join("");
@@ -2572,15 +2582,16 @@ async function abrirFichaProducto(id) {
       .map(
         (v) => `
       <tr>
-        <td data-label="Combinación">${esc(v.combinacion)}</td>
+        <td data-label="Combinación" class="m-titulo">${esc(v.combinacion)}</td>
         <td data-label="SKU">${esc(v.sku || "—")}</td>
         <td data-label="Código de barras" class="mono">${esc(v.codigo_barras || "—")}</td>
         <td data-label="Costo" class="align-right col-admin mono">${money(v.precio_costo)}</td>
-        <td data-label="Precio" class="align-right mono">${
+        <td data-label="Precio" class="align-right mono m-valor">${
           v.precio_venta > 0 ? money(v.precio_venta) : '<span class="precio-sin-configurar">Sin precio</span>'
         }</td>
         <td data-label="Stock" class="align-right mono">${numero(v.stock)}</td>
         <td data-label="Activa">${v.activo ? "Sí" : "No"}</td>
+        ${celdaMovil(["stock", numero(v.stock)], v.sku)}
       </tr>`
       )
       .join("");
@@ -2598,10 +2609,11 @@ async function abrirFichaProducto(id) {
             return `
         <tr>
           <td data-label="Fecha">${esc(fechaAR(m.fecha))}</td>
-          <td data-label="Origen">${origen}</td>
-          <td data-label="Cantidad" class="align-right mono">${signo}${numero(m.delta)}</td>
+          <td data-label="Origen" class="m-titulo">${origen}</td>
+          <td data-label="Cantidad" class="align-right mono m-valor">${signo}${numero(m.delta)}</td>
           <td data-label="Stock resultante" class="align-right mono">${numero(m.stock_posterior)}</td>
           <td data-label="Nota">${esc(m.nota || "—")}</td>
+          ${celdaMovil(fechaAR(m.fecha), ["quedan", numero(m.stock_posterior)], m.nota)}
         </tr>`;
           })
           .join("");
@@ -4442,10 +4454,11 @@ async function abrirFichaPresupuesto(id) {
     .map(
       (i) => `
     <tr>
-      <td data-label="Producto">${esc(i.producto)}</td>
+      <td data-label="Producto" class="m-titulo">${esc(i.producto)}</td>
       <td data-label="Cantidad" class="align-right mono">${numero(i.cantidad)}</td>
       <td data-label="Precio unit." class="align-right mono">${money(i.precio_unitario)}</td>
-      <td data-label="Subtotal" class="align-right mono">${money(i.subtotal)}</td>
+      <td data-label="Subtotal" class="align-right mono m-valor">${money(i.subtotal)}</td>
+      ${celdaMovil(`${numero(i.cantidad)} × ${money(i.precio_unitario)}`)}
     </tr>`
     )
     .join("");
@@ -5265,18 +5278,23 @@ async function abrirFichaVenta(id) {
     .map(
       (i) => `
         <tr>
-          <td data-label="Producto">${esc(i.producto)}${i.oferta ? `<span class="oferta-etiqueta">${esc(i.oferta)}</span>` : ""}${
+          <td data-label="Producto" class="m-titulo">${esc(i.producto)}${i.oferta ? `<span class="oferta-etiqueta">${esc(i.oferta)}</span>` : ""}${
             i.plan_cuotas ? `<span class="oferta-etiqueta">${esc(formatear("En {0} cuotas", i.plan_cuotas))}</span>` : ""
           }</td>
           <td data-label="Cantidad" class="align-right mono">${numero(i.cantidad)}</td>
           <td data-label="Precio unit." class="align-right mono">${
             i.oferta_id ? `<s class="precio-tachado">${money(i.precio_lista)}</s> ` : ""
           }${money(i.precio_unitario)}</td>
-          <td data-label="Subtotal" class="align-right mono">${money(i.subtotal)}</td>
+          <td data-label="Subtotal" class="align-right mono m-valor">${money(i.subtotal)}</td>
           <td data-label="Devuelto" class="align-right mono">${
             i.cantidad_devuelta > 0 ? numero(i.cantidad_devuelta) : "—"
           }</td>
           <td data-label="Ganancia" class="align-right mono col-admin">${money(i.ganancia)}</td>
+          ${celdaMovil(
+            `${numero(i.cantidad)} × ${money(i.precio_unitario)}`,
+            ["devolvió", i.cantidad_devuelta > 0 ? numero(i.cantidad_devuelta) : null],
+            ["ganancia", esAdmin() ? money(i.ganancia) : null]
+          )}
         </tr>`
     )
     .join("");
@@ -5294,10 +5312,11 @@ async function abrirFichaVenta(id) {
             : "";
       return `
         <tr>
-          <td data-label="Cuota">${esc(formatear("{0} de {1}", c.numero, venta.cuotas.length))} ${estado}</td>
+          <td data-label="Cuota" class="m-titulo">${esc(formatear("{0} de {1}", c.numero, venta.cuotas.length))} ${estado}</td>
           <td data-label="Vence">${esc(fechaAR(c.vencimiento))}</td>
-          <td data-label="Importe" class="align-right mono">${money(c.importe)}</td>
+          <td data-label="Importe" class="align-right mono m-valor">${money(c.importe)}</td>
           <td data-label="Falta" class="align-right mono">${c.pendiente > 0.005 ? money(c.pendiente) : "—"}</td>
+          ${celdaMovil(["vence", fechaAR(c.vencimiento)], ["falta", c.pendiente > 0.005 ? money(c.pendiente) : null])}
         </tr>`;
     })
     .join("");
@@ -5308,9 +5327,10 @@ async function abrirFichaVenta(id) {
     .map(
       (c) => `
         <tr>
-          <td data-label="Qué">${esc(c.nombre)}</td>
+          <td data-label="Qué" class="m-titulo">${esc(c.nombre)}</td>
           <td data-label="Cantidad" class="align-right mono">${esc(cantidad(c.cantidad, c.unidad))}</td>
-          <td data-label="Costo" class="align-right mono col-admin">${esAdmin() ? money(c.cantidad * c.costo_unitario_historico) : ""}</td>
+          <td data-label="Costo" class="align-right mono col-admin m-valor">${esAdmin() ? money(c.cantidad * c.costo_unitario_historico) : ""}</td>
+          ${celdaMovil(["cantidad", cantidad(c.cantidad, c.unidad)])}
         </tr>`
     )
     .join("");
@@ -5327,17 +5347,18 @@ async function abrirFichaVenta(id) {
     .map(
       (d) => `
     <tr>
-      <td data-label="N°" class="mono">#${d.id}</td>
+      <td data-label="N°" class="mono m-titulo">#${d.id}</td>
       <td data-label="Productos" class="celda-wrap">${esc(d.items_resumen || "—")}</td>
-      <td data-label="Total" class="align-right mono">${money(d.total)}</td>
-      <td data-label="Estado">${
+      <td data-label="Total" class="align-right mono m-valor">${money(d.total)}</td>
+      <td data-label="Estado" class="m-estado">${
         d.estado === "anulada"
           ? `<span class="status status-vencido">Anulada</span>`
           : `<span class="status ${d.reintegrada ? "status-cobrado" : "status-pendiente"}">${
               d.reintegrada ? "Reintegrada" : "Crédito a favor"
             }</span>`
       }</td>
-      <td data-label=""><button type="button" class="btn-link btn-ver-devolucion" data-id="${d.id}">Ver</button></td>
+      <td data-label="" class="m-accion"><button type="button" class="btn-link btn-ver-devolucion" data-id="${d.id}">Ver</button></td>
+      ${celdaMovil(d.items_resumen)}
     </tr>`
     )
     .join("");
@@ -5968,10 +5989,11 @@ async function abrirFichaDevolucion(id) {
     .map(
       (i) => `
     <tr>
-      <td data-label="Producto">${esc(i.producto)}</td>
+      <td data-label="Producto" class="m-titulo">${esc(i.producto)}</td>
       <td data-label="Cantidad" class="align-right mono">${numero(i.cantidad)}</td>
       <td data-label="Precio unit." class="align-right mono">${money(i.precio_unitario)}</td>
-      <td data-label="Subtotal" class="align-right mono">${money(i.subtotal)}</td>
+      <td data-label="Subtotal" class="align-right mono m-valor">${money(i.subtotal)}</td>
+      ${celdaMovil(`${numero(i.cantidad)} × ${money(i.precio_unitario)}`, i.vuelve_stock ? null : t("no vuelve al stock"))}
       <td data-label="Vuelve al stock">${i.vuelve_stock ? "Sí" : "No (pérdida)"}</td>
     </tr>`
     )
@@ -6791,11 +6813,16 @@ async function abrirFichaCompra(id) {
     .map(
       (i) => `
         <tr>
-          <td data-label="Producto">${esc(i.producto)}</td>
+          <td data-label="Producto" class="m-titulo">${esc(i.producto)}</td>
           <td data-label="Cantidad" class="align-right mono">${numero(i.cantidad)}</td>
           <td data-label="Precio unit." class="align-right mono">${money(i.precio_unitario)}</td>
           <td data-label="Costo real (con envío)" class="align-right mono">${money(i.costo_real_unitario)}</td>
-          <td data-label="Subtotal" class="align-right mono">${money(i.subtotal)}</td>
+          <td data-label="Subtotal" class="align-right mono m-valor">${money(i.subtotal)}</td>
+      ${celdaMovil(
+            `${numero(i.cantidad)} × ${money(i.precio_unitario)}`,
+            ["costo real", money(i.costo_real_unitario)],
+            ["devolvió", i.cantidad_devuelta > 0 ? numero(i.cantidad_devuelta) : null]
+          )}
           <td data-label="Devuelto" class="align-right mono">${
             i.cantidad_devuelta > 0 ? numero(i.cantidad_devuelta) : "—"
           }</td>
@@ -6813,17 +6840,18 @@ async function abrirFichaCompra(id) {
     .map(
       (d) => `
     <tr>
-      <td data-label="N°" class="mono">#${d.id}</td>
+      <td data-label="N°" class="mono m-titulo">#${d.id}</td>
       <td data-label="Productos" class="celda-wrap">${esc(d.items_resumen || "—")}</td>
-      <td data-label="Total" class="align-right mono">${money(d.total)}</td>
-      <td data-label="Estado">${
+      <td data-label="Total" class="align-right mono m-valor">${money(d.total)}</td>
+      <td data-label="Estado" class="m-estado">${
         d.estado === "anulada"
           ? `<span class="status status-vencido">Anulada</span>`
           : `<span class="status ${d.reintegrada ? "status-cobrado" : "status-pendiente"}">${
               d.reintegrada ? "Reintegrada" : "Crédito a favor"
             }</span>`
       }</td>
-      <td data-label=""><button type="button" class="btn-link btn-ver-devolucion-proveedor" data-id="${d.id}">Ver</button></td>
+      <td data-label="" class="m-accion"><button type="button" class="btn-link btn-ver-devolucion-proveedor" data-id="${d.id}">Ver</button></td>
+      ${celdaMovil(d.items_resumen)}
     </tr>`
     )
     .join("");
@@ -7074,10 +7102,11 @@ async function abrirFichaDevolucionProveedor(id) {
     .map(
       (i) => `
     <tr>
-      <td data-label="Producto">${esc(i.producto)}</td>
+      <td data-label="Producto" class="m-titulo">${esc(i.producto)}</td>
       <td data-label="Cantidad" class="align-right mono">${numero(i.cantidad)}</td>
       <td data-label="Precio unit." class="align-right mono">${money(i.precio_unitario)}</td>
-      <td data-label="Subtotal" class="align-right mono">${money(i.subtotal)}</td>
+      <td data-label="Subtotal" class="align-right mono m-valor">${money(i.subtotal)}</td>
+      ${celdaMovil(`${numero(i.cantidad)} × ${money(i.precio_unitario)}`)}
     </tr>`
     )
     .join("");
@@ -7396,10 +7425,11 @@ async function abrirFichaCliente(id) {
             const anulada = v.estado === "anulada";
             return `
         <tr class="${anulada ? "fila-anulada" : ""}">
-          <td data-label="N°" class="mono">#${v.id}</td>
+          <td data-label="N°" class="mono m-titulo"><span class="solo-celular">${t("Venta")} </span>#${v.id}</td>
           <td data-label="Fecha">${esc(fechaAR(v.fecha))}</td>
-          <td data-label="Total" class="align-right mono">${money(v.total)}</td>
-          <td data-label="Cobro"><span class="status ${
+          <td data-label="Total" class="align-right mono m-valor">${money(v.total)}</td>
+          ${celdaMovil(fechaAR(v.fecha))}
+          <td data-label="Cobro" class="m-estado"><span class="status ${
             anulada ? "status-vencido" : ESTADO_COBRO_CLASE[v.estado_cobro]
           }">${anulada ? "Anulada" : ESTADO_COBRO_LABEL[v.estado_cobro]}</span></td>
         </tr>`;
@@ -7788,10 +7818,11 @@ async function abrirFichaProveedor(id) {
               : ESTADO_PAGO_CLASE[c.estado_pago];
             return `
         <tr class="${anulada ? "fila-anulada" : ""}">
-          <td data-label="N°" class="mono">#${c.id}</td>
+          <td data-label="N°" class="mono m-titulo"><span class="solo-celular">${t("Compra")} </span>#${c.id}</td>
           <td data-label="Fecha">${esc(fechaAR(c.fecha))}</td>
-          <td data-label="Total" class="align-right mono">${money(c.total)}</td>
-          <td data-label="Pago"><span class="status ${clase}">${etiqueta}</span></td>
+          <td data-label="Total" class="align-right mono m-valor">${money(c.total)}</td>
+          ${celdaMovil(fechaAR(c.fecha))}
+          <td data-label="Pago" class="m-estado"><span class="status ${clase}">${etiqueta}</span></td>
         </tr>`;
           })
           .join("");
@@ -7806,9 +7837,10 @@ async function abrirFichaProveedor(id) {
         <tr>
           <td data-label="Fecha">${esc(fechaAR(p.fecha))}</td>
           <td data-label="Compra" class="mono">#${p.compra_id}</td>
-          <td data-label="Cuenta">${esc(p.cuenta)}</td>
-          <td data-label="Importe" class="align-right mono">${money(p.importe)}</td>
+          <td data-label="Cuenta" class="m-titulo">${esc(p.cuenta)}</td>
+          <td data-label="Importe" class="align-right mono m-valor">${money(p.importe)}</td>
           <td data-label="Nota">${esc(p.nota || "—")}</td>
+          ${celdaMovil(fechaAR(p.fecha), formatear("compra #{0}", p.compra_id), p.nota)}
         </tr>`
           )
           .join("");
@@ -9465,13 +9497,34 @@ registrar("cargar:reporteStock", cargarReporteStock);
 // Solo un error inesperado (un bug al pintar) corta la cadena.
 // La compu de la caja (hist. §199) solo usa el mostrador: no pide lo demás
 // (el backend se lo negaría), solo el negocio para el membrete del ticket.
+// Si se entra al Resumen, es lo que se está mirando: sus cifras salen apenas
+// llega el negocio (sus piezas dependen de los módulos y de la condición
+// frente al IVA), sin esperar las otras olas; al final solo se completa la
+// tabla de movimientos con los cachés (hist. §220).
 function cargarTodo() {
   if (enCaja()) return refrescar([recargar("negocio")]);
-  return refrescar([cargarClientes(), cargarProveedores(), cargarCaja(), recargar("negocio"), recargar("negocios"), cargarFacturas()])
+  const resumenPrimero = (vistaDesdeHash() ?? "dashboard") === "dashboard";
+  const negocioListo = recargar("negocio");
+  return refrescar([
+    cargarClientes(),
+    cargarProveedores(),
+    cargarCaja(),
+    negocioListo,
+    recargar("negocios"),
+    cargarFacturas(),
+    resumenPrimero ? negocioListo.then(cargarPanelResumen) : null
+  ])
     .then(() => refrescar([recargar("gastos"), cargarProductos()]))
     .then(() => refrescar([cargarVentas(), cargarCompras(), cargarStock(), cargarPresupuestos(), cargarDevoluciones()]))
     .then(() => refrescar([cargarDevolucionesProveedor()]))
-    .then(() => refrescar([cargarPanelResumen(), recargar("cuentasCorrientes"), cargarReporteStock()]));
+    .then(() => {
+      movimientosListos = true;
+      return refrescar([
+        resumenPrimero ? Promise.resolve(esAdmin() && renderUltimosMovimientos(rangoActualResumen())) : cargarPanelResumen(),
+        recargar("cuentasCorrientes"),
+        cargarReporteStock()
+      ]);
+    });
 }
 cargarTodo().catch((e) => {
   avisar("No se terminaron de cargar los datos. Recargá la página para reintentar.", "atencion");

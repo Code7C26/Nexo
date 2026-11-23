@@ -11,7 +11,7 @@
 
 - Al cerrar una etapa, se hacen tres cosas:
   - su relato completo se agrega al final de `docs/proyecto/handoff-historico.md` con el
-    siguiente número (hoy el último es §219);
+    siguiente número (hoy el último es §222);
   - acá se actualizan "Estado actual" y "Qué sigue";
   - si cambió alguna decisión vigente, se actualiza también esa lista.
 - Nunca apilar secciones "Última etapa" en este archivo: así fue como llegó a
@@ -135,6 +135,39 @@ días"). Lo manda una persona: el envío automático es el "ARM" de "Para más
 adelante". Esquema aditivo: `organizaciones.mensajes_whatsapp` y tabla
 `recordatorios_deuda`. Test nuevo: `recordatorios`. Publicado (PR #115).
 
+**22 de noviembre, hist. §220: el celular, la traducción y la regresión**
+(pulido, pedido del usuario). En el celular el pie del cajón (la cuenta) ya
+se alcanza (`100dvh`, el margen del iPhone, y el scroll no sigue en la
+página de atrás), y la barra de abajo no recalcula la pantalla por cada
+cambio de sección. `npm run i18n` ya ve los textos que empiezan con punto (10
+traducidos) y `npm run regresion` anda (0 diferencias). **Lo que traba el
+celular es el arranque** (medido con la CPU 4 veces más lenta: el primer
+pedido de datos a los 5,8 s, por leer `index.html` de 510 KB con todas las
+pantallas, el CSS y todos los módulos; y el Resumen salta cuando aparecen
+"Para hoy" y "Primeros pasos"). **Hecho:** el Resumen se pide en la primera
+ola y no en la última (completo ~2 s antes en el celular). **Falta, y es lo
+que más se nota:** achicar el HTML inicial (todas las pantallas adentro) y no
+cargar de entrada los datos de lo que no se mira (se planifica antes, §27).
+Sin publicar.
+
+**22 de noviembre, hist. §221: el celular, más cómodo** (pedido del usuario:
+"las opciones son muy grandes"; investigado en
+`docs/investigaciones/investigacion-celular.md`, punto 5). El Resumen ya no
+salta al cargar (CLS de 0,98 a 0) y, solo en el celular: Primeros pasos
+plegado, cifras más chicas, el período en un renglón deslizable, los totales
+de las listas en una franja deslizable, las listas sin la tarjeta que las
+envolvía (título y Filtrar en un renglón, acciones deslizables), sin "Exportar
+CSV", y tres piezas del Resumen en filas de dos líneas. Resumen de 13 a 9,3
+pantallas; la primera fila de Ventas de 421 a 207 px. Sin publicar.
+
+**22 de noviembre, hist. §222: las fichas, el CRM y los formularios en el
+celular** (sigue §221). Las tablas de las fichas pasan a filas de dos líneas
+(la de un cliente de 2,9 a 2 pantallas, la de una venta de 3 a 2,5), sin los
+datos vacíos y con los botones en un renglón; las listas del CRM sin la
+tarjeta; en los formularios no se muestra una lista con una sola opción, y en
+"Nueva venta" los productos empiezan a 322 px en vez de 566. La compu queda
+igual. **Falta:** que el usuario lo pruebe en su teléfono. Sin publicar.
+
 **Lo que sigue:** el resto del punto 9: mensajes de WhatsApp armados y
 "quiénes deben" (que ya puede avisar de la cuota que vence), y puntos y
 premios.
@@ -192,7 +225,7 @@ los turnos cumplidos (punto 5 rehecho, publicado, PR #101).**
 - Tests nuevos: `caja-vinculada` y `empleados-migracion`. Probado en el
   navegador, en la compu y en el celular.
 - **Falta:** probarlo en el servidor con una caja real y los permisos por
-  sección (punto 4). `npm run regresion` sigue roto, como dice §198.
+  sección (punto 4).
 
 **18 de noviembre, hist. §198: la lista de precios del proveedor, Proveedores
 en Compras, Mercado Pago fuera de los canales y el QR al cobrar una deuda
@@ -208,8 +241,7 @@ en Compras, Mercado Pago fuera de los canales y el QR al cobrar una deuda
 - Registrar cobro (Cuentas corrientes, Ventas): **Cobrar con QR** (menos
   comisión) además del link, por el importe escrito o todo lo que debe.
 - 462 tests. **Falta:** probar el QR con el Mercado Pago real y la lista con un
-  PDF real de un proveedor. **`npm run regresion` está roto** (el login del
-  admin sembrado da 401 también en el commit anterior): arreglar el script.
+  PDF real de un proveedor.
 - **Pregunta del usuario contestada:** los anuncios se cargan como un gasto
   (categoría Publicidad) y Venta online muestra cuánto rinden; una sección de
   anuncios con Meta o Google Ads es §39 (fuera de alcance por ahora).
@@ -301,11 +333,17 @@ mandada a su propio mail), cortado y con subtítulos en inglés:
 anterior) por tres cosas, arregladas el 22 de noviembre: el logo (parecido al de
 X: se sacó, es opcional), la privacidad con "dato a completar" (cargados
 `NEXO_TITULAR_*` en el `.env` y en el servidor) y el dominio verificado en
-Search Console por santinosolla22 en vez del dueño del proyecto
-(nexosystem.app@gmail.com, sumado como propietario). Se reenvía con "Corregí los
-problemas" 24 horas después; aprobada la marca, va el video. En inglés, el cartel verde de "Conectado a…"
-de Configuración → Gmail sigue en castellano (falta en `idioma/en.js`).
-Mientras tanto anda con el aviso de "app no verificada", hasta 100 cuentas.
+Search Console por santinosolla22 en vez del dueño del proyecto (los dos son
+propietarios de las dos cosas ahora). Al reintentar quedó solo "la privacidad no
+tiene suficiente contenido": todo el sitio mandaba `X-Robots-Tag: noindex` (de la
+etapa de pruebas). PR #116: ahora solo en `/app` y `/api`, y la privacidad suma
+"Google user data" en inglés. Igual siguió marcándola: **el 22 de noviembre se
+mandó todo junto** (apelación "El hallazgo es incorrecto" con la explicación en
+inglés, el video de YouTube y la justificación de `gmail.send`). Falta la
+respuesta de Google, que llega a nexosystem.app@gmail.com. El cartel verde de
+"Conectado a…" ya sale en inglés: `npm run i18n` salteaba todo texto que
+empieza con punto (". Las facturas…", lo que sigue a un `<strong>`), y con eso
+aparecieron y se tradujeron 10 que faltaban (22 de noviembre). Mientras tanto anda con el aviso de "app no verificada", hasta 100 cuentas.
 **Con §218 la verificación pasa a ser necesaria** para que cualquier negocio
 mande facturas por mail sin ese aviso.
 

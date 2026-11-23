@@ -166,11 +166,12 @@ function pintarFicha(a) {
           .map(
             (c) => `
     <tr>
-      <td data-label="Período">${esc(fechaAR(c.desde))} al ${esc(fechaAR(c.hasta))}</td>
-      <td data-label="Importe" class="align-right mono">${money(c.importe)}</td>
+      <td data-label="Período" class="m-titulo">${esc(fechaAR(c.desde))} al ${esc(fechaAR(c.hasta))}</td>
+      <td data-label="Importe" class="align-right mono m-valor">${money(c.importe)}</td>
       <td data-label="Cobrado" class="align-right mono">${money(c.cobrado)}</td>
-      <td data-label="Estado">${badgeCuota(c)}</td>
-      <td data-label="">${
+      <td data-label="Estado" class="m-estado">${badgeCuota(c)}</td>
+      ${celdaMovil(["cobrado", money(c.cobrado)])}
+      <td data-label="" class="m-accion">${
         c.saldo > 0
           ? `<button type="button" class="btn btn-secundario" data-cobrar="${c.venta_id}">Cobrar</button>`
           : `<button type="button" class="btn-link" data-venta="${c.venta_id}">Venta #${c.venta_id}</button>`
@@ -365,12 +366,13 @@ async function pintarAbonosDelCliente(cliente) {
           .map(
             (a) => `
     <tr class="fila-clickeable" data-abono="${a.id}">
-      <td data-label="Servicio">${esc(a.servicio)}</td>
+      <td data-label="Servicio" class="m-titulo">${esc(a.servicio)}</td>
       <td data-label="Se cobra">${esc(a.duracion)}</td>
-      <td data-label="Precio" class="align-right mono">${money(a.precio)}</td>
+      <td data-label="Precio" class="align-right mono m-valor">${money(a.precio)}</td>
       <td data-label="Próxima cuota">${a.proxima ? esc(fechaAR(a.proxima)) : "—"}</td>
       <td data-label="Debe" class="align-right mono">${a.deuda > 0 ? money(a.deuda) : "—"}</td>
-      <td data-label="Estado">${badgeAbono(a)}</td>
+      <td data-label="Estado" class="m-estado">${badgeAbono(a)}</td>
+      ${celdaMovil(a.duracion, ["próxima", a.proxima ? fechaAR(a.proxima) : null], ["debe", a.deuda > 0 ? money(a.deuda) : null])}
     </tr>`
           )
           .join("");

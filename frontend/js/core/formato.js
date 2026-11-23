@@ -173,6 +173,8 @@ export const camposFicha = (campos) =>
   campos
     .map(([etiqueta, valor]) => {
       const dd = valor?.html ?? esc(valor || "—");
-      return `<div><dt>${etiqueta}</dt><dd>${dd}</dd></div>`;
+      // Vacío: en el celular no se muestra (styles.css, .ficha-vacio).
+      const vacio = !valor?.html && (valor == null || valor === "" || valor === "—");
+      return `<div${vacio ? ' class="ficha-vacio"' : ""}><dt>${etiqueta}</dt><dd>${dd}</dd></div>`;
     })
     .join("");

@@ -225,10 +225,11 @@ function pintarFicha(t) {
           .map(
             (i) => `
     <tr>
-      <td data-label="Servicio o producto">${esc(i.producto)}${i.combinacion ? `<span class="celda-meta">${esc(i.combinacion)}</span>` : ""}</td>
+      <td data-label="Servicio o producto" class="m-titulo">${esc(i.producto)}${i.combinacion ? `<span class="celda-meta">${esc(i.combinacion)}</span>` : ""}</td>
       <td data-label="Cantidad" class="align-right mono">${esc(cantidad(i.cantidad, i.unidad))}</td>
       <td data-label="Precio unit." class="align-right mono">${money(i.precio_unitario)}</td>
-      <td data-label="Subtotal" class="align-right mono">${money(i.subtotal)}</td>
+      <td data-label="Subtotal" class="align-right mono m-valor">${money(i.subtotal)}</td>
+      ${celdaMovil(i.combinacion, cantidad(i.cantidad, i.unidad) + " × " + money(i.precio_unitario))}
     </tr>`
           )
           .join("");
@@ -771,9 +772,10 @@ async function pintarTrabajosDelCliente(cliente) {
             (t) => `
     <tr class="fila-clickeable" data-trabajo="${t.id}">
       <td data-label="Cuándo">${esc(cuando(t, hoy))}${atrasado(t, hoy) ? ' <span class="celda-meta trabajo-atrasado">Atrasado</span>' : ""}</td>
-      <td data-label="Trabajo">${esc(t.titulo)}</td>
-      <td data-label="Estado">${badgeEstado(t)}</td>
-      <td data-label="Total" class="align-right mono">${t.total > 0 ? money(t.total) : "—"}</td>
+      <td data-label="Trabajo" class="m-titulo">${esc(t.titulo)}</td>
+      <td data-label="Estado" class="m-estado">${badgeEstado(t)}</td>
+      <td data-label="Total" class="align-right mono m-valor">${t.total > 0 ? money(t.total) : "—"}</td>
+      ${celdaMovil(cuando(t, hoy), atrasado(t, hoy) ? "atrasado" : null)}
     </tr>`
           )
           .join("");
