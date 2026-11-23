@@ -1259,6 +1259,7 @@ button { font-family: inherit; cursor: pointer; }
 .form input:focus,
 .form select:focus,
 .form textarea:focus,
+.mp-tarifas-tabla .tarifa-costo:focus,
 .filtro-input:focus,
 .item-row input:focus,
 .item-row select:focus,
@@ -8743,6 +8744,25 @@ a.segmento {
   width: 100%;
 }
 .mp-link-acciones > .btn { flex: 1; justify-content: center; }
+/* ¿Te conviene ofrecer cuotas? (hist. §172): los dos datos no se estiran a
+   todo el ancho, y las casillas de la tabla van como las de un formulario,
+   angostas y con el % adentro. */
+.mp-tarifas-datos { max-width: 480px; margin-bottom: var(--sp-2); }
+.mp-tarifas-tabla .campo-sufijo { display: inline-block; width: 104px; }
+.mp-tarifas-tabla .tarifa-costo {
+  width: 100%;
+  min-height: var(--control-h);
+  padding: var(--sp-1) 32px var(--sp-1) var(--sp-3);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-xs);
+  font-family: inherit;
+  font-size: var(--txt-sm);
+  text-align: right;
+  color: var(--ink);
+  background: var(--surface);
+  transition: border-color var(--dur-1) ease, box-shadow var(--dur-1) ease;
+}
+.mp-tarifas-tabla .tarifa-costo:hover { border-color: var(--ink-faint); }
 .tn-conectada {
   display: flex;
   flex-direction: column;
