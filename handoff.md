@@ -11,7 +11,7 @@
 
 - Al cerrar una etapa, se hacen tres cosas:
   - su relato completo se agrega al final de `docs/proyecto/handoff-historico.md` con el
-    siguiente número (hoy el último es §220);
+    siguiente número (hoy el último es §221);
   - acá se actualizan "Estado actual" y "Qué sigue";
   - si cambió alguna decisión vigente, se actualiza también esa lista.
 - Nunca apilar secciones "Última etapa" en este archivo: así fue como llegó a
@@ -147,8 +147,20 @@ pantallas, el CSS y todos los módulos; y el Resumen salta cuando aparecen
 "Para hoy" y "Primeros pasos"). **Hecho:** el Resumen se pide en la primera
 ola y no en la última (completo ~2 s antes en el celular). **Falta, y es lo
 que más se nota:** achicar el HTML inicial (todas las pantallas adentro) y no
-cargar de entrada los datos de lo que no se mira (se planifica antes, §27), y
-que el Resumen no salte. Sin publicar.
+cargar de entrada los datos de lo que no se mira (se planifica antes, §27).
+Sin publicar.
+
+**22 de noviembre, hist. §221: el celular, más cómodo** (pedido del usuario:
+"las opciones son muy grandes"; investigado en
+`docs/investigaciones/investigacion-celular.md`, punto 5). El Resumen ya no
+salta al cargar (CLS de 0,98 a 0) y, solo en el celular: Primeros pasos
+plegado, cifras más chicas, el período en un renglón deslizable, los totales
+de las listas en una franja deslizable, las listas sin la tarjeta que las
+envolvía (título y Filtrar en un renglón, acciones deslizables), sin "Exportar
+CSV", y tres piezas del Resumen en filas de dos líneas. Resumen de 13 a 9,3
+pantallas; la primera fila de Ventas de 421 a 207 px. **Falta:** el CRM, los
+formularios y las fichas, y que el usuario lo pruebe en su teléfono. Sin
+publicar.
 
 **Lo que sigue:** el resto del punto 9: mensajes de WhatsApp armados y
 "quiénes deben" (que ya puede avisar de la cuota que vence), y puntos y

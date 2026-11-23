@@ -193,6 +193,96 @@ Las decisiones técnicas y de diseño las delegó el usuario (`handoff.md`,
 - Escribir sin conexión y sincronizar después (CLAUDE.md §39).
 - Notificaciones (stock bajo, cuentas por vencer) con Web Push.
 
+## 5. Segunda vuelta: tamaños y cuánto entra en la pantalla (22 de noviembre)
+
+> Pedido del usuario: en el celular "las opciones son muy grandes, entonces
+> tenés que andar recorriendo todo". Quiere que lo básico sea cómodo, sabiendo
+> que la compu siempre va a serlo más.
+
+### Cómo está (medido en un celular de 390 × 780)
+
+Las filas de las listas ya miden 64 px, como se decidió arriba. El problema es
+todo lo que va **antes** y **alrededor** de las listas:
+
+- **El Resumen mide 13 pantallas.**
+  - "Primeros pasos" ocupa 1.242 px (una pantalla y media): cada paso es una
+    tarjeta de 148 px con la explicación entera y un botón a todo el ancho,
+    también los que ya están hechos.
+  - Los botones del período (Hoy, 7 días…), "vs. período anterior" y
+    "Personalizar" van en tres renglones: 147 px.
+  - Cada cifra (Ventas, Ganancia…) es una tarjeta de 208 px con media tarjeta
+    vacía, reservada para una línea chica.
+- **En las listas, la primera fila aparece tarde:** a los 421 px en Ventas, 400
+  en Stock, 569 en Cuentas corrientes (la pantalla útil tiene ~665). Antes van
+  tres tarjetas grandes de totales, un título que repite el de arriba, "Exportar
+  CSV" a todo el ancho y "Filtrar" en otro renglón.
+- **Punto de venta:** con la caja cerrada, lo primero es el cartel de "¿Esta es
+  la compu del mostrador?", que en un teléfono no corresponde.
+- Letra: cuerpo de 15 px, títulos de sección de 17 y el de la pantalla de 24.
+  Está bien: no es la letra lo que ocupa, son los márgenes, las tarjetas y lo
+  que se muestra de más.
+
+### Lo que dicen las guías y las apps
+
+- **Apple:** letra de 17 pt de partida y 11 como mínimo; la escala va de 34
+  (título grande) a 13 (notas al pie) y 12 (leyendas). Pide **lo importante
+  arriba** y **mostrar de a poco** ("una interfaz con demasiado contenido y
+  demasiadas opciones hace más difícil encontrar la información").
+- **Nielsen Norman Group:** la primera pantalla tiene que ir "despiadadamente"
+  a lo mínimo; lo secundario va a otra pantalla o plegado, y "si la primera
+  pantalla es demasiado densa, nadie lee nada". Escribir corto en el celular.
+- **Shopify:** en la app, las cifras del inicio son una **franja que se desliza
+  de costado** (4 de partida, hasta 18 a elección). En 2025 los comerciantes se
+  quejaron de una actualización porque "ahora hay que deslizar más en vez de
+  ver de un vistazo".
+- **Square:** el inicio y su widget muestran ventas, ventas netas, cantidad y
+  ticket promedio, con un período a elegir.
+- **Tableros en el celular:** de 3 a 5 cifras y uno o dos gráficos; cada cifra
+  con su comparación.
+- **Cómo se agarra el teléfono** (Hoober, 1.333 personas): 49 % con una mano,
+  36 % sosteniéndolo con una y tocando con la otra, 15 % con las dos. Lo que se
+  toca seguido va abajo o al medio, no arriba en las esquinas.
+- Lo de octubre sigue: toques de 44 px como mínimo, campos con letra de 16 px.
+
+### Qué se hace (solo en el celular; la compu queda igual)
+
+1. **Primeros pasos plegado:** los pasos hechos se esconden y queda la cuenta
+   ("Llevás 6 de 8"). Solo el próximo paso muestra su explicación y su botón;
+   los otros son un renglón que se toca entero.
+2. **Las cifras del Resumen, chicas:** la tarjeta mide lo que su número, con la
+   línea chica abajo y sin el hueco.
+3. **El período en un solo renglón** que se desliza de costado, con
+   "Personalizar" al final.
+4. **Las listas, más arriba:**
+   - los totales de arriba (Ventas, Costo, Ganancia) en una franja compacta;
+   - la tabla sin la tarjeta que la envuelve ni el título repetido;
+   - "Exportar CSV" no se muestra (es de la compu) y "Filtrar" va al lado del
+     buscador.
+5. **El punto de venta sin el cartel de la compu del mostrador** en un
+   teléfono.
+
+Se miden antes y después con lo mismo: alto del Resumen en pantallas y dónde
+aparece la primera fila de cada lista.
+
+### Resultado (hist. §221)
+
+| | Antes | Después |
+|---|---|---|
+| Resumen | 13 pantallas | 9,3 |
+| Primeros pasos | 1.242 px | 340 |
+| Cada cifra del Resumen | 208 px | 152 |
+| Período y comparar | 147 px | 44 |
+| Primera fila de Ventas | 421 px | 207 |
+| Productos | 392 px | 268 |
+| Stock | 400 px | 224 |
+| Caja | 417 px | 232 |
+| Cuentas corrientes | 569 px | 254 |
+
+Además, "Últimos movimientos", "Mejores clientes" y "Evolución del resultado"
+pasaron a filas de dos líneas (la evolución, con los últimos 7 períodos; el
+gráfico muestra todos). Lo que sigue grande: el CRM (otra estructura) y lo que
+cada uno elige ver en el Resumen, que se esconde con "Personalizar".
+
 ## Fuentes
 
 - Material Design 3: [navigation bar](https://raw.githubusercontent.com/material-components/material-components-android/master/docs/components/BottomNavigation.md),
@@ -216,3 +306,12 @@ Las decisiones técnicas y de diseño las delegó el usuario (`handoff.md`,
 - Tienda Nube: [gestionar desde la app](https://ayuda.tiendanube.com/es_AR/159567-por-tiendanube/como-gestionar-mi-tiendanube-desde-la-aplicacion-movil),
   [blog de la app](https://www.tiendanube.com/blog/ecommerce-app/).
 - Contagram: [contagram.com](https://www.contagram.com/) (preguntas frecuentes).
+- Segunda vuelta (tamaños): Apple [typography](https://developer.apple.com/design/human-interface-guidelines/typography)
+  y [layout](https://developer.apple.com/design/human-interface-guidelines/layout);
+  Nielsen Norman Group, [defer secondary content](https://www.nngroup.com/articles/defer-secondary-content-for-mobile/)
+  y [mobile content](https://www.nngroup.com/articles/mobile-content/);
+  Shopify, [métricas del inicio en la app](https://changelog.shopify.com/posts/customizable-home-metrics-now-available-on-the-shopify-app)
+  y [quejas por más scroll](https://community.shopify.com/t/shopify-editions-summer-update-25/416779);
+  Square, [Dashboard app](https://squareup.com/help/us/en/article/5618-get-started-with-the-square-dashboard-app);
+  Hoober, [how do users really hold mobile devices](https://www.uxmatters.com/mt/archives/2013/02/how-do-users-really-hold-mobile-devices.php);
+  [tableros en el celular](https://www.thebricks.com/resources/best-practices-for-mobile-dashboard-design).

@@ -2674,6 +2674,8 @@ export default {
 
   // frontend/js/app.js
   "(margen {0})": "(margin {0})",
+  "1 venta": "1 sale",
+  "última": "last",
   "Costo de mercadería {0}{1}": "Cost of goods {0}{1}",
   "Sin período anterior": "No previous period",
   "Período anterior": "Previous period",

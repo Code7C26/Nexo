@@ -247,13 +247,14 @@ function renderTablaEvolucion(serie) {
       const margen = p.ventas > 0 ? porcentaje((p.ganancia_bruta / p.ventas) * 100) : "—";
       return `
     <tr>
-      <td data-label="Período">${esc(p.etiqueta)}${p.parcial ? " (parcial)" : ""}</td>
+      <td data-label="Período" class="m-titulo">${esc(p.etiqueta)}${p.parcial ? " (parcial)" : ""}</td>
       <td data-label="Ventas" class="align-right mono">${money(p.ventas)}</td>
       <td data-label="Costo" class="align-right mono">${money(p.costo_mercaderia)}</td>
       <td data-label="Ganancia bruta" class="align-right mono">${money(p.ganancia_bruta)}</td>
       <td data-label="Margen" class="align-right mono">${margen}</td>
       <td data-label="Gastos" class="align-right mono">${money(p.gastos_operativos)}</td>
-      <td data-label="Resultado" class="align-right mono ${p.resultado < 0 ? "saldo-negativo" : ""}">${money(p.resultado)}</td>
+      <td data-label="Resultado" class="align-right mono m-valor ${p.resultado < 0 ? "saldo-negativo" : ""}">${money(p.resultado)}</td>
+      ${celdaMovil(["Ventas", money(p.ventas)], ["margen", margen])}
     </tr>`;
     })
     .join("");
@@ -567,10 +568,11 @@ function renderUltimosMovimientos(rango = {}) {
     <tr>
       <td data-label="Fecha">${esc(fechaAR(m.fecha))}</td>
       <td data-label="Tipo">${esc(m.tipo)}</td>
-      <td data-label="Detalle" class="celda-wrap">${esc(m.detalle)}</td>
-      <td data-label="Importe" class="align-right mono ${m.signo < 0 ? "saldo-negativo" : ""}">${
+      <td data-label="Detalle" class="celda-wrap m-titulo">${esc(m.detalle)}</td>
+      <td data-label="Importe" class="align-right mono m-valor ${m.signo < 0 ? "saldo-negativo" : ""}">${
         m.signo < 0 ? "-" : "+"
       }${money(m.importe)}</td>
+      ${celdaMovil(m.tipo, fechaAR(m.fecha))}
     </tr>`
     )
     .join("");
@@ -693,12 +695,13 @@ function renderReporteClientes(lista) {
     .map(
       (c) => `
     <tr>
-      <td data-label="Cliente"><button type="button" class="btn-link reporte-cliente-ficha" data-id="${c.id}">${esc(c.nombre)}</button></td>
+      <td data-label="Cliente" class="m-titulo"><button type="button" class="btn-link reporte-cliente-ficha" data-id="${c.id}">${esc(c.nombre)}</button></td>
       <td data-label="Ventas" class="align-right mono">${numero(c.cantidad_ventas)}</td>
-      <td data-label="Total" class="align-right mono">${money(c.ventas)}</td>
+      <td data-label="Total" class="align-right mono m-valor">${money(c.ventas)}</td>
       <td data-label="Ticket promedio" class="align-right mono">${money(c.ticket_promedio)}</td>
       <td data-label="Ganancia" class="align-right mono ${c.ganancia < 0 ? "saldo-negativo" : ""}">${money(c.ganancia)}</td>
       <td data-label="Última compra">${esc(fechaAR(c.ultima_compra) || "—")}</td>
+      ${celdaMovil(c.cantidad_ventas === 1 ? t("1 venta") : formatear("{0} ventas", numero(c.cantidad_ventas)), ["ganancia", money(c.ganancia)], ["última", fechaAR(c.ultima_compra)])}
     </tr>`
     )
     .join("");

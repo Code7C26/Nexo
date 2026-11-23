@@ -15479,3 +15479,33 @@ usuario".
   app volvía distinta por los finales de línea; cada base genera su clave de
   notificaciones). El script las ignora: 308 comparaciones, 0 distintas.
 - `npm test`: 523 de 523. Lint e i18n en verde.
+
+## §221 — 22 de noviembre de 2026: el celular, más cómodo (tamaños)
+
+Pedido del usuario: en el celular "las opciones son muy grandes, entonces
+tenés que andar recorriendo todo"; investigar cómo están armadas las apps y
+que lo básico sea cómodo. La investigación y el antes y después están en
+`docs/investigaciones/investigacion-celular.md`, punto 5 (Apple, Nielsen Norman,
+Shopify, Square, Hoober).
+
+- **El Resumen ya no salta al cargar:** la primera vez, controles y tablero
+  esperan invisibles (con su lugar) a "Primeros pasos" y "Para hoy", con un
+  tope de 1,5 s (`dominios/primeros-pasos.js`, clase `esperando-arriba`).
+  CLS de 0,98 a 0, medido con y sin el arreglo.
+- **Todo lo que sigue es solo del celular** (la compu queda igual, revisado):
+  - Primeros pasos plegado: los hechos se esconden y solo el que sigue lleva
+    su explicación y el botón grande.
+  - Las cifras del Resumen más chicas, el período, comparar y Personalizar en
+    un solo renglón deslizable, "Para hoy" con "Ver todo" al lado.
+  - La franja de totales de las listas (`.ledger-strip`) es un renglón de
+    cifras chicas que se desliza; "Exportar CSV" no se muestra.
+  - Las listas (`.panel` con una `.lista-movil`) sin la tarjeta que las
+    envolvía: título y "Filtrar" en un renglón, y las acciones (Categorías,
+    Ofertas…) en una fila de botones deslizable.
+  - "Últimos movimientos", "Mejores clientes" y "Evolución del resultado" en
+    filas de dos líneas (la evolución muestra los últimos 7 períodos).
+  - En el punto de venta, "¿Esta es la compu del mostrador?" va al final.
+- Resumen de 13 a 9,3 pantallas; la primera fila de Ventas de 421 a 207 px,
+  Stock de 400 a 224, Cuentas corrientes de 569 a 254.
+- Falta: el CRM (otra estructura), los formularios y las fichas, y probarlo en
+  un teléfono de verdad. `npm test`: 523 de 523; lint e i18n en verde.
