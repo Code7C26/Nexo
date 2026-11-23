@@ -464,9 +464,9 @@ export function imprimirTicket(html) {
   paginaTicket.textContent = `@media print { @page { size: ${ANCHO_TICKET_MM}mm ${altoMm}mm; margin: ${MARGEN_TICKET_MM}mm; } }`;
   document.head.appendChild(paginaTicket);
   hojaImpresionEl.innerHTML = html;
-  // En el celular print() vuelve antes de imprimir: se limpia al terminar.
-  window.addEventListener("afterprint", soltarTicket, { once: true });
+  // En el celular print() vuelve antes de imprimir: se limpia al salir.
   window.print();
+  vaciarAlSalir();
 }
 
 // El ticket de una venta ya guardada: lo usan el mostrador al cobrar y la ficha
@@ -608,9 +608,26 @@ export function imprimirHojas(htmls) {
   }
 
   window.print();
-  // Se vacía después de imprimir para no dejar datos de un cliente colgando
-  // en el DOM mientras se navega a otra pantalla.
-  hojaImpresionEl.innerHTML = "";
+  // No se vacía acá: en el celular print() vuelve antes de armar la impresión,
+  // y la hoja vacía salía en blanco (en el PDF y en el papel). Se vacía al
+  // salir de la pantalla, para no dejar datos de un cliente colgando.
+  vaciarAlSalir();
+}
+
+// Al cambiar de pantalla se saca la hoja (y la medida del ticket). No se usa
+// afterprint: Safari del iPhone lo dispara antes de que se termine de armar.
+let vaciarPendiente = false;
+function vaciarAlSalir() {
+  if (vaciarPendiente) return;
+  vaciarPendiente = true;
+  window.addEventListener(
+    "hashchange",
+    () => {
+      vaciarPendiente = false;
+      soltarTicket();
+    },
+    { once: true }
+  );
 }
 
 // Caso de un solo comprobante: los dos botones de ficha (factura y

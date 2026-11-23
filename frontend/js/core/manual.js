@@ -98,6 +98,26 @@ const SECCIONES_ES = [
       "Sin conexión, Nexo abre y muestra lo último que cargó, con un aviso arriba. Para cargar algo nuevo hace falta internet."
     ]
   },
+  {
+    id: "menu",
+    grupo: "Empezar",
+    titulo: "Armar tu menú",
+    pantalla: ["#/configuracion/menu", "Configuración › Menú"],
+    preguntas: ["cómo cambio el orden del menú", "cómo escondo una sección del menú", "cómo pongo una sección arriba de todo", "dónde quedó una sección que escondí", "cómo vuelvo al menú de antes"],
+    palabras: ["menu", "barra", "lateral", "secciones", "orden", "ordenar", "esconder", "ocultar", "arriba", "favoritos", "atajos", "personalizar"],
+    bloques: [
+      "Arriba de todo, el menú tiene lo de todos los días: el Resumen, el asistente, tus productos y tus clientes. Debajo van los grupos: Ventas, Compras, Stock, Finanzas y Administración.",
+      { pasos: [
+        "Andá a **Configuración › Menú**.",
+        "Tocá **Poner arriba** en las secciones que más usás (Ventas, Gastos). Arriba de todo las ordenás arrastrándolas desde sus tres rayas.",
+        "Sacale la tilde a lo que no usás: queda en **Más secciones**, al final del menú, a un toque.",
+        "Tocá **Guardar**."
+      ] },
+      "El menú es tuyo: cada persona del negocio arma el suyo, y te sigue en el celular y en la compu. Con **Volver al de siempre** queda como venía.",
+      { nota: "Armar el menú no da permisos: lo que tu rol no puede ver no aparece aunque lo subas." }
+    ],
+    ver: ["celular"]
+  },
 
   /* ---------- Productos y servicios ---------- */
   {

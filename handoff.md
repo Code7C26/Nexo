@@ -11,7 +11,7 @@
 
 - Al cerrar una etapa, se hacen tres cosas:
   - su relato completo se agrega al final de `docs/proyecto/handoff-historico.md` con el
-    siguiente número (hoy el último es §223);
+    siguiente número (hoy el último es §224);
   - acá se actualizan "Estado actual" y "Qué sigue";
   - si cambió alguna decisión vigente, se actualiza también esa lista.
 - Nunca apilar secciones "Última etapa" en este archivo: así fue como llegó a
@@ -188,10 +188,30 @@ Módulo `puntos` (Configuración → Funciones, ningún tipo lo trae prendido):
   navegador, en la compu y en el celular.
 - **Falta**: canjear desde Ventas (hoy solo el mostrador), el descuento en
   ciertos productos o categorías y una pieza del Resumen con lo canjeado.
-- Commit en `solla`, sin publicar.
+- Publicado (PR #118).
+
+**23 de noviembre, hist. §224: el claro todo blanco, el menú sin "Maestros" y
+arreglos del celular** (pedidos del usuario con capturas de su iPhone).
+- **Tema claro todo blanco**, la barra lateral incluida (el negro de marca
+  queda para el oscuro).
+- **Menú:** arriba de todo, sin grupo, Resumen, Asistente, catálogo, clientes
+  y puntos (investigado en `docs/investigaciones/investigacion-menu.md`).
+  **Configuración → Menú**: poner arriba, ordenar arrastrando y esconder (lo
+  escondido va a "Más secciones"). Por persona y negocio:
+  `usuario_organizaciones.menu`, `/api/menu`, `core/menu.js`,
+  `dominios/menu.js`. El arrastre del Resumen pasó a `core/arrastrar.js`.
+- **Celular:** con el cajón abierto la página de atrás no se mueve; las
+  pestañas de Socios y Trabajos se deslizan en vez de ensanchar la página (lo
+  que dejaba alejar el zoom), con `overflow-x: clip` en `.main` como red; y
+  Imprimir ya no sale en blanco (la hoja se vaciaba antes de que el celular
+  armara la impresión).
+- `npm test` 538 de 538, lint, i18n, migración 24 de 24 y regresión
+  justificada. Sin commitear.
+- **Falta:** que el usuario lo pruebe en su iPhone.
 
 **Lo que sigue:** el punto 10 si da (el resumen del día por WhatsApp o mail),
-y lo que el usuario vea al probar los puntos en el mostrador.
+y lo que el usuario vea al probar los puntos en el mostrador y lo de §224 en
+su iPhone.
 
 **19 de noviembre, hist. §205 (publicado, PR #106):** en Planes se elimina un plan que nunca hizo
 nadie (con su servicio del catálogo); el que algún socio hizo solo se pausa.
@@ -1877,15 +1897,17 @@ Las que no están en `CLAUDE.md` y que alguien podría "arreglar" sin saberlo:
   - densidad compacta (`--control-h` 36 px en escritorio; 44 px en el
     celular, el POS y el login);
   - radios de Dub: 6 inputs, 8 botones, 12 tarjetas, 16 modal y hoja.
-- **Marco de marca (hist. §72):** la sidebar y un marco de 8 px (`--marco`)
-  alrededor del contenido son negros (`--frame`) en los dos temas. El
-  contenido vive en una hoja (`.main`) con borde fino. En el celular no hay
-  marco. El scroll sigue siendo el del documento.
+- **Marco de marca (hist. §72, §224):** la sidebar y un marco de 8 px
+  (`--marco`) alrededor del contenido van con `--frame`: negros en el oscuro y
+  blancos en el claro (pedido del usuario, hist. §224). El contenido vive en
+  una hoja (`.main`) con borde fino. En el celular no hay marco. El scroll
+  sigue siendo el del documento.
 - **El tema de partida es el oscuro** (hist. §72): sin elección guardada no se
-  sigue al sistema operativo. El claro va adaptado: hoja gris `#F5F5F5` y
-  tarjetas blancas, nunca el lienzo blanco de Dub.
-- **El negro es el color de marca** (el logo es blanco y negro): sidebar,
-  marco, fondo del login y avisos son negros, con grises neutros. El rediseño
+  sigue al sistema operativo. El claro es todo blanco, la barra incluida
+  (hist. §224): lo separa el borde de la hoja y de las tarjetas.
+- **El negro es el color de marca** (el logo es blanco y negro): en el tema
+  oscuro, sidebar, marco, fondo del login y avisos son negros, con grises
+  neutros; en el claro, blancos (hist. §224). El rediseño
   lo había cambiado por azul noche y el usuario lo corrigió (hist. §62,
   addendum). Los acentos van encima, no en su lugar.
 - **Botón primario en tinta, como Dub** (hist. §72): `--primario-bg`, blanco

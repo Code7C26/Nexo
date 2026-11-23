@@ -43,6 +43,7 @@ const { values: op } = parseArgs({
 // que nadie se entere.
 const LISTADO_DE = {
   '/api/clientes/:id': '/api/clientes',
+  '/api/clientes/:id/puntos': '/api/clientes',
   '/api/facturas/:id': '/api/facturas',
   '/api/productos/:id/movimientos': '/api/productos',
   '/api/productos/:id/atributos': '/api/productos',

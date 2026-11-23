@@ -15622,3 +15622,65 @@ en el mostrador (20 − 13 + 4 = 11), el enlace de WhatsApp y la ficha.
 ciertos productos o categorías y los escalones de premios, el aviso
 automático antes de que venzan (pide la API de WhatsApp Business) y una pieza
 del Resumen con lo canjeado.
+
+## §224 — 23 de noviembre de 2026: el claro todo blanco, el menú sin "Maestros" y arreglos del celular
+
+Cinco pedidos del usuario, con capturas de su iPhone.
+
+**El tema claro, todo blanco.** La barra lateral, el marco y la hoja son el
+mismo blanco y los separa el borde fino de la hoja (`--frame`, `--bg`,
+`--sheet-line` y los `--sidebar-*` en `:root[data-tema="claro"]`). El logo de
+la barra se invierte a negro, el ítem activo va con el tinte azul sobre blanco,
+la foto de perfil y la inicial del negocio en gris, y el color de marca del
+negocio también pinta la barra blanca (`core/marca.js` declara las variables de
+la barra en los dos temas). La barra del navegador del celular (`theme-color`)
+sigue al tema (`arranque.js`, `core/tema.js`). El oscuro no cambia. Cambia la
+regla de la memoria "negro de marca en los dos temas": ahora el negro es del
+oscuro.
+
+**El menú sin "Maestros"** (investigado en
+`docs/investigaciones/investigacion-menu.md`: Shopify, Tiendanube, Linear,
+Dux). Arriba de todo, sin grupo, Resumen, Asistente, el catálogo, los clientes
+o el CRM, y Puntos y premios. **Configuración → Menú** (nueva, los dos roles):
+- cada sección de un grupo se pone arriba con **Poner arriba**; lo de arriba se
+  ordena arrastrando desde las tres rayas;
+- sacarle la tilde la esconde: queda en **Más secciones**, al final del menú;
+- **Volver al de siempre** lo deja como venía.
+Es de la persona en cada negocio, como el Resumen: `usuario_organizaciones.menu`
+(columna nueva, aditiva y nula, sin backfill), `GET/PUT/DELETE /api/menu`
+('ambos'). Lo valida `frontend/js/core/menu.js`, compartido con el servidor:
+solo secciones que existen, sin repetir; las de arriba de siempre no bajan a un
+grupo (no tienen), solo se esconden. Armarlo mueve los mismos `<a class="nav-item">`
+entre grupos (`dominios/menu.js`), así el router y la barra de abajo siguen
+iguales; fuera de su grupo, cada sección lleva el `data-modulo` del grupo. Un
+grupo sin secciones no muestra su título. El arrastre del Resumen pasó a
+`core/arrastrar.js`, que usan los dos. Manual: sección `menu`.
+
+**El cajón del celular no mueve la página de atrás.** Con el menú abierto,
+`html` y `body` van sin scroll (`:root:has(.sidebar.is-open)`), y
+`core/barra-inferior.js` frena el arrastre fuera del cajón para los Safari que
+lo ignoran.
+
+**Nada se sale del ancho del celular.** Las seis pestañas de Socios (y las de
+Trabajos) iban en un renglón que no se achicaba y hacían la página de 510 px en
+un celular de 390: el navegador dejaba alejar el zoom. Ahora el renglón se
+desliza de costado, y `.main` lleva `overflow-x: clip` en el celular como red.
+Medido en 11 pantallas a 390 px: todas de 390.
+
+**Los comprobantes ya no salen en blanco en el celular.** En el celular
+`window.print()` vuelve antes de armar la impresión, y `imprimirHojas` vaciaba
+la hoja en la línea siguiente: el PDF o el papel salían en blanco. Ahora la
+hoja (y la medida del ticket) se vacía al salir de la pantalla (`hashchange`),
+no con `afterprint`, que Safari del iPhone dispara antes de tiempo. "Descargar
+PDF" (html2canvas) ya andaba: probado a 390 px, sale igual que en la compu.
+
+**Verificado:** test nuevo `menu` (4 casos). `npm test`: 538 de 538; lint e
+i18n en verde; `verificar-migracion`: 24 de 24, la base real sin tocar.
+`npm run regresion`: 15 diferencias, todas esperables (`/api/menu` es nueva,
+el export trae la columna `menu`, y las vueltas de Google, Gmail y los canales
+devuelven el `index.html`, que cambió). La regresión no arrancaba por
+`/api/clientes/:id/puntos` (hist. §223): sumada a su `LISTADO_DE`. Probado en
+el navegador (1440 y 390 px) con el gimnasio de ejemplo, en los dos temas.
+
+**Falta:** que el usuario lo pruebe en su iPhone (el bloqueo del cajón, el zoom
+y la impresión son de Safari).

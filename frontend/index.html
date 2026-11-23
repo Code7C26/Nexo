@@ -59,29 +59,25 @@
         <div class="negocio-menu" id="negocioMenu" role="menu" aria-label="Tus negocios" hidden></div>
       </div>
 
-      <!-- Orden por dominio, no por cuándo se construyó cada pantalla:
-           Resumen -> maestros (lo que hace falta cargado ANTES de operar)
-           -> embudo de venta -> embudo de compra (con Proveedores) -> Stock (consecuencia de
-           los dos embudos) -> Finanzas -> Administración (Papelera,
-           Auditoría y Usuarios, siempre al final). Cada grupo es un
-           .nav-seccion con su título; las que tienen solo pantallas de
-           admin llevan .nav-seccion-admin y se ocultan enteras para el
-           empleado (ver styles.css), así no queda un título sin ítems.
-           Los íconos salen del sprite img/iconos.svg (core/iconos.js). -->
+      <!-- Arriba de todo, sin grupo, lo de todos los días: el Resumen, el
+           asistente (hist. §118), el catálogo y los clientes, como en Shopify
+           y Tiendanube (reemplaza al grupo "Maestros", hist. §224). Después,
+           por dominio: embudo de venta -> embudo de compra (con Proveedores)
+           -> Stock (consecuencia de los dos embudos) -> Finanzas ->
+           Administración (siempre al final). Cada grupo es un .nav-seccion
+           con su título; uno que se queda sin secciones no se muestra.
+           Cada persona sube arriba las que más usa y esconde las que no
+           (Configuración → Menú, dominios/menu.js): lo escondido va a "Más
+           secciones", al final. Los íconos salen del sprite img/iconos.svg
+           (core/iconos.js). -->
       <nav class="nav" aria-label="Secciones">
-        <div class="nav-seccion nav-seccion-admin">
+        <div class="nav-seccion nav-arriba" id="navArriba">
           <a href="#" class="nav-item is-active" data-view="dashboard">
             <svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#layout-dashboard"></use></svg> Resumen
           </a>
-        </div>
-        <!-- El asistente con su página (hist. §118), para los dos roles. -->
-        <div class="nav-seccion">
           <a href="#" class="nav-item" data-view="asistente">
             <svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#sparkles"></use></svg> Asistente
           </a>
-        </div>
-        <div class="nav-seccion">
-          <p class="nav-grupo">Maestros</p>
           <a href="#" class="nav-item" data-view="productos">
             <svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#package"></use></svg> <span data-termino="Plural">Productos</span>
           </a>
@@ -212,6 +208,15 @@
             <svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#settings"></use></svg> Configuración
           </a>
         </div>
+        <!-- Lo que cada persona escondió de su menú (hist. §224, dominios/menu.js),
+             como el "Más" de Linear: a un toque, sin perderse. -->
+        <details class="nav-mas" id="navMas" hidden>
+          <summary class="nav-mas-boton">
+            <svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#ellipsis"></use></svg> Más secciones
+            <svg class="ico nav-mas-flecha" aria-hidden="true"><use href="/img/iconos.svg#chevron-down"></use></svg>
+          </summary>
+          <div class="nav-mas-items" id="navMasItems"></div>
+        </details>
         <!-- El panel de la plataforma (hist. §111): solo para quien
              administra Nexo. Se oculta por CSS sin data-plataforma en <html>. -->
         <div class="nav-seccion nav-seccion-plataforma">
@@ -4968,6 +4973,11 @@
                 <span class="config-item-texto"><span class="config-item-nombre">Apariencia</span><span class="config-item-desc">Tema, idioma e instalar como app</span></span>
                 <svg class="ico config-item-chevron" aria-hidden="true"><use href="/img/iconos.svg#chevron-right"></use></svg>
               </a>
+              <a class="config-item" href="#/configuracion/menu" data-seccion="menu">
+                <span class="config-item-icono"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#menu"></use></svg></span>
+                <span class="config-item-texto"><span class="config-item-nombre">Menú</span><span class="config-item-desc">Qué va arriba y qué escondés</span></span>
+                <svg class="ico config-item-chevron" aria-hidden="true"><use href="/img/iconos.svg#chevron-right"></use></svg>
+              </a>
             </div>
             <div class="config-grupo">
               <p class="config-grupo-titulo">Ayuda</p>
@@ -6621,6 +6631,27 @@
                   </button>
                 </div>
               </form>
+            </section>
+
+            <!-- El menú de cada persona (hist. §224): dominios/menu.js lo pinta y
+                 lo guarda en su cuenta, para este negocio. -->
+            <section class="config-pagina" data-seccion="menu" aria-labelledby="configMenuTitulo" hidden>
+              <header class="config-pagina-head">
+                <h2 id="configMenuTitulo" tabindex="-1">Menú</h2>
+                <p>Subí arriba de todo lo que más usás y escondé lo que no. Es tuyo: los demás del negocio arman el suyo.</p>
+              </header>
+              <div class="form config-tarjeta">
+                <div class="config-tarjeta-cuerpo">
+                  <h3 class="menu-subtitulo">Arriba de todo</h3>
+                  <p class="form-note" id="menuAyudaMover">Arrastrá cada sección desde sus tres rayas para cambiar el orden. Sacá la tilde para esconderla: queda en “Más secciones”, al final del menú.</p>
+                  <ol class="tablero-lista" id="menuArriba"></ol>
+                  <div id="menuGrupos"></div>
+                </div>
+                <div class="config-tarjeta-pie">
+                  <button type="button" class="btn-link" id="btnMenuDeSiempre">Volver al de siempre</button>
+                  <button type="button" class="btn btn-primary" id="btnMenuGuardar">Guardar</button>
+                </div>
+              </div>
             </section>
 
             <!-- Notificaciones (Web Push, hist. §146): se prenden en cada

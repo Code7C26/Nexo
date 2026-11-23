@@ -97,6 +97,7 @@ import "./dominios/horarios.js";
 import "./dominios/clases.js";
 import "./dominios/ofertas.js";
 import "./dominios/puntos.js";
+import "./dominios/menu.js";
 import "./dominios/venta-online.js";
 import "./dominios/lista-proveedor.js";
 import { htmlCapacidades, respuestaDeAyuda, respuestaDeCharla, respuestaDeConsulta, respuestaDeNavegar } from "./dominios/ayuda.js";
@@ -9514,6 +9515,7 @@ function cargarTodo() {
     cargarCaja(),
     negocioListo,
     recargar("negocios"),
+    recargar("menu"),
     cargarFacturas(),
     resumenPrimero ? negocioListo.then(cargarPanelResumen) : null
   ])

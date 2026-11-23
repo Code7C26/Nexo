@@ -120,6 +120,20 @@ document.addEventListener(
   true
 );
 
+// Con el cajón abierto, arrastrar fuera de él no mueve la página de atrás
+// (styles.css ya le saca el scroll; esto cubre los Safari viejos, que lo
+// ignoran). Adentro del cajón se scrollea normal, y su overscroll-behavior no
+// pasa el arrastre a la página al llegar al final.
+document.addEventListener(
+  "touchmove",
+  (e) => {
+    if (!celular.matches || !sidebar.classList.contains("is-open")) return;
+    if (e.target.closest("#sidebar, .negocio-menu, .modal")) return;
+    e.preventDefault();
+  },
+  { passive: false }
+);
+
 // Cambian los destinos con los módulos, el rol y el nombre del catálogo (todo
 // eso vive en el menú o en <html>). Un cambio de clase en el menú es la
 // sección activa o el cajón abierto: solo se mueve lo marcado, sin medir.

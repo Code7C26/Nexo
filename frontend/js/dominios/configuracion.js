@@ -784,6 +784,8 @@ const PAGINAS = {
   problema: { admin: false, alEntrar: () => invocar("pintar:problema") },
   // Notificaciones de cada aparato: dominios/notificaciones.js (hist. §146).
   notificaciones: { admin: false, alEntrar: () => invocar("pintar:notificaciones") },
+  // El menú de cada persona: dominios/menu.js (hist. §224).
+  menu: { admin: false, alEntrar: () => invocar("pintar:menu") },
   apariencia: {
     admin: false,
     alEntrar: () => {
