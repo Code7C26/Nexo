@@ -15541,3 +15541,84 @@ punto 5.
   entrar a un negocio de ejemplo hace falta una copia de la base local.
 - `npm test`: 523 de 523. Lint e i18n en verde. Falta probarlo en un teléfono
   de verdad.
+
+## §223 — 22 y 23 de noviembre de 2026: puntos y premios
+
+Punto 9 del plan ("puntos y premios", de Praxia) y lo que faltaba de los
+mensajes armados (compra y puntos). Antes de diseñar se miró la competencia:
+`docs/investigaciones/investigacion-puntos.md` (Square Loyalty, las apps de
+puntos de Shopify POS, Praxia y las argentinas sueltas), con lo que toma Nexo.
+
+**Qué hace.** Un módulo nuevo, `puntos` ("Puntos y premios", en
+Configuración → Funciones; ningún tipo lo trae prendido porque la regla la
+decide el negocio).
+- **La regla:** un punto cada $ X y, si se quiere, a cuántos meses vencen.
+  Suma lo **cobrado** de cada venta sin lo devuelto (lo fiado suma al
+  pagarse), nunca a "Consumidor final" ni a lo de antes de Nexo.
+- **Se congela en cada venta** (`ventas.puntos_cada` y `puntos_vencen`, como
+  el costo histórico): cambiar la regla vale para lo que viene (Square), no
+  recalcula a todos (Praxia). `congelarPuntos` lo hace dentro de `crearVenta`,
+  así que vale para toda venta: mostrador, Ventas, cuotas de socios, tiendas.
+- **El saldo no se guarda:** `core/puntos.js` (`saldoDePuntos`) lo rearma desde
+  las ventas y `puntos_movimientos` (canjes y ajustes), gastando primero lo
+  que vence antes; lo usado de más (anular después de canjear) queda como
+  deuda que pagan los puntos que vienen. Anular una venta saca lo que dio y
+  devuelve lo canjeado en ella; una devolución saca los puntos de lo devuelto.
+- **Premios** (`premios`): un porcentaje o un monto de descuento sobre la
+  venta, o un producto (o variante) de regalo. El canjeado no se borra, se
+  pausa.
+- **El canje, en el mostrador:** con el cliente elegido aparece su saldo y
+  "Canjear un premio". Los de descuento bajan primero, con el mismo reparto
+  que el descuento a mano (`aplicarPremios` sobre `core/descuento.js`), y el
+  descuento a mano va después, sobre lo que queda; el renglón guarda los dos
+  en `venta_items.descuento`. El de producto suma su renglón a $ 0 (sale del
+  stock y su costo entra en la venta); con él la venta puede ser solo el
+  regalo. El servidor vuelve a validar todo (`premiosDelCanje`): cliente de
+  verdad, premios activos y que le alcancen. Una venta con canje no se edita
+  (se anula y se carga de nuevo), y los descuentos no van con algo en cuotas.
+- **Al cobrar**, el mostrador dice qué canjeó, cuánto sumó y cuánto tiene, con
+  "Mandárselo por WhatsApp" (el mensaje "Después de una compra").
+- **La página** `#/puntos` (admin): la regla con un ejemplo, los premios (y
+  la de cada uno en dos pasos, `#/puntos/premio/nuevo`), quién tiene puntos
+  con "Avisarle" y los últimos canjes y ajustes, y arriba clientes con puntos,
+  puntos para canjear, canjes del mes y lo que se dio en premios.
+- **La ficha del cliente:** el saldo, cuándo vencen los próximos, de dónde
+  salió cada punto, "Avisarle sus puntos" y, el admin, "Sumar o quitar" con el
+  motivo (las tarjetitas de papel).
+- **Mensajes de WhatsApp:** "Después de una compra" y "Tus puntos", con los
+  marcadores `{total}`, `{ganados}`, `{puntos}` y `{vencen}`. Los recordatorios
+  de deuda aceptan solo sus tres tipos (`TIPOS_RECORDATORIO`).
+
+**Esquema (aditivo, `db/index.js`):** `organizaciones.puntos_cada` y
+`puntos_vencen_meses`; `ventas.puntos_cada` y `puntos_vencen`; tablas
+`premios` y `puntos_movimientos` (canje, siempre de una venta, o ajuste). Las
+ventas de antes quedan sin puntos. Unir clientes pasa sus canjes y ajustes.
+
+**Rutas:** `GET /api/premios` y `GET /api/clientes/:id/puntos` (los dos roles y
+la compu de la caja); `GET /api/puntos`, `PUT /api/puntos/programa`,
+`POST/PUT/PATCH/DELETE /api/premios`, `POST /api/clientes/:id/puntos` (admin).
+`POST /api/pos/ventas` acepta `canjes` y devuelve `puntos`. La auditoría anota
+los premios sobre `organizacion`, los canjes sobre la venta y los ajustes
+sobre el cliente, con `operacion_tipo` (su CHECK no tiene entidades nuevas).
+
+**Archivos:** `frontend/js/core/puntos.js` (nuevo, compartido con el
+servidor), `frontend/js/dominios/puntos.js` (nuevo), `pos.js`, `app.js`,
+`core/mensajes.js`, `dominios/mensajes.js`, `core/router.js`, `index.html`,
+`styles.css`, `img/iconos.svg` (el ícono `gift`), `sw.js`, `idioma/en.js`, el
+manual (sección `puntos`, en castellano e inglés), `backend/server.js`,
+`perfiles.js`, `permisos.js`, `db/schema.sql`, `db/index.js`.
+
+**Verificado:** test nuevo `puntos` (11 casos: reglas puras, sin módulo, lo
+fiado, cambiar la regla, premios, canje en el mostrador, anular, devolución,
+ajustes, la página, pausar y unir clientes). `npm test`: 534 de 534; lint e
+i18n en verde. Probado en el navegador (compu y 390 px) con una cuenta de
+prueba sobre una base temporal: regla, premio de regalo, canje de dos premios
+en el mostrador (20 − 13 + 4 = 11), el enlace de WhatsApp y la ficha.
+- Nota de prueba: en una base nueva, la cuenta se crea con los ayudantes de
+  los tests (`registrarEmpresa` con `lectorDeMails` sobre `NEXO_MAIL_DIR`) y
+  después se entra con `POST /api/auth/login`.
+
+**Falta:** el canje desde Ventas (hoy solo el mostrador), el descuento en
+ciertos productos o categorías y los escalones de premios, el aviso
+automático antes de que venzan (pide la API de WhatsApp Business) y una pieza
+del Resumen con lo canjeado.

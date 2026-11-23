@@ -88,6 +88,9 @@
           <a href="#" class="nav-item" data-view="clientes">
             <svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#users"></use></svg> <span class="con-crm">CRM</span><span class="sin-crm">Clientes</span>
           </a>
+          <a href="#" class="nav-item col-admin" data-view="puntos" data-modulo="puntos">
+            <svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#gift"></use></svg> Puntos y premios
+          </a>
         </div>
         <div class="nav-seccion">
           <p class="nav-grupo">Ventas</p>
@@ -1570,6 +1573,19 @@
                   </div>
                   <p class="pos-descuento-error" id="posDescuentoError" role="alert" hidden></p>
                 </div>
+              </div>
+              <!-- Los puntos del cliente y sus premios (hist. §223): con el
+                   módulo prendido y un cliente elegido. Los premios de
+                   descuento bajan antes que el descuento a mano, y el de
+                   producto suma su renglón a $ 0 (core/puntos.js). -->
+              <div class="pos-puntos" id="posPuntos" hidden>
+                <div class="pos-puntos-cabeza">
+                  <span class="pos-puntos-saldo"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#gift"></use></svg> <span id="posPuntosSaldo"></span></span>
+                  <button type="button" class="btn-link" id="btnPosCanjear" aria-expanded="false" aria-controls="posPremios">Canjear un premio</button>
+                </div>
+                <ul class="pos-canjes" id="posCanjes"></ul>
+                <div class="pos-premios" id="posPremios" hidden></div>
+                <p class="pos-descuento-error" id="posPuntosError" role="alert" hidden></p>
               </div>
               <div class="pos-total">
                 <span>Total</span>
@@ -3331,6 +3347,188 @@
         </div>
       </section>
 
+      <!-- Vista: Puntos y premios (hist. §223, dominios/puntos.js). La página
+           (#/puntos), con la regla, los premios, quién tiene puntos y lo
+           último que se canjeó, y la de cada premio (#/puntos/premio/nuevo,
+           #/puntos/premio/<id>). Solo del admin y con el módulo prendido. -->
+      <section class="view" data-view="puntos" hidden>
+        <div class="puntos-pagina" data-pagina="lista">
+          <section class="ledger-strip" aria-label="Los puntos del negocio">
+            <div class="ledger-item">
+              <span class="ledger-label">Clientes con puntos</span>
+              <span class="ledger-value mono" id="puntosClientes">0</span>
+            </div>
+            <div class="ledger-divider" aria-hidden="true"></div>
+            <div class="ledger-item">
+              <span class="ledger-label">Puntos para canjear</span>
+              <span class="ledger-value mono" id="puntosParaCanjear">0</span>
+            </div>
+            <div class="ledger-divider" aria-hidden="true"></div>
+            <div class="ledger-item">
+              <span class="ledger-label">Canjes del mes</span>
+              <span class="ledger-value mono" id="puntosCanjesMes">0</span>
+            </div>
+            <div class="ledger-divider" aria-hidden="true"></div>
+            <div class="ledger-item">
+              <span class="ledger-label">Lo que diste en premios</span>
+              <span class="ledger-value mono" id="puntosMontoMes">$0,00</span>
+            </div>
+          </section>
+
+          <form class="form config-tarjeta puntos-regla" id="formProgramaPuntos" novalidate>
+            <div class="config-tarjeta-cuerpo">
+              <p class="config-tarjeta-titulo">Cómo se suman</p>
+              <p class="config-tarjeta-texto">Tus clientes suman con lo que pagan: lo fiado suma cuando lo pagan, y a "Consumidor final" no se le suma. Si cambiás la regla, vale para lo que vendas desde ahora.</p>
+              <div class="socio-alta-grupo">
+                <label>Un punto cada
+                  <span class="campo-sufijo"><input type="number" name="puntos_cada" min="1" step="any" inputmode="decimal" placeholder="1000" /><span aria-hidden="true">pesos</span></span>
+                </label>
+                <label>Vencen a los <small>(opcional)</small>
+                  <span class="campo-sufijo"><input type="number" name="vencen_meses" min="1" max="60" step="1" inputmode="numeric" placeholder="No vencen" /><span aria-hidden="true">meses</span></span>
+                </label>
+              </div>
+              <p class="opciones-nota" data-ejemplo aria-live="polite"></p>
+            </div>
+            <div class="config-tarjeta-pie">
+              <p class="campo-ayuda">Sin regla no suma nadie, pero los puntos que ya tienen se canjean igual.</p>
+              <div class="config-tarjeta-botones">
+                <button type="submit" class="btn btn-primary">Guardar</button>
+              </div>
+            </div>
+          </form>
+
+          <section class="panel">
+            <div class="panel-head">
+              <h2>Premios</h2>
+              <a class="btn btn-primary btn-nuevo" href="#/puntos/premio/nuevo"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#plus"></use></svg> <span>Nuevo premio</span></a>
+            </div>
+            <p class="opciones-nota">Se canjean en el punto de venta, con el cliente elegido: un descuento sobre la venta o un producto de regalo.</p>
+            <div class="tabla-scroll">
+            <table class="ledger-table lista-movil">
+              <thead>
+                <tr>
+                  <th scope="col">Premio</th>
+                  <th scope="col" class="align-right">Cuesta</th>
+                  <th scope="col" class="align-right">Canjes</th>
+                  <th scope="col">Estado</th>
+                </tr>
+              </thead>
+              <tbody id="premiosBody"></tbody>
+            </table>
+            </div>
+          </section>
+
+          <section class="panel">
+            <div class="panel-head">
+              <h2>Quién tiene puntos</h2>
+            </div>
+            <div class="tabla-scroll">
+            <table class="ledger-table lista-movil">
+              <thead>
+                <tr>
+                  <th scope="col">Cliente</th>
+                  <th scope="col" class="align-right">Puntos</th>
+                  <th scope="col">Próximos a vencer</th>
+                  <th scope="col"><span class="visualmente-oculto">Avisarle</span></th>
+                </tr>
+              </thead>
+              <tbody id="puntosClientesBody"></tbody>
+            </table>
+            </div>
+          </section>
+
+          <section class="panel">
+            <div class="panel-head">
+              <h2>Últimos canjes y ajustes</h2>
+            </div>
+            <div class="tabla-scroll">
+            <table class="ledger-table lista-movil">
+              <thead>
+                <tr>
+                  <th scope="col">Fecha</th>
+                  <th scope="col">Cliente</th>
+                  <th scope="col">Qué</th>
+                  <th scope="col" class="align-right">Puntos</th>
+                </tr>
+              </thead>
+              <tbody id="puntosMovimientosBody"></tbody>
+            </table>
+            </div>
+          </section>
+        </div>
+
+        <div class="socio-alta puntos-pagina" data-pagina="premio" hidden>
+          <a class="btn-link" href="#/puntos"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#chevron-left"></use></svg> Puntos y premios</a>
+          <form class="socio-alta-form" id="formPremio" novalidate>
+            <div class="form config-tarjeta">
+              <div class="config-tarjeta-cuerpo">
+                <p class="socio-alta-paso"><span class="socio-alta-numero">1</span> ¿Qué se lleva?</p>
+                <label>Nombre
+                  <input type="text" name="nombre" maxlength="80" autocomplete="off" placeholder="Ej: Café de regalo" required />
+                </label>
+                <fieldset class="opciones">
+                  <legend>Qué es el premio</legend>
+                  <div class="opciones-tarjetas">
+                    <label class="opcion-tarjeta">
+                      <input type="radio" name="tipo" value="porcentaje" checked />
+                      <span class="opcion-tarjeta-icono"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#percent"></use></svg></span>
+                      <span class="opcion-tarjeta-texto">
+                        <span class="opcion-tarjeta-nombre">Un porcentaje de descuento</span>
+                        <span class="opcion-tarjeta-desc">Ej: 10 % menos en la compra en que lo canjea.</span>
+                      </span>
+                      <span class="opcion-tarjeta-check"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#check"></use></svg></span>
+                    </label>
+                    <label class="opcion-tarjeta">
+                      <input type="radio" name="tipo" value="monto" />
+                      <span class="opcion-tarjeta-icono"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#banknote"></use></svg></span>
+                      <span class="opcion-tarjeta-texto">
+                        <span class="opcion-tarjeta-nombre">Un monto de descuento</span>
+                        <span class="opcion-tarjeta-desc">Ej: $ 5.000 menos, en una compra de por lo menos eso.</span>
+                      </span>
+                      <span class="opcion-tarjeta-check"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#check"></use></svg></span>
+                    </label>
+                    <label class="opcion-tarjeta">
+                      <input type="radio" name="tipo" value="producto" />
+                      <span class="opcion-tarjeta-icono"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#gift"></use></svg></span>
+                      <span class="opcion-tarjeta-texto">
+                        <span class="opcion-tarjeta-nombre">Un producto de regalo</span>
+                        <span class="opcion-tarjeta-desc">Ej: un café. Sale del stock y su costo entra en la venta.</span>
+                      </span>
+                      <span class="opcion-tarjeta-check"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#check"></use></svg></span>
+                    </label>
+                  </div>
+                </fieldset>
+                <label data-tipo-premio="descuento"><span data-texto-valor>Porcentaje</span>
+                  <span class="campo-sufijo"><input type="number" name="valor" min="0" step="0.01" inputmode="decimal" /><span aria-hidden="true" data-sufijo>%</span></span>
+                </label>
+                <label data-tipo-premio="producto" hidden>Qué producto
+                  <input type="text" id="premioProducto" list="premioProductos" autocomplete="off" placeholder="Empezá a escribir su nombre" />
+                </label>
+                <datalist id="premioProductos"></datalist>
+              </div>
+            </div>
+
+            <div class="form config-tarjeta">
+              <div class="config-tarjeta-cuerpo">
+                <p class="socio-alta-paso"><span class="socio-alta-numero">2</span> ¿Cuántos puntos cuesta?</p>
+                <label>Puntos
+                  <input type="number" name="puntos" min="1" step="1" inputmode="numeric" placeholder="50" required />
+                </label>
+                <p class="opciones-nota" data-equivale aria-live="polite"></p>
+              </div>
+              <div class="config-tarjeta-pie">
+                <p data-resumen aria-live="polite"></p>
+                <div class="config-tarjeta-botones">
+                  <button type="button" class="btn-link" data-accion="borrar" hidden>Borrar</button>
+                  <button type="button" class="btn-link" data-accion="pausar" hidden>Pausar</button>
+                  <button type="submit" class="btn btn-primary">Crear premio</button>
+                </div>
+              </div>
+            </div>
+          </form>
+        </div>
+      </section>
+
       <!-- Vista: ficha de un producto -->
       <section class="view" data-view="producto-detalle" hidden>
         <button type="button" class="btn-link" id="btnVolverProductos"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#chevron-left"></use></svg> <span>Volver a <span data-termino="plural">productos</span></span></button>
@@ -3645,6 +3843,41 @@
           </div>
           <div class="cliente-consultas" id="fichaClienteConsultas"></div>
           <ol class="linea-tiempo" id="fichaClienteSeguimiento"></ol>
+        </section>
+
+        <!-- Los puntos del cliente (hist. §223): los pinta dominios/puntos.js.
+             Sumar o quitar a mano es del admin; avisarle por WhatsApp, de los
+             dos roles. -->
+        <section class="panel" data-modulo="puntos" id="fichaClientePuntos">
+          <div class="panel-head">
+            <h2>Puntos</h2>
+            <div class="panel-acciones">
+              <a class="btn btn-secundario" id="btnPuntosWhatsApp" target="_blank" rel="noopener" hidden><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#message-circle"></use></svg> Avisarle sus puntos</a>
+              <button type="button" class="btn btn-secundario col-admin" id="btnAjustarPuntos"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#pencil"></use></svg> Sumar o quitar</button>
+            </div>
+          </div>
+          <p class="puntos-saldo"><strong class="mono" id="fichaPuntosSaldo">0 puntos</strong> <span class="campo-ayuda" id="fichaPuntosVence"></span></p>
+          <form class="form puntos-ajuste" id="formAjustePuntos" novalidate hidden>
+            <div class="socio-alta-grupo">
+              <label>Qué hacés
+                <select name="signo">
+                  <option value="1">Sumarle</option>
+                  <option value="-1">Quitarle</option>
+                </select>
+              </label>
+              <label>Cuántos puntos
+                <input type="number" name="puntos" min="1" step="1" inputmode="numeric" required />
+              </label>
+            </div>
+            <label>Por qué
+              <input type="text" name="motivo" maxlength="200" autocomplete="off" placeholder="Ej: los de su tarjetita de papel" required />
+            </label>
+            <div class="config-tarjeta-botones">
+              <button type="button" class="btn-link" data-accion="cancelar">Cancelar</button>
+              <button type="submit" class="btn btn-primary">Guardar</button>
+            </div>
+          </form>
+          <ol class="puntos-historial" id="fichaPuntosHistorial"></ol>
         </section>
 
         <!-- Lo del cliente en los módulos de servicios (hist. §83): los pinta
@@ -8616,6 +8849,12 @@
           <strong class="mono" id="posExitoVuelto"></strong>
         </div>
         <p class="form-note" id="posExitoNota" hidden></p>
+        <!-- Lo que sumó con los puntos (hist. §223), y el mensaje de la compra
+             listo para mandárselo por WhatsApp. -->
+        <p class="form-note pos-exito-puntos" id="posExitoPuntos" hidden>
+          <span id="posExitoPuntosTexto"></span>
+          <a class="btn-link" id="btnPosExitoWhatsApp" target="_blank" rel="noopener" hidden><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#message-circle"></use></svg> Mandárselo por WhatsApp</a>
+        </p>
         <p class="form-note" id="posExitoFactura" aria-live="polite" hidden></p>
         <div class="pos-exito-acciones">
           <button type="button" class="btn btn-secundario" id="btnPosTicket"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#receipt-text"></use></svg> Imprimir ticket</button>

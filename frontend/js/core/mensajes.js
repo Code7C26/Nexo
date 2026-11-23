@@ -20,7 +20,12 @@ export const MARCADORES = {
   deuda: "lo que debe",
   vencimiento: "la fecha en que vence o venció",
   dias: "los días de atraso",
-  plan: "el plan de la cuota"
+  plan: "el plan de la cuota",
+  // Los de los puntos (hist. §223).
+  total: "el total de la compra",
+  ganados: "los puntos que sumó con la compra",
+  puntos: "los puntos que tiene para canjear",
+  vencen: "cuándo vencen sus próximos puntos"
 };
 
 export const MENSAJES = {
@@ -45,6 +50,23 @@ export const MENSAJES = {
     marcadores: ["nombre", "negocio", "plan", "deuda", "vencimiento"],
     de_partida:
       "Hola, {nombre}. Te escribimos de {negocio}: tu cuota de {plan} venció el {vencimiento} y quedan {deuda} por pagar. Podés pagarla en la recepción, o avisanos si ya la pagaste. ¡Gracias!"
+  },
+  // Los de Praxia para que el cliente vuelva (hist. §223): el de la compra sale
+  // del mostrador al cobrar, y el de los puntos, de la ficha del cliente.
+  compra: {
+    titulo: "Después de una compra",
+    cuando: "Para mandarle al cliente, desde el mostrador, lo que sumó con su compra.",
+    modulo: "puntos",
+    marcadores: ["nombre", "negocio", "total", "ganados", "puntos"],
+    de_partida:
+      "¡Gracias por tu compra, {nombre}! Con los {total} de hoy sumaste {ganados} en {negocio}, y ya tenés {puntos} para canjear por premios. ¡Te esperamos!"
+  },
+  puntos: {
+    titulo: "Tus puntos",
+    cuando: "Para contarle a un cliente cuántos puntos tiene para canjear.",
+    modulo: "puntos",
+    marcadores: ["nombre", "negocio", "puntos", "vencen"],
+    de_partida: "Hola, {nombre}. En {negocio} tenés {puntos} para canjear por premios. Pasá cuando quieras y elegí el tuyo. ¡Te esperamos!"
   }
 };
 

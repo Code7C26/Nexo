@@ -792,6 +792,31 @@ const SECCIONES_ES = [
     ],
     ver: ["cobrar", "pagar-proveedor"]
   },
+  {
+    id: "puntos",
+    grupo: "Clientes",
+    titulo: "Puntos y premios",
+    pantalla: ["#/puntos", "Puntos y premios"],
+    modulo: "puntos",
+    preguntas: ["cómo hago un programa de puntos", "cómo canjea un cliente sus puntos", "cómo le regalo puntos a un cliente", "cuántos puntos tiene un cliente", "cómo armo los premios", "cómo hago para que los clientes vuelvan"],
+    palabras: ["puntos", "punto", "premio", "premios", "canje", "canjear", "fidelidad", "fidelizacion", "recompensa", "tarjeta", "regalo", "sumar", "vuelvan"],
+    bloques: [
+      "Tus clientes suman puntos con lo que pagan y los canjean por premios en el mostrador: un descuento sobre la compra o algo de regalo. Primero prendé **Puntos y premios** en Configuración → Funciones.",
+      { pasos: [
+        "En **Puntos y premios**, poné cada cuántos pesos se suma un punto y, si querés, a cuántos meses vencen. Tocá **Guardar**.",
+        "Tocá **Nuevo premio**: un porcentaje de descuento, un monto de descuento o un producto de regalo, y cuántos puntos cuesta.",
+        "En el **Punto de venta**, elegí al cliente: aparecen sus puntos. Tocá **Canjear un premio** y elegilo antes de cobrar."
+      ] },
+      { lista: [
+        "Suma lo que el cliente paga: lo fiado suma cuando lo paga, y a \"Consumidor final\" no se le suma.",
+        "Si cambiás la regla, vale para lo que vendas desde ahí: nadie gana ni pierde puntos de golpe.",
+        "Si anulás una venta, se sacan los puntos que dio y vuelven los que se canjearon en ella. Una devolución saca los puntos de lo devuelto.",
+        "Al canjear se usan primero los puntos que vencen antes."
+      ] },
+      "En la ficha de cada cliente ves sus puntos y de dónde salieron. Ahí el administrador le suma o le quita a mano, con el motivo (por ejemplo, los de su tarjetita de papel), y cualquiera le avisa por WhatsApp cuántos tiene. Los mensajes se cambian en Configuración → Mensajes de WhatsApp."
+    ],
+    ver: ["clientes", "punto-de-venta"]
+  },
 
   /* ---------- Comprar y stock ---------- */
   {

@@ -2344,7 +2344,13 @@ for (const [tabla, columna] of [
   ['venta_items', 'plan_cuotas INTEGER'],
   // Los mensajes de WhatsApp que el negocio cambió (hist. §219): NULL, los de
   // partida.
-  ['organizaciones', 'mensajes_whatsapp TEXT']
+  ['organizaciones', 'mensajes_whatsapp TEXT'],
+  // El programa de puntos (hist. §223): sin armar en los negocios de antes, y
+  // las ventas de antes no suman (NULL).
+  ['organizaciones', 'puntos_cada REAL'],
+  ['organizaciones', 'puntos_vencen_meses INTEGER'],
+  ['ventas', 'puntos_cada REAL'],
+  ['ventas', 'puntos_vencen TEXT']
 ]) {
   if (!db.prepare(`PRAGMA table_info(${tabla})`).all().some((col) => col.name === columna.split(' ')[0])) {
     db.exec(`ALTER TABLE ${tabla} ADD COLUMN ${columna}`);

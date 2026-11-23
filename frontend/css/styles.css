@@ -1885,6 +1885,7 @@ input[type="radio"] { accent-color: var(--accent); width: 16px; height: 16px; }
 :root:not([data-modulos~="stock"]) [data-modulo="stock"],
 :root:not([data-modulos~="socios"]) [data-modulo="socios"],
 :root:not([data-modulos~="produccion"]) [data-modulo="produccion"],
+:root:not([data-modulos~="puntos"]) [data-modulo="puntos"],
 /* La pestaña Servicios de Productos (hist. §88): un servicio no tiene stock. */
 .solo-servicios [data-modulo="stock"] {
   display: none;
@@ -11319,6 +11320,147 @@ a.asistente-guia-whatsapp:hover { border-color: var(--line-strong); }
   font-size: var(--txt-xs);
   color: var(--accent-danger);
 }
+
+/* Puntos y premios en el mostrador (hist. §223): el saldo del cliente, los
+   premios que se canjean en esta venta y la lista para elegir otro. */
+.pos-puntos[hidden],
+.pos-premios[hidden],
+.pos-puntos .btn-link[hidden] { display: none; }
+.pos-puntos {
+  display: grid;
+  gap: 6px;
+  padding: var(--sp-3);
+  background: var(--accent-bg);
+  border-radius: var(--r-sm);
+}
+.pos-puntos-cabeza {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-2);
+}
+.pos-puntos-saldo {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--txt-sm);
+  font-weight: 600;
+  color: var(--ink);
+}
+.pos-puntos-saldo .ico { color: var(--accent); }
+.pos-canjes {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.pos-canjes:empty { display: none; }
+.pos-canje {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  align-items: center;
+  gap: var(--sp-2);
+  font-size: var(--txt-sm);
+}
+.pos-canje-nombre,
+.pos-premio-nombre { display: grid; min-width: 0; }
+.pos-canje-nombre small,
+.pos-premio-nombre small {
+  font-size: var(--txt-xs);
+  color: var(--ink-muted);
+}
+.pos-canje-efecto {
+  font-weight: 600;
+  color: var(--accent-ok);
+  white-space: nowrap;
+}
+.pos-premios {
+  display: grid;
+  gap: 4px;
+}
+.pos-premio {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-2);
+  min-height: 44px;
+  padding: var(--sp-2) var(--sp-3);
+  font: inherit;
+  font-size: var(--txt-sm);
+  text-align: left;
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  cursor: pointer;
+}
+.pos-premio:hover:not(:disabled) { border-color: var(--accent); }
+.pos-premio:disabled { cursor: default; opacity: 0.6; }
+.pos-premio-puntos {
+  flex: none;
+  font-size: var(--txt-xs);
+  font-weight: 600;
+  color: var(--ink-muted);
+  white-space: nowrap;
+}
+.pos-exito-puntos[hidden],
+.pos-exito-puntos .btn-link[hidden] { display: none; }
+.pos-exito-puntos {
+  display: grid;
+  justify-items: center;
+  gap: var(--sp-1);
+}
+
+/* Los puntos en la ficha del cliente (hist. §223). */
+.puntos-saldo {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--sp-2);
+  margin: 0 0 var(--sp-3);
+}
+.puntos-saldo strong { font-size: var(--txt-lg); }
+.puntos-ajuste[hidden] { display: none; }
+.puntos-ajuste {
+  display: grid;
+  gap: var(--sp-3);
+  margin-bottom: var(--sp-3);
+  padding: var(--sp-3);
+  background: var(--surface-sunk);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+}
+.puntos-historial {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.puntos-movimiento {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  padding: var(--sp-2) 0;
+  border-top: 1px solid var(--line);
+}
+.puntos-movimiento-que {
+  display: grid;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.puntos-movimiento-que small { font-size: var(--txt-xs); color: var(--ink-muted); }
+.puntos-movimiento-cuanto {
+  flex: none;
+  font-weight: 600;
+  color: var(--accent-ok);
+}
+.puntos-movimiento-cuanto.negativo { color: var(--ink-muted); }
+.puntos-vacio {
+  padding: var(--sp-3) 0;
+  color: var(--ink-muted);
+}
+.puntos-regla { margin-bottom: var(--sp-5); }
 
 /* Sucursales y el cierre del día y del mes (hist. §193). */
 .sucursal-checks {

@@ -14,7 +14,10 @@ import { crearConsumos } from "../core/al-vender.js";
 import { cantidadDeEtiqueta, leerEtiqueta } from "../core/balanza.js";
 import { mejorOferta, proximaPromocion } from "../core/ofertas.js";
 import { aplicarDescuento } from "../core/descuento.js";
-import { negocio } from "../core/negocio.js";
+import { aplicarPremios, textoPuntos } from "../core/puntos.js";
+import { enlaceWhatsApp, llenarMensaje, textoDe } from "../core/mensajes.js";
+import { pesosMensaje } from "../core/recordar.js";
+import { moduloActivo, negocio } from "../core/negocio.js";
 import {
   CONDICIONES_FISCALES,
   condicionFiscal,
@@ -75,6 +78,12 @@ let descuento = null;
 let editandoDescuento = false;
 // El tipo elegido se recuerda aunque todavía no haya un número.
 let tipoDescuento = "porcentaje";
+// Puntos y premios (hist. §223): el programa con sus premios activos
+// (GET /api/premios), los puntos del cliente elegido ({ id, saldo }) y los
+// premios que se canjean en esta venta (ids, en el orden en que se eligieron).
+let programaPuntos = { prendido: false, premios: [] };
+let puntosCliente = null;
+let canjes = [];
 
 const vista = document.querySelector('section.view[data-view="pos"]');
 const posApertura = document.getElementById("posApertura");
@@ -175,7 +184,10 @@ async function cargarTodo() {
     api("/api/clientes", { error: "No se pudieron cargar los clientes." }),
     consumosPos.cargar(),
     api("/api/ofertas", { error: "No se pudieron cargar las ofertas." }).then((lista) => (ofertas = lista)),
-    api("/api/medios-cobro?activos=1", { error: "No se pudieron cargar los medios de cobro." }).then((lista) => (medios = lista))
+    api("/api/medios-cobro?activos=1", { error: "No se pudieron cargar los medios de cobro." }).then((lista) => (medios = lista)),
+    moduloActivo("puntos")
+      ? api("/api/premios", { error: "No se pudieron cargar los premios." }).then((p) => (programaPuntos = p))
+      : (programaPuntos = { prendido: false, premios: [] })
   ]);
   cuentas = tesoreria.cuentas;
   // Solo las cajas de las sucursales donde trabaja esta persona (hist. §193).
@@ -728,14 +740,36 @@ const itemsDelCarrito = () =>
   });
 
 const subtotalCarrito = () => redondear(carrito.reduce((acc, r) => acc + r.cantidad * precioDelRenglon(r).precio, 0));
+// Los premios canjeados en esta venta (hist. §223), los que siguen activos.
+const premiosElegidos = () => canjes.map((id) => programaPuntos.premios.find((p) => p.id === id)).filter(Boolean);
+const premiosDeDescuento = () => premiosElegidos().filter((p) => p.tipo !== "producto");
+const puntosElegidos = () => premiosElegidos().reduce((acc, p) => acc + p.puntos, 0);
+// Los premios de descuento bajan primero, con las reglas del servidor
+// (core/puntos.js): { renglones: [{ precio }], montos } o { error }.
+function premiosDelCarrito() {
+  const renglones = carrito.map((r) => ({ cantidad: r.cantidad, precio: precioDelRenglon(r).precio }));
+  const premios = premiosDeDescuento();
+  if (!premios.length) return { renglones, montos: [] };
+  if (!carrito.length) return { error: t("Sumá algo a la venta para usar un premio de descuento.") };
+  return aplicarPremios(renglones, premios);
+}
+const montoPremios = () => redondear((premiosDelCarrito().montos ?? []).reduce((acc, m) => acc + m, 0));
 // El descuento repartido entre los renglones, con las reglas del servidor:
-// { monto } o { error } (más que el total, 0…), o null sin descuento.
-const descuentoDelCarrito = () =>
-  descuento && carrito.length
-    ? aplicarDescuento(carrito.map((r) => ({ cantidad: r.cantidad, precio: precioDelRenglon(r).precio })), descuento)
-    : null;
+// { monto } o { error } (más que el total, 0…), o null sin descuento. Va sobre
+// lo que dejaron los premios.
+function descuentoDelCarrito() {
+  if (!descuento || !carrito.length) return null;
+  const conPremios = premiosDelCarrito();
+  if (conPremios.error) return null;
+  return aplicarDescuento(
+    carrito.map((r, i) => ({ cantidad: r.cantidad, precio: conPremios.renglones[i].precio })),
+    descuento
+  );
+}
 const montoDescuento = () => descuentoDelCarrito()?.monto ?? 0;
-const totalCarrito = () => redondear(subtotalCarrito() - montoDescuento());
+const totalCarrito = () => redondear(subtotalCarrito() - montoPremios() - montoDescuento());
+// Un premio de producto (hist. §223) es una venta aunque no haya nada más.
+const hayParaCobrar = () => carrito.length > 0 || premiosElegidos().some((p) => p.tipo === "producto");
 // Lo que viaja con la venta: los precios sin el descuento y el descuento
 // aparte, que el servidor vuelve a repartir.
 const descuentoParaEnviar = () => (montoDescuento() > 0 ? { descuento } : {});
@@ -794,6 +828,7 @@ function renderTicket() {
   else consumosPos.proponer(itemsDelCarrito());
 
   renderDescuento();
+  renderPuntos();
   document.getElementById("posTotal").textContent = money(total);
   const ahorro = ahorroCarrito();
   const posAhorro = document.getElementById("posAhorro");
@@ -804,9 +839,117 @@ function renderTicket() {
   document.getElementById("posBarraCantidad").textContent =
     carrito.length === 0 ? "Sin productos" : `${numero(carrito.length)} ${carrito.length === 1 ? "producto" : "productos"}`;
   document.getElementById("btnPosVaciar").hidden = carrito.length === 0;
-  document.getElementById("btnPosCobrar").disabled = carrito.length === 0;
-  document.getElementById("btnPosBarraCobrar").disabled = carrito.length === 0;
+  document.getElementById("btnPosCobrar").disabled = !hayParaCobrar();
+  document.getElementById("btnPosBarraCobrar").disabled = !hayParaCobrar();
 }
+
+/* ---------- Puntos y premios (hist. §223) ---------- */
+
+const posPuntos = document.getElementById("posPuntos");
+const posPremios = document.getElementById("posPremios");
+
+// "Medialuna de regalo" ya dice lo que es: no se repite abajo.
+const mismoTexto = (a, b) => a.trim().toLowerCase() === b.trim().toLowerCase();
+
+// El cliente del campo, si es uno de la lista (no "Consumidor final").
+const clienteDelCampo = () => resolverCliente().cliente ?? null;
+
+// Los puntos del cliente elegido. Cambiar de cliente saca los premios elegidos:
+// eran de los puntos del otro.
+async function cargarPuntosDelCliente() {
+  const cliente = programaPuntos.prendido ? clienteDelCampo() : null;
+  if (cliente?.id === puntosCliente?.id) return;
+  canjes = [];
+  puntosCliente = null;
+  posPremios.hidden = true;
+  if (cliente) {
+    const puntos = await api(`/api/clientes/${cliente.id}/puntos`, { error: "No se pudieron cargar sus puntos." });
+    // Si mientras tanto se eligió otro, este ya no va.
+    if (clienteDelCampo()?.id === cliente.id) puntosCliente = { id: cliente.id, saldo: puntos.saldo, proximo: puntos.proximo };
+  }
+  renderTicket();
+}
+
+function renderPuntos() {
+  posPuntos.hidden = !programaPuntos.prendido || !puntosCliente;
+  if (posPuntos.hidden) return;
+  const quedan = puntosCliente.saldo - puntosElegidos();
+  document.getElementById("posPuntosSaldo").textContent = canjes.length
+    ? formatear("Le quedan {0}", textoPuntos(quedan))
+    : formatear("Tiene {0}", textoPuntos(Math.max(0, puntosCliente.saldo)));
+  const canjeables = programaPuntos.premios.length > 0;
+  const boton = document.getElementById("btnPosCanjear");
+  boton.hidden = !canjeables;
+  boton.setAttribute("aria-expanded", String(!posPremios.hidden));
+
+  const montos = premiosDelCarrito().montos ?? [];
+  let deDescuento = 0;
+  document.getElementById("posCanjes").innerHTML = premiosElegidos()
+    .map((p) => {
+      const efecto = p.tipo === "producto" ? t("de regalo") : `− ${money(montos[deDescuento++] ?? 0)}`;
+      return `
+        <li class="pos-canje" data-premio="${p.id}">
+          <span class="pos-canje-nombre">${esc(p.nombre)}<small>${esc(textoPuntos(p.puntos))}</small></span>
+          <span class="pos-canje-efecto mono">${esc(efecto)}</span>
+          <button type="button" class="btn-icon" data-quitar-premio="${p.id}" aria-label="${esc(formatear("Sacar {0}", p.nombre))}">${icono("x")}</button>
+        </li>`;
+    })
+    .join("");
+
+  // Lo que le alcanza: cada premio una vez por venta, y el de producto si hay stock.
+  posPremios.innerHTML = programaPuntos.premios
+    .map((p) => {
+      const elegido = canjes.includes(p.id);
+      const regalo = p.tipo === "producto" ? porClave.get(`${p.producto_id}:${p.variante_id ?? ""}`) : null;
+      const motivo =
+        elegido ? t("Ya está en la venta")
+        : p.puntos > quedan ? formatear("Le faltan {0}", textoPuntos(p.puntos - quedan))
+        : p.tipo === "producto" && !(regalo && hayStock(regalo)) ? t("No hay stock")
+        : p.tipo !== "producto" && hayCuotas() ? t("No va con algo en cuotas")
+        : "";
+      return `
+        <button type="button" class="pos-premio" data-premio="${p.id}" ${motivo ? "disabled" : ""}>
+          <span class="pos-premio-nombre">${esc(p.nombre)}${mismoTexto(p.nombre, p.descripcion) ? "" : `<small>${esc(p.descripcion)}</small>`}</span>
+          <span class="pos-premio-puntos mono">${esc(motivo || textoPuntos(p.puntos))}</span>
+        </button>`;
+    })
+    .join("");
+
+  const error = document.getElementById("posPuntosError");
+  const conPremios = premiosDelCarrito();
+  error.hidden = !conPremios.error;
+  error.textContent = conPremios.error ?? "";
+}
+
+posCliente.addEventListener("change", () => refrescar([cargarPuntosDelCliente()]));
+posCliente.addEventListener("input", () => {
+  // Al elegir de la lista llega un input con el nombre entero.
+  if (clienteDelCampo()?.id !== puntosCliente?.id) refrescar([cargarPuntosDelCliente()]);
+});
+
+document.getElementById("btnPosCanjear").addEventListener("click", () => {
+  posPremios.hidden = !posPremios.hidden;
+  renderPuntos();
+});
+
+posPremios.addEventListener("click", (e) => {
+  const boton = e.target.closest("[data-premio]");
+  if (!boton || boton.disabled) return;
+  canjes.push(Number(boton.dataset.premio));
+  posPremios.hidden = true;
+  renderTicket();
+});
+
+document.getElementById("posCanjes").addEventListener("click", (e) => {
+  const boton = e.target.closest("[data-quitar-premio]");
+  if (!boton) return;
+  canjes = canjes.filter((id) => id !== Number(boton.dataset.quitarPremio));
+  renderTicket();
+});
+
+// Lo que viaja con la venta: los premios elegidos, y el servidor vuelve a
+// aplicarlos con las mismas reglas.
+const canjesParaEnviar = () => (canjes.length ? { canjes: premiosElegidos().map((p) => p.id) } : {});
 
 /* ---------- Descuento a mano (hist. §175) ---------- */
 
@@ -906,6 +1049,7 @@ document.getElementById("btnPosVaciar").addEventListener("click", async () => {
   });
   if (!ok) return;
   carrito = [];
+  canjes = [];
   cambioElCarrito();
 });
 
@@ -946,11 +1090,16 @@ function resolverCliente() {
 }
 
 function abrirCobro() {
-  if (!turno || carrito.length === 0) return;
+  if (!turno || !hayParaCobrar()) return;
   const { cliente, error } = resolverCliente();
   if (error) {
     avisar(error, "atencion");
     posCliente.focus();
+    return;
+  }
+  const errorPremios = premiosDelCarrito().error;
+  if (errorPremios) {
+    avisar(errorPremios, "atencion");
     return;
   }
   const errorDescuento = descuentoDelCarrito()?.error;
@@ -1531,6 +1680,7 @@ async function registrarVenta({ cobros, vuelto, falta }) {
     ...(cobro.cliente ? { cliente_id: cobro.cliente.id } : {}),
     items: itemsDelCarrito(),
     ...descuentoParaEnviar(),
+    ...canjesParaEnviar(),
     consumos: consumosPos.leer(),
     cobros
   };
@@ -1561,7 +1711,18 @@ async function registrarVenta({ cobros, vuelto, falta }) {
       btnPosACuenta.disabled = false;
     });
 
-  mostrarExito({ id: venta.id, vuelto, falta, cliente: cobro.cliente, ahorro: ahorroCarrito(), descontado: montoDescuento(), factura });
+  mostrarExito({
+    id: venta.id,
+    vuelto,
+    falta,
+    cliente: cobro.cliente,
+    ahorro: ahorroCarrito(),
+    descontado: montoDescuento(),
+    factura,
+    puntos: venta.puntos ?? null,
+    premios: premiosElegidos().map((p) => p.nombre),
+    total: venta.total ?? cobro.total
+  });
   ventaHecha();
 }
 
@@ -1569,6 +1730,8 @@ async function registrarVenta({ cobros, vuelto, falta }) {
 // día.
 function ventaHecha() {
   carrito = [];
+  canjes = [];
+  puntosCliente = null;
   guardarCarrito();
   posCliente.value = "";
   posBuscar.value = "";
@@ -1594,7 +1757,34 @@ document.getElementById("btnPosFactura").addEventListener("click", (e) => {
   });
 });
 
-function mostrarExito({ id, vuelto, falta, cliente, ahorro, descontado = 0, factura = null }) {
+// Lo que sumó con los puntos (hist. §223) y, si tiene teléfono, el mensaje de
+// la compra listo para mandarle (Configuración › Mensajes de WhatsApp).
+function pintarPuntosDeLaVenta({ cliente, puntos, premios, total }) {
+  const caja = document.getElementById("posExitoPuntos");
+  caja.hidden = !puntos || !cliente;
+  if (caja.hidden) return;
+  const partes = [
+    premios.length ? formatear("Canjeó {0}.", premios.join(", ")) : "",
+    puntos.ganados > 0
+      ? formatear("{0} sumó {1} y ahora tiene {2}.", cliente.nombre, textoPuntos(puntos.ganados), textoPuntos(Math.max(0, puntos.saldo)))
+      : formatear("{0} tiene {1}.", cliente.nombre, textoPuntos(Math.max(0, puntos.saldo)))
+  ].filter(Boolean);
+  document.getElementById("posExitoPuntosTexto").textContent = partes.join(" ");
+  const texto = llenarMensaje(textoDe("compra", negocio.mensajes_whatsapp), {
+    nombre: cliente.nombre,
+    negocio: negocio.nombre,
+    total: pesosMensaje(total),
+    ganados: textoPuntos(puntos.ganados),
+    puntos: textoPuntos(Math.max(0, puntos.saldo))
+  });
+  const enlace = cliente.telefono ? enlaceWhatsApp(cliente.telefono, texto) : null;
+  const boton = document.getElementById("btnPosExitoWhatsApp");
+  boton.hidden = !enlace;
+  if (enlace) boton.href = enlace;
+}
+
+function mostrarExito({ id, vuelto, falta, cliente, ahorro, descontado = 0, factura = null, puntos = null, premios = [], total = 0 }) {
+  pintarPuntosDeLaVenta({ cliente, puntos, premios, total });
   // Una factura que ARCA rechazó no existe: no hay hoja para imprimir.
   const emitida = factura?.emitida && factura.emitida.arca_estado !== "rechazado" ? factura.emitida : null;
   ultimaVenta = { id, vuelto, facturaId: emitida?.id ?? null };
@@ -1691,6 +1881,7 @@ btnPosQr.addEventListener("click", async () => {
     ...(cobro.cliente ? { cliente_id: cobro.cliente.id } : {}),
     items: itemsDelCarrito(),
     ...descuentoParaEnviar(),
+    ...canjesParaEnviar(),
     consumos: consumosPos.leer(),
     cobros: [],
     qr_mercadopago: true

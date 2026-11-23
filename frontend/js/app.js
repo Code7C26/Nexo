@@ -96,6 +96,7 @@ import "./dominios/cierre.js";
 import "./dominios/horarios.js";
 import "./dominios/clases.js";
 import "./dominios/ofertas.js";
+import "./dominios/puntos.js";
 import "./dominios/venta-online.js";
 import "./dominios/lista-proveedor.js";
 import { htmlCapacidades, respuestaDeAyuda, respuestaDeCharla, respuestaDeConsulta, respuestaDeNavegar } from "./dominios/ayuda.js";
@@ -7441,6 +7442,8 @@ async function abrirFichaCliente(id) {
   invocar("pintar:crmDelCliente", cliente);
   invocar("pintar:trabajosDelCliente", cliente);
   invocar("pintar:abonosDelCliente", cliente);
+  // Sus puntos (hist. §223): los pide aparte, sin frenar la ficha.
+  refrescar([invocar("pintar:puntosDelCliente", cliente)]);
   mostrarVista("cliente-detalle", { titulo: cliente.nombre });
 }
 

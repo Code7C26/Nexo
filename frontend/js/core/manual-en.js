@@ -349,6 +349,27 @@ export const SECCIONES_EN = {
       "The balance comes from the sales, purchases, payments received and payments made you recorded: it can't be edited by hand. To lower a debt, record the payment."
     ]
   },
+  puntos: {
+    titulo: "Points and rewards",
+    pantalla: "Points and rewards",
+    preguntas: ["how do i set up a points program", "how does a customer redeem points", "how do i give points to a customer", "how many points does a customer have", "how do i set up rewards", "how do i get customers to come back"],
+    palabras: ["points", "point", "reward", "rewards", "redeem", "loyalty", "card", "gift", "earn", "come back"],
+    bloques: [
+      "Your customers earn points with what they pay and redeem them for rewards at the counter: a discount on the purchase or something free. First turn on **Points and rewards** in Settings → Features.",
+      { pasos: [
+        "In **Points and rewards**, enter how many pesos earn one point and, if you want, after how many months they expire. Tap **Save**.",
+        "Tap **New reward**: a percentage off, an amount off or a free product, and how many points it costs.",
+        "At the **Point of sale**, choose the customer: their points show up. Tap **Redeem a reward** and pick it before charging."
+      ] },
+      { lista: [
+        "What the customer pays earns points: credit sales earn when they're paid, and \"Walk-in customer\" doesn't earn.",
+        "If you change the rule, it applies to what you sell from then on: nobody gains or loses points all at once.",
+        "If you void a sale, the points it gave are taken away and the ones redeemed in it come back. A return takes away the points of what was returned.",
+        "Redeeming uses the points that expire first."
+      ] },
+      "Each customer's page shows their points and where they came from. There the admin adds or removes points by hand, with the reason (for example, the ones from their paper card), and anyone can tell them their points over WhatsApp. The messages are changed in Settings → WhatsApp messages."
+    ]
+  },
   "registrar-compra": {
     titulo: "Recording a purchase",
     pantalla: "Purchases",

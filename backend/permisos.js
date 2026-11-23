@@ -104,6 +104,18 @@ export const RUTAS_PERMISOS = {
   // Ofertas con vigencia (hist. §133): el mostrador las aplica, así que
   // verlas es de los dos; crearlas, editarlas y pausarlas es admin, como los
   // precios.
+  // Puntos y premios (hist. §223): el mostrador lee los premios y los puntos del
+  // cliente, y el canje entra con la venta; la regla, el catálogo, la página y
+  // los ajustes a mano son del admin.
+  'GET /api/premios': 'ambos',
+  'GET /api/clientes/:id/puntos': 'ambos',
+  'GET /api/puntos': 'admin',
+  'PUT /api/puntos/programa': 'admin',
+  'POST /api/premios': 'admin',
+  'PUT /api/premios/:id': 'admin',
+  'PATCH /api/premios/:id': 'admin',
+  'DELETE /api/premios/:id': 'admin',
+  'POST /api/clientes/:id/puntos': 'admin',
   'GET /api/ofertas': 'ambos',
   'POST /api/ofertas': 'admin',
   'PUT /api/ofertas/:id': 'admin',
