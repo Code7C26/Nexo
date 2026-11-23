@@ -4197,8 +4197,11 @@ html[data-ejemplo] #btnCompraFactura { display: none; }
   #posCompu { order: 1; }
 
   /* Las listas sin la tarjeta que las envuelve: margen y borde dobles que
-     comían ancho y alto, como una lista nativa. */
-  .view > .panel:has(> .tabla-scroll > .lista-movil) {
+     comían ancho y alto, como una lista nativa. También las que van en una
+     pestaña (el CRM, Trabajos). Las fichas conservan sus tarjetas: separan
+     una parte de la otra. Con :not([hidden]), un panel oculto (las cuotas
+     de una venta que no es en cuotas) no reaparece por el display. */
+  :is(.view:not([data-view$="-detalle"]), .trabajos-pestana) > .panel:not([hidden]):has(> .tabla-scroll > .lista-movil) {
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;
     align-items: center;
@@ -4208,14 +4211,15 @@ html[data-ejemplo] #btnCompraFactura { display: none; }
     border: 0;
     box-shadow: none;
   }
-  .view > .panel:has(> .tabla-scroll > .lista-movil) > * { grid-column: 1 / -1; margin-top: 0; margin-bottom: 0; }
+  :is(.view:not([data-view$="-detalle"]), .trabajos-pestana) > .panel:not([hidden]):has(> .tabla-scroll > .lista-movil) > * { grid-column: 1 / -1; margin-top: 0; margin-bottom: 0; }
   /* Arriba, el título y "Filtrar" en un renglón (con filtros puestos, sus
      chips vuelven a ocupar el ancho); abajo, las acciones de la lista
      (Categorías, Ofertas…) en un renglón de botones que se desliza. */
-  .view > .panel:has(> .tabla-scroll > .lista-movil) > .panel-head { display: contents; }
-  .view > .panel:has(> .tabla-scroll > .lista-movil) > .panel-head > h2 { grid-column: 1; grid-row: 1; }
-  .view > .panel:has(> .tabla-scroll > .lista-movil) > .filtros:not(:has(> :nth-child(2))) { grid-column: 2; grid-row: 1; }
-  .view > .panel:has(> .tabla-scroll > .lista-movil) > .panel-head > .panel-acciones {
+  :is(.view:not([data-view$="-detalle"]), .trabajos-pestana) > .panel:not([hidden]):has(> .tabla-scroll > .lista-movil) > .panel-head { display: contents; }
+  :is(.view:not([data-view$="-detalle"]), .trabajos-pestana) > .panel:not([hidden]):has(> .tabla-scroll > .lista-movil) > .panel-head > * { grid-column: 1 / -1; }
+  :is(.view:not([data-view$="-detalle"]), .trabajos-pestana) > .panel:not([hidden]):has(> .tabla-scroll > .lista-movil) > .panel-head > h2 { grid-column: 1; grid-row: 1; }
+  :is(.view:not([data-view$="-detalle"]), .trabajos-pestana) > .panel:not([hidden]):has(> .tabla-scroll > .lista-movil) > .filtros:not(:has(> :nth-child(2))) { grid-column: 2; grid-row: 1; }
+  :is(.view:not([data-view$="-detalle"]), .trabajos-pestana) > .panel:not([hidden]):has(> .tabla-scroll > .lista-movil) > .panel-head > .panel-acciones {
     grid-column: 1 / -1;
     flex-wrap: nowrap;
     margin: 0 -16px;
@@ -4223,14 +4227,14 @@ html[data-ejemplo] #btnCompraFactura { display: none; }
     overflow-x: auto;
     scrollbar-width: none;
   }
-  .view > .panel:has(> .tabla-scroll > .lista-movil) > .panel-head > .panel-acciones::-webkit-scrollbar { display: none; }
-  .view > .panel:has(> .tabla-scroll > .lista-movil) > .panel-head > .panel-acciones > .btn:not(.btn-nuevo) {
+  :is(.view:not([data-view$="-detalle"]), .trabajos-pestana) > .panel:not([hidden]):has(> .tabla-scroll > .lista-movil) > .panel-head > .panel-acciones::-webkit-scrollbar { display: none; }
+  :is(.view:not([data-view$="-detalle"]), .trabajos-pestana) > .panel:not([hidden]):has(> .tabla-scroll > .lista-movil) > .panel-head > .panel-acciones > .btn:not(.btn-nuevo) {
     flex: none;
     min-height: 40px;
     padding-inline: var(--sp-3);
     font-size: var(--txt-sm);
   }
-  .view > .panel:has(> .tabla-scroll > .lista-movil) > .tabla-scroll { margin-top: var(--sp-2); }
+  :is(.view:not([data-view$="-detalle"]), .trabajos-pestana) > .panel:not([hidden]):has(> .tabla-scroll > .lista-movil) > .tabla-scroll { margin-top: var(--sp-2); }
 
   .panel-head {
     flex-direction: column;
@@ -4251,10 +4255,28 @@ html[data-ejemplo] #btnCompraFactura { display: none; }
   .ficha-datos { grid-template-columns: 1fr 1fr; }
   .ficha-datos dd { overflow-wrap: anywhere; }
 
+  /* Las acciones, en un renglón parejo (Ticket, Devolver y Editar entran
+     juntos); si no entran, el resto baja y se estira. */
   [data-view$="-detalle"] .panel-acciones {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    display: flex;
+    flex-wrap: wrap;
   }
+  [data-view$="-detalle"] .panel-acciones > .btn {
+    flex: 1 1 auto;
+    min-height: 44px;
+    padding-inline: var(--sp-3);
+  }
+
+  /* Una lista para elegir con una sola opción (un solo depósito, una sola
+     lista de precios) no tiene nada que elegir: en el celular no se
+     muestra, y lo que vale se manda igual. Una vacía o con solo "Elegí…"
+     sí se muestra: ahí falta algo. */
+  .modal .form > label:has(> select > option:only-child:not([value=""])) { display: none; }
+
+  /* Lo que no está cargado no se muestra, como en los contactos del
+     teléfono: "Email —" o "Notas —" ocupaban media ficha. Se carga con
+     Editar, y en la compu se ve todo. */
+  .ficha-datos > .ficha-vacio { display: none; }
 
   .ledger-table, .ledger-table tbody, .ledger-table tr, .ledger-table td {
     display: block;
@@ -4296,6 +4318,11 @@ html[data-ejemplo] #btnCompraFactura { display: none; }
   .ledger-table td.col-sel {
     padding-bottom: 8px;
   }
+
+  /* Lo mismo en el aviso de lista vacía, que no tiene etiqueta: el hueco
+     corría la primera línea a la derecha. Va centrado, como en la compu. */
+  .ledger-table td.tabla-vacia::before { display: none; }
+  .ledger-table td.tabla-vacia { padding: var(--sp-6) var(--sp-3); text-align: center !important; }
 
   /* .cc-detalle es una <table> propia anidada dentro de un <td colspan>
      de .ledger-table (detalle de cuenta corriente al expandir una fila):

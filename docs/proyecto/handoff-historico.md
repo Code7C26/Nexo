@@ -15509,3 +15509,35 @@ Shopify, Square, Hoober).
   Stock de 400 a 224, Cuentas corrientes de 569 a 254.
 - Falta: el CRM (otra estructura), los formularios y las fichas, y probarlo en
   un teléfono de verdad. `npm test`: 523 de 523; lint e i18n en verde.
+
+## §222 — 22 de noviembre de 2026: el celular, más cómodo (fichas, CRM y formularios)
+
+Sigue §221: lo que había quedado ("el CRM, los formularios y las fichas").
+Medido igual (390 × 780, Lola Indumentaria de ejemplo sobre una copia de la
+base); la tabla está en `docs/investigaciones/investigacion-celular.md`,
+punto 5.
+
+- **Las fichas, en filas de dos líneas:** 22 tablas de fichas pasan a
+  `lista-movil` con `m-titulo`, `m-valor`, `m-estado`, `m-accion` y
+  `celdaMovil()` (app.js, trabajos.js, abonos.js, socios.js, produccion.js).
+  En la compu no cambia nada; "Venta #468" y "Compra #12" llevan la palabra
+  con `.solo-celular` y en la compu siguen siendo "#468". La lista de precios
+  del proveedor no se tocó (tiene su "Cambiar" en la fila).
+- **Las fichas conservan sus tarjetas:** la regla que saca la tarjeta de las
+  listas (§221) se limita a las vistas que no son `-detalle` y a
+  `.trabajos-pestana` (así llega al CRM y a Trabajos). Lleva `:not([hidden])`:
+  con el `display: grid`, un panel oculto ("Cuotas" de una venta que no es en
+  cuotas) aparecía vacío.
+- **Datos vacíos:** `camposFicha()` marca `.ficha-vacio` y en el celular no se
+  muestran. Las acciones de la ficha van en un renglón (`flex-wrap`).
+- **Formularios:** en el celular, un `<select>` con una sola opción con valor
+  no se muestra (`option:only-child:not([value=""])`: una vacía o con solo
+  "Elegí…" sí, porque falta algo). "Nueva venta" junta Fecha y Condición de
+  pago y "Nuevo gasto" Importe y Cuenta en una `.form-fila` (también en la
+  compu, donde queda bien).
+- **Lista vacía:** el aviso salía corrido 110 px (el `::before` de la
+  etiqueta): ahora va centrado en todas.
+- Nota de prueba: una base vacía es "instalación nueva" y manda al alta; para
+  entrar a un negocio de ejemplo hace falta una copia de la base local.
+- `npm test`: 523 de 523. Lint e i18n en verde. Falta probarlo en un teléfono
+  de verdad.

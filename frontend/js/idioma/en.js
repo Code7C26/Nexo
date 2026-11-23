@@ -6093,5 +6093,9 @@ export default {
   "Ese producto no tiene un plan en esas cuotas.": "That product doesn’t have a plan with that many installments.",
   "Esta venta es en cuotas: para cambiarla, anulala y cargala de nuevo.": "This sale is in installments: to change it, void it and enter it again.",
   "Una venta con algo en cuotas no lleva descuento a mano.": "A sale with something in installments doesn’t take a manual discount.",
-  "En cuotas vence una cuota por mes, desde hoy.": "In installments, one installment is due each month, starting today."
+  "En cuotas vence una cuota por mes, desde hoy.": "In installments, one installment is due each month, starting today.",
+  "devolvió": "returned",
+  "no vuelve al stock": "doesn’t go back to stock",
+  "costo real": "real cost",
+  "compra #{0}": "purchase #{0}"
 };

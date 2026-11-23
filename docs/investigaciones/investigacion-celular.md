@@ -283,6 +283,36 @@ pasaron a filas de dos líneas (la evolución, con los últimos 7 períodos; el
 gráfico muestra todos). Lo que sigue grande: el CRM (otra estructura) y lo que
 cada uno elige ver en el Resumen, que se esconde con "Personalizar".
 
+### El CRM, las fichas y los formularios (hist. §222)
+
+Lo mismo que en las listas, en lo que quedaba:
+
+- **Las fichas** (venta, cliente, producto, compra, proveedor, presupuesto,
+  factura, devoluciones, trabajo, abono, socio y producción): sus tablas eran
+  tarjetas de 4 o 5 renglones por fila ("N° · Fecha · Total · Cobro", uno
+  abajo del otro). Ahora son filas de dos líneas, como las listas. Los datos
+  vacíos no se muestran ("Email —"), como en los contactos del teléfono, y
+  los botones de arriba van en un renglón.
+- **El CRM:** sus listas van dentro de pestañas y no les llegaba lo de las
+  listas; ahora sí.
+- **Los formularios:** los campos ya miden 44 px con letra de 16 (lo mínimo
+  para tocar cómodo y para que el iPhone no agrande la pantalla), así que no
+  se achican. Lo que se hizo es sacar lo que no hay que elegir: una lista con
+  una sola opción (un solo depósito) no se muestra, y en "Nueva venta" la
+  fecha y el plazo van juntos, porque casi siempre quedan como vienen.
+
+| | Antes | Después |
+|---|---|---|
+| Ficha de un cliente | 2,9 pantallas | 2,0 |
+| Ficha de una venta | 3,0 | 2,5 |
+| Ficha de un producto | 1,7 | 1,3 |
+| CRM, clientes | 1,7 | 1,5 |
+| Nueva venta: dónde empiezan los productos | 566 px | 322 |
+| Nuevo gasto | más de una pantalla | entra en una |
+
+Además, el aviso de lista vacía salía corrido a la derecha en el celular (el
+lugar de una etiqueta que no tiene): ahora va centrado.
+
 ## Fuentes
 
 - Material Design 3: [navigation bar](https://raw.githubusercontent.com/material-components/material-components-android/master/docs/components/BottomNavigation.md),

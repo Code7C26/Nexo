@@ -761,9 +761,10 @@ function pintarFicha(p) {
     .map(
       (i) => `
     <tr>
-      <td data-label="Material">${esc(i.nombre)}</td>
+      <td data-label="Material" class="m-titulo">${esc(i.nombre)}</td>
       <td data-label="Cantidad" class="align-right mono">${esc(cantidad(i.cantidad, i.unidad))}</td>
-      <td data-label="Costo" class="align-right mono col-admin">${esAdmin() ? money(i.cantidad * i.costo_unitario) : ""}</td>
+      <td data-label="Costo" class="align-right mono col-admin m-valor">${esAdmin() ? money(i.cantidad * i.costo_unitario) : ""}</td>
+      ${celdaMovil(["cantidad", cantidad(i.cantidad, i.unidad)])}
     </tr>`
     )
     .join("");
