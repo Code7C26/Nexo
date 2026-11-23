@@ -519,9 +519,15 @@ function renderTendencia(serie) {
 
 // Las tres operaciones que mueven plata, juntas y ordenadas por fecha. Se
 // arma con los cachés que ya tienen las otras pantallas, así que no
-// necesita un fetch propio.
+// necesita un fetch propio. Al entrar al Resumen sus cifras salen antes que
+// esos cachés (cargarTodo): hasta que llegan, la tabla queda cargando.
+let movimientosListos = false;
 function renderUltimosMovimientos(rango = {}) {
   const body = document.getElementById("movimientosBody");
+  if (!movimientosListos) {
+    tablaCargando("movimientosBody", 4);
+    return;
+  }
 
   const dentroDelRango = (fecha) =>
     (!rango.desde || fecha >= rango.desde) && (!rango.hasta || fecha <= rango.hasta);
@@ -9465,13 +9471,34 @@ registrar("cargar:reporteStock", cargarReporteStock);
 // Solo un error inesperado (un bug al pintar) corta la cadena.
 // La compu de la caja (hist. §199) solo usa el mostrador: no pide lo demás
 // (el backend se lo negaría), solo el negocio para el membrete del ticket.
+// Si se entra al Resumen, es lo que se está mirando: sus cifras salen apenas
+// llega el negocio (sus piezas dependen de los módulos y de la condición
+// frente al IVA), sin esperar las otras olas; al final solo se completa la
+// tabla de movimientos con los cachés (hist. §220).
 function cargarTodo() {
   if (enCaja()) return refrescar([recargar("negocio")]);
-  return refrescar([cargarClientes(), cargarProveedores(), cargarCaja(), recargar("negocio"), recargar("negocios"), cargarFacturas()])
+  const resumenPrimero = (vistaDesdeHash() ?? "dashboard") === "dashboard";
+  const negocioListo = recargar("negocio");
+  return refrescar([
+    cargarClientes(),
+    cargarProveedores(),
+    cargarCaja(),
+    negocioListo,
+    recargar("negocios"),
+    cargarFacturas(),
+    resumenPrimero ? negocioListo.then(cargarPanelResumen) : null
+  ])
     .then(() => refrescar([recargar("gastos"), cargarProductos()]))
     .then(() => refrescar([cargarVentas(), cargarCompras(), cargarStock(), cargarPresupuestos(), cargarDevoluciones()]))
     .then(() => refrescar([cargarDevolucionesProveedor()]))
-    .then(() => refrescar([cargarPanelResumen(), recargar("cuentasCorrientes"), cargarReporteStock()]));
+    .then(() => {
+      movimientosListos = true;
+      return refrescar([
+        resumenPrimero ? Promise.resolve(esAdmin() && renderUltimosMovimientos(rangoActualResumen())) : cargarPanelResumen(),
+        recargar("cuentasCorrientes"),
+        cargarReporteStock()
+      ]);
+    });
 }
 cargarTodo().catch((e) => {
   avisar("No se terminaron de cargar los datos. Recargá la página para reintentar.", "atencion");

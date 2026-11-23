@@ -15465,6 +15465,12 @@ usuario".
   (CLS 0,80). **Propuesto, no hecho:** cargar primero la pantalla que se mira
   y el resto después, y sacar del HTML inicial las pantallas que no se usan
   al entrar (cambia el arranque de toda la app: se planifica antes, §27).
+- **El Resumen primero** (`cargarTodo` en `app.js`): si se entra al Resumen,
+  sus cifras se piden apenas llega el negocio, en la primera ola, y no después
+  de las cinco; "Últimos movimientos" queda cargando hasta que llegan ventas,
+  compras y gastos. Medido con 4G y la CPU 4 veces más lenta: el Resumen
+  completo pasó de ~4 s a ~1,8 s después del primer pedido de datos. Entrando
+  por otra pantalla, y para el empleado (que no tiene Resumen), queda igual.
 - **Traducción:** `npm run i18n` descartaba todo texto que empieza con punto
   (". Las facturas…", lo que sigue a un `<strong>`). Aparecieron y se
   tradujeron 10, entre ellos el cartel de Gmail.

@@ -144,9 +144,11 @@ traducidos) y `npm run regresion` anda (0 diferencias). **Lo que traba el
 celular es el arranque** (medido con la CPU 4 veces más lenta: el primer
 pedido de datos a los 5,8 s, por leer `index.html` de 510 KB con todas las
 pantallas, el CSS y todos los módulos; y el Resumen salta cuando aparecen
-"Para hoy" y "Primeros pasos"). **Propuesto, sin hacer:** cargar primero la
-pantalla que se mira y el resto después (se planifica antes, §27). Sin
-publicar.
+"Para hoy" y "Primeros pasos"). **Hecho:** el Resumen se pide en la primera
+ola y no en la última (completo ~2 s antes en el celular). **Falta, y es lo
+que más se nota:** achicar el HTML inicial (todas las pantallas adentro) y no
+cargar de entrada los datos de lo que no se mira (se planifica antes, §27), y
+que el Resumen no salte. Sin publicar.
 
 **Lo que sigue:** el resto del punto 9: mensajes de WhatsApp armados y
 "quiénes deben" (que ya puede avisar de la cuota que vence), y puntos y
