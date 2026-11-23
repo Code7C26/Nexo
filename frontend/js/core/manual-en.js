@@ -720,12 +720,18 @@ export const SECCIONES_EN = {
     ]
   },
   "mi-cuenta": {
-    titulo: "Your password and your email",
+    titulo: "Your name, your password and your email",
     pantalla: "Settings › My account",
-    preguntas: ["how do i change my password", "i forgot my password", "how do i change my email", "how do i sign out"],
-    palabras: ["password", "forgot", "email", "mail", "session", "sign out", "log out", "account"],
+    preguntas: ["how do i change my password", "i forgot my password", "how do i change my email", "how do i sign out", "how do i change my name"],
+    palabras: ["password", "forgot", "email", "mail", "session", "sign out", "log out", "account", "name"],
     bloques: [
-      "In **Settings › My account** you change your password or your email (we send you a code to confirm it) and sign out.",
+      "In **Settings › My account** you see your name, your email and your password, each on its own row.",
+      { pasos: [
+        "Tap **Change** on what you want to change: its own screen opens.",
+        "For the password, enter the current one and the new one twice. For the email, the new one and your password, and then the code we send to that email.",
+        "When you're done you go back to My account."
+      ] },
+      "There you also sign out on this device.",
       "If you forgot your password, on the sign-in screen tap **Forgot your password?**: you get a link by email to choose a new one."
     ]
   },

@@ -5570,7 +5570,9 @@ html[data-ejemplo] #btnCompraFactura { display: none; }
 
 /* Cada página: una tarjeta con el formulario y un pie con la nota y el
    botón de guardar, como los ajustes de Dub. */
-.form.config-tarjeta {
+/* También las que no son formulario (Mi cuenta): sin esto quedaban sin borde,
+   blanco sobre blanco en el claro. */
+.config-tarjeta {
   gap: 0;
   background: var(--surface);
   border: 1px solid var(--line);
@@ -5734,10 +5736,67 @@ html[data-ejemplo] #btnCompraFactura { display: none; }
   color: var(--ink-muted);
 }
 
-/* Mi cuenta: la identidad va dentro de la tarjeta (el gap ya separa), y
-   "Cerrar sesión" es una tarjeta que es solo pie, sin la raya de arriba. */
+/* Mi cuenta: "Cerrar sesión" es una tarjeta que es solo pie, sin la raya de
+   arriba. */
 .config-tarjeta-cuerpo > .perfil-identidad { margin-bottom: 0; max-width: 560px; }
 .config-cuenta-salir { border-top: 0; }
+
+/* Mi cuenta (hist. §225), como Google o Notion: cada dato en su renglón, con
+   "Cambiar" a la derecha; tocar el renglón abre su pantalla. */
+.cuenta-filas { display: flex; flex-direction: column; }
+.config-tarjeta-cuerpo + .cuenta-filas { border-top: 1px solid var(--line); }
+.config-tarjeta-cuerpo:has(> .config-tarjeta-titulo:only-child) { padding-bottom: var(--sp-3); }
+.cuenta-fila {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-4);
+  min-height: 64px;
+  padding: var(--sp-3) var(--sp-5);
+  color: var(--ink);
+  text-decoration: none;
+  transition: background var(--dur-1) ease;
+}
+.cuenta-fila + .cuenta-fila,
+.cuenta-fila-nota + .cuenta-fila { border-top: 1px solid var(--line); }
+.cuenta-fila:hover { background: var(--surface-hover); }
+.cuenta-fila:focus-visible { outline-offset: -2px; }
+.cuenta-fila:last-child { border-radius: 0 0 var(--r-md) var(--r-md); }
+.cuenta-fila:only-child { border-radius: var(--r-md); }
+.cuenta-fila-texto { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.cuenta-fila-etiqueta { font-size: var(--txt-xs); color: var(--ink-muted); }
+.cuenta-fila-valor {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2);
+  font-size: var(--txt-sm);
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+.cuenta-fila-valor .status[hidden] { display: none; }
+.cuenta-fila-accion {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 2px;
+  font-size: var(--txt-sm);
+  font-weight: 500;
+  color: var(--ink-muted);
+}
+.cuenta-fila:hover .cuenta-fila-accion { color: var(--ink); }
+.cuenta-fila-accion .ico { width: 16px; height: 16px; }
+.cuenta-fila-nota { margin: 0; padding: 0 var(--sp-5) var(--sp-3); }
+.cuenta-fila-peligro .cuenta-fila-valor { color: var(--accent-danger); }
+.cuenta-actual { margin: 0; font-size: var(--txt-sm); color: var(--ink-muted); }
+.cuenta-actual strong { color: var(--ink); font-weight: 600; overflow-wrap: anywhere; }
+
+/* Las contraseñas de Mi cuenta llevan el ojo, sin el ícono de la izquierda. */
+.form .campo-clave input { padding-left: var(--sp-3); }
+
+/* Una subpágina con su propio "Volver a …" no muestra además el "‹
+   Configuración" del celular. */
+.config:has(.config-pagina:not([hidden]) > .config-subpagina-volver) .config-volver { display: none; }
 
 /* Funciones (hist. §88): el tipo del negocio, fijo, con su botón para
    cambiarlo en otra página. */
@@ -5979,6 +6038,8 @@ html[data-ejemplo] #btnCompraFactura { display: none; }
   align-items: center;
   gap: var(--sp-3);
 }
+/* "Sacar la foto" sin foto: el display del botón le ganaba al hidden. */
+.marca-logo-botones > [hidden] { display: none; }
 
 .marca-colores {
   display: grid;

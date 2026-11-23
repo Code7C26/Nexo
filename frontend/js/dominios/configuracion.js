@@ -776,6 +776,12 @@ const PAGINAS = {
   },
   "categorias-gastos": { admin: true, alEntrar: () => recargar("gastos").then(() => invocar("pintar:categorias-gastos")) },
   cuenta: { admin: false, alEntrar: () => invocar("pintar:cuenta") },
+  // Cambiar cada dato de la cuenta es una pantalla aparte (hist. §225,
+  // dominios/perfil.js): sin ítem propio, marcan el de Mi cuenta.
+  "cuenta-nombre": { admin: false, menu: "cuenta", alEntrar: () => invocar("pintar:cuenta-nombre") },
+  "cuenta-mail": { admin: false, menu: "cuenta", alEntrar: () => invocar("pintar:cuenta-mail") },
+  "cuenta-contrasena": { admin: false, menu: "cuenta", alEntrar: () => invocar("pintar:cuenta-contrasena") },
+  "cuenta-baja": { admin: false, menu: "cuenta", alEntrar: () => invocar("pintar:cuenta-baja") },
   // WhatsApp, el teléfono de cada persona: dominios/whatsapp.js (hist. §135).
   whatsapp: { admin: false, alEntrar: () => invocar("pintar:whatsapp") },
   // Las facturas desde el Gmail del negocio: dominios/gmail.js (hist. §187).

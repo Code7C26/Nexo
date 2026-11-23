@@ -11,7 +11,7 @@
 
 - Al cerrar una etapa, se hacen tres cosas:
   - su relato completo se agrega al final de `docs/proyecto/handoff-historico.md` con el
-    siguiente número (hoy el último es §224);
+    siguiente número (hoy el último es §225);
   - acá se actualizan "Estado actual" y "Qué sigue";
   - si cambió alguna decisión vigente, se actualiza también esa lista.
 - Nunca apilar secciones "Última etapa" en este archivo: así fue como llegó a
@@ -207,11 +207,18 @@ arreglos del celular** (pedidos del usuario con capturas de su iPhone).
   armara la impresión).
 - `npm test` 538 de 538, lint, i18n, migración 24 de 24 y regresión
   justificada. Publicado (PR #119).
-- Después (sin publicar): en Puntos, "Un punto cada … pesos" y "Vencen a los
+- Después (publicado, PR #120): en Puntos, "Un punto cada … pesos" y "Vencen a los
   … meses" tenían las flechitas del campo numérico encima de la palabra; los
   campos con sufijo van sin flechitas, y los de palabra reservan su ancho
   (`.campo-sufijo-largo`).
 - **Falta:** que el usuario lo pruebe en su iPhone.
+
+**23 de noviembre, hist. §225: Mi cuenta como en las apps reales** (pedido del
+usuario; investigado en `docs/investigaciones/investigacion-mi-cuenta.md`).
+Mi cuenta solo muestra los datos, cada uno con **Cambiar**, y cada cambio es
+una pantalla aparte con "Volver a Mi cuenta": el nombre (nuevo:
+`PUT /api/auth/nombre`, auditado), el mail, la contraseña (la nueva dos veces)
+y la baja. `npm test` 540 de 540. Sin publicar.
 
 **Lo que sigue:** el punto 10 si da (el resumen del día por WhatsApp o mail),
 y lo que el usuario vea al probar los puntos en el mostrador y lo de §224 en

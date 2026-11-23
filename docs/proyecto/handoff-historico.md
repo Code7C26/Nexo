@@ -15684,3 +15684,34 @@ el navegador (1440 y 390 px) con el gimnasio de ejemplo, en los dos temas.
 
 **Falta:** que el usuario lo pruebe en su iPhone (el bloqueo del cajón, el zoom
 y la impresión son de Safari).
+
+## §225 — 23 de noviembre de 2026: Mi cuenta como en las apps reales
+
+Pedido del usuario: Mi cuenta tenía todos los campos a la vista (mail nuevo,
+contraseñas, la baja); en las apps reales se toca "Cambiar contraseña" y se abre
+otra pantalla. Investigado en `docs/investigaciones/investigacion-mi-cuenta.md`
+(Google, Notion, Shopify).
+
+- **Mi cuenta solo muestra**, cada dato en su renglón con **Cambiar**: Perfil
+  (la foto, que se cambia en el momento, y el nombre) y "Cómo entrás a Nexo"
+  (el mail con su estado y la contraseña escondida). Siguen Mis negocios,
+  Cerrar sesión y Dar de baja mi cuenta (en rojo, al final).
+- **Cuatro pantallas aparte**, con "Volver a Mi cuenta" y sin ítem propio
+  (marcan Mi cuenta): `cuenta-nombre`, `cuenta-mail` (mail nuevo y contraseña,
+  después el código), `cuenta-contrasena` (la actual y la nueva dos veces, con
+  el ojo) y `cuenta-baja`. Al terminar se vuelve solo a Mi cuenta con el aviso.
+- **El nombre se puede cambiar** (antes no había cómo): `PUT /api/auth/nombre`
+  ('ambos'), hasta 120 letras como al crear la cuenta, auditado con el valor
+  anterior y el nuevo. En un negocio de ejemplo no se puede, como el mail y la
+  contraseña.
+- De paso: toda `.config-tarjeta` lleva borde (las que no eran formulario
+  quedaban blanco sobre blanco en el claro), "Sacar la foto" ya no aparece sin
+  foto, y una subpágina con su "Volver a …" no muestra además el "‹
+  Configuración" del celular (también Invitar).
+- Manual: "Tu nombre, tu contraseña y tu mail", en castellano e inglés.
+
+**Verificado:** test nuevo `cuenta-nombre`. `npm test`: 540 de 540; lint e i18n
+en verde. Probado en el navegador (compu en claro y 390 px en oscuro) con la
+cuenta sembrada: cambiar el nombre (se ve en el pie del menú), cambiar la
+contraseña, el paso del código del mail, el error de contraseñas distintas y el
+bloqueo del negocio de ejemplo.

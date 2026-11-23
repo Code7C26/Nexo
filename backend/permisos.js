@@ -402,6 +402,8 @@ export const RUTAS_PERMISOS = {
   'GET /api/auditoria': 'ambos',
   'POST /api/auth/logout': 'ambos',
   'POST /api/auth/cambiar-password': 'ambos',
+  // El nombre de la cuenta (hist. §225): cada persona cambia el suyo.
+  'PUT /api/auth/nombre': 'ambos',
   // El mail de la cuenta propia (hist. §102).
   'POST /api/auth/email': 'ambos',
   'POST /api/auth/email/confirmar': 'ambos',
