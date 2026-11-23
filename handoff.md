@@ -207,7 +207,7 @@ arreglos del celular** (pedidos del usuario con capturas de su iPhone).
   armara la impresión).
 - `npm test` 538 de 538, lint, i18n, migración 24 de 24 y regresión
   justificada. Publicado (PR #119).
-- Después (sin publicar): en Puntos, "Un punto cada … pesos" y "Vencen a los
+- Después (publicado, PR #120): en Puntos, "Un punto cada … pesos" y "Vencen a los
   … meses" tenían las flechitas del campo numérico encima de la palabra; los
   campos con sufijo van sin flechitas, y los de palabra reservan su ancho
   (`.campo-sufijo-largo`).
