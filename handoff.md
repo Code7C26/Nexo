@@ -218,7 +218,7 @@ usuario; investigado en `docs/investigaciones/investigacion-mi-cuenta.md`).
 Mi cuenta solo muestra los datos, cada uno con **Cambiar**, y cada cambio es
 una pantalla aparte con "Volver a Mi cuenta": el nombre (nuevo:
 `PUT /api/auth/nombre`, auditado), el mail, la contraseña (la nueva dos veces)
-y la baja. `npm test` 540 de 540. Sin publicar.
+y la baja. `npm test` 540 de 540. Publicado (PR #121).
 
 **Lo que sigue:** el punto 10 si da (el resumen del día por WhatsApp o mail),
 y lo que el usuario vea al probar los puntos en el mostrador y lo de §224 en
