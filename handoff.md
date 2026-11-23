@@ -206,7 +206,11 @@ arreglos del celular** (pedidos del usuario con capturas de su iPhone).
   Imprimir ya no sale en blanco (la hoja se vaciaba antes de que el celular
   armara la impresión).
 - `npm test` 538 de 538, lint, i18n, migración 24 de 24 y regresión
-  justificada. Sin commitear.
+  justificada. Publicado (PR #119).
+- Después (sin publicar): en Puntos, "Un punto cada … pesos" y "Vencen a los
+  … meses" tenían las flechitas del campo numérico encima de la palabra; los
+  campos con sufijo van sin flechitas, y los de palabra reservan su ancho
+  (`.campo-sufijo-largo`).
 - **Falta:** que el usuario lo pruebe en su iPhone.
 
 **Lo que sigue:** el punto 10 si da (el resumen del día por WhatsApp o mail),

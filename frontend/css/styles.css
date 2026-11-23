@@ -9196,6 +9196,20 @@ a.segmento {
 }
 
 .form .campo-sufijo input { width: 100%; padding-right: 32px; }
+/* Un sufijo con palabra ("pesos", "meses") pide más lugar que "%". */
+.form .campo-sufijo-largo input { padding-right: calc(var(--sp-3) * 2 + 6ch); }
+
+/* Sin las flechitas del campo numérico: quedaban debajo del sufijo. Se
+   escribe el número, como en el resto de los importes. */
+.campo-sufijo input[type="number"] {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+.campo-sufijo input[type="number"]::-webkit-inner-spin-button,
+.campo-sufijo input[type="number"]::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
 
 .campo-sufijo > span {
   position: absolute;
