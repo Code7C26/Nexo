@@ -5495,17 +5495,17 @@
               <section class="panel" aria-labelledby="mpTarifasTitulo" id="mpTarifasPanel" hidden>
                 <div class="panel-head"><h2 id="mpTarifasTitulo">¿Te conviene ofrecer cuotas?</h2></div>
                 <p class="tn-ayuda" id="mpTarifasOrigen"></p>
-                <div class="form-fila">
-                  <label>Si la venta es de ($)
-                    <input type="number" id="mpTarifasMonto" min="1" step="1" inputmode="decimal" value="10000" />
+                <div class="form form-fila mp-tarifas-datos">
+                  <label>Si la venta es de
+                    <span class="campo-sufijo campo-sufijo-largo"><input type="number" id="mpTarifasMonto" min="1" step="1" inputmode="decimal" value="10000" /><span aria-hidden="true">pesos</span></span>
                   </label>
-                  <label>Comisión por cobrar (%)
-                    <input type="number" id="mpTarifasComision" min="0" max="100" step="0.01" inputmode="decimal" placeholder="0" />
+                  <label>Comisión por cobrar
+                    <span class="campo-sufijo"><input type="number" id="mpTarifasComision" min="0" max="100" step="0.01" inputmode="decimal" placeholder="0" /><span aria-hidden="true">%</span></span>
                   </label>
                 </div>
                 <p class="campo-ayuda">Además de las cuotas, Mercado Pago cobra una comisión por cada cobro que depende de cómo te pagan y de cuándo querés la plata. Cargá la de tu cuenta: si ya cobraste con Mercado Pago, empieza con el promedio de tus pagos.</p>
                 <div class="tabla-scroll">
-                  <table class="ledger-table">
+                  <table class="ledger-table mp-tarifas-tabla">
                     <thead>
                       <tr>
                         <th scope="col">Plan</th>

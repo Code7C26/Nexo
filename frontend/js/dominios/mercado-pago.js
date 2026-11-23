@@ -177,7 +177,7 @@ function pintarTarifas() {
       const costo = Number(f.costo_pct);
       return `<tr data-cuotas="${esc(f.cuotas)}">
       <td data-label="Plan" class="m-titulo">${esc(f.cuotas)} cuotas sin interés</td>
-      <td data-label="Costo de las cuotas (% sin IVA)" class="align-right"><input type="number" class="tarifa-costo" min="0" max="100" step="0.01" inputmode="decimal" value="${esc(costo)}" aria-label="Costo de ${esc(f.cuotas)} cuotas" /></td>${celdasPlan(costo)}
+      <td data-label="Costo de las cuotas (% sin IVA)" class="align-right"><span class="campo-sufijo"><input type="number" class="tarifa-costo" min="0" max="100" step="0.01" inputmode="decimal" value="${esc(costo)}" aria-label="Costo de ${esc(f.cuotas)} cuotas" /><span aria-hidden="true">%</span></span></td>${celdasPlan(costo)}
     </tr>`;
     })
   ].join("");
