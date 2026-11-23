@@ -1287,12 +1287,18 @@ const SECCIONES_ES = [
   {
     id: "mi-cuenta",
     grupo: "Tu cuenta y tu equipo",
-    titulo: "Tu contraseña y tu mail",
+    titulo: "Tu nombre, tu contraseña y tu mail",
     pantalla: ["#/configuracion/cuenta", "Configuración › Mi cuenta"],
-    preguntas: ["cómo cambio la contraseña", "me olvidé la contraseña", "cómo cambio mi mail", "cómo cierro sesión"],
-    palabras: ["contrasena", "clave", "password", "olvide", "mail", "correo", "email", "sesion", "cerrar", "salir", "cuenta"],
+    preguntas: ["cómo cambio la contraseña", "me olvidé la contraseña", "cómo cambio mi mail", "cómo cierro sesión", "cómo cambio mi nombre"],
+    palabras: ["contrasena", "clave", "password", "olvide", "mail", "correo", "email", "sesion", "cerrar", "salir", "cuenta", "nombre"],
     bloques: [
-      "En **Configuración › Mi cuenta** cambiás tu contraseña o tu mail (te mandamos un código para confirmarlo) y cerrás la sesión.",
+      "En **Configuración › Mi cuenta** ves tu nombre, tu mail y tu contraseña, cada uno en su renglón.",
+      { pasos: [
+        "Tocá **Cambiar** en lo que quieras cambiar: se abre su pantalla.",
+        "Para la contraseña escribís la actual y la nueva dos veces. Para el mail, el nuevo y tu contraseña, y después el código que te mandamos a ese mail.",
+        "Al terminar volvés solo a Mi cuenta."
+      ] },
+      "Ahí también cerrás la sesión en este aparato.",
       "Si te olvidaste la contraseña, en la pantalla de ingreso tocá **¿Te olvidaste la contraseña?**: te llega un enlace por mail para elegir una nueva."
     ]
   },

@@ -1,9 +1,14 @@
 /**
  * dominios/perfil.js
- * Mi cuenta: el mail (hist. §102), cambio de contraseña y cerrar sesión.
- * WhatsApp tiene su página aparte (dominios/whatsapp.js). Es una página de
- * Configuración (#/configuracion/cuenta) para los dos roles, y la abre también
- * el círculo de perfil del pie del menú. Antes era un modal aparte.
+ * Mi cuenta: la foto, el nombre, el mail (hist. §102), la contraseña, cerrar
+ * sesión y dar de baja la cuenta. Es una página de Configuración
+ * (#/configuracion/cuenta) para los dos roles, y la abre también el menú de la
+ * cuenta del pie. WhatsApp tiene su página aparte (dominios/whatsapp.js).
+ *
+ * Como en Google, Notion o Shopify (hist. §225), Mi cuenta solo muestra los
+ * datos, cada uno con "Cambiar": el nombre, el mail, la contraseña y la baja
+ * son pantallas aparte (cuenta-nombre, cuenta-mail, cuenta-contrasena y
+ * cuenta-baja), y al terminar se vuelve a Mi cuenta.
  */
 
 import { api } from "../core/api.js";
@@ -17,21 +22,83 @@ import { achicarImagen } from "../core/marca.js";
 // Nombre y rol los escribió sesion.js en el DOM al arrancar (ver
 // data-usuario-nombre/data-usuario-rol en el pie de la sidebar): leerlos de
 // ahí evita un fetch propio solo para mostrarlos.
+const nombreActual = () => document.querySelector("[data-usuario-nombre]")?.textContent ?? "";
+
 function pintarCuenta() {
-  document.getElementById("perfilNombre").textContent =
-    document.querySelector("[data-usuario-nombre]")?.textContent ?? "—";
-  const perfilRolEl = document.getElementById("perfilRol");
-  perfilRolEl.textContent = document.documentElement.dataset.rol === "admin" ? "Administrador" : "Empleado";
-  perfilRolEl.className = "status"; // un rol no es bueno ni malo: gris, como en Usuarios
-  document.getElementById("cambioPasswordError").hidden = true;
-  document.getElementById("cambioMailError").hidden = true;
-  // Un cambio de mail a medias no sigue abierto al volver a la página.
-  if (mailPendiente) pasoDelCodigo(null);
-  document.getElementById("formBajaCuenta").reset();
-  document.getElementById("bajaCuentaError").hidden = true;
+  document.getElementById("perfilNombre").textContent = nombreActual() || "—";
   pintarMail();
 }
 registrar("pintar:cuenta", pintarCuenta);
+
+// El error de cada pantalla va en la propia pantalla, no en un toast.
+function mostrarError(id, texto) {
+  const errorEl = document.getElementById(id);
+  errorEl.textContent = texto;
+  errorEl.hidden = !texto;
+}
+
+// Hecho el cambio, de vuelta a Mi cuenta con el aviso.
+function volverAMiCuenta(aviso) {
+  location.hash = "#/configuracion/cuenta";
+  avisar(aviso, "ok");
+}
+
+// Cada pantalla arranca limpia: lo que quedó escrito no sigue al volver.
+registrar("pintar:cuenta-nombre", () => {
+  mostrarError("cambioNombreError", "");
+  const input = document.getElementById("perfilNombreNuevo");
+  input.value = nombreActual();
+  input.focus();
+});
+registrar("pintar:cuenta-mail", () => {
+  mostrarError("cambioMailError", "");
+  // Un cambio de mail a medias no sigue abierto al volver a la página.
+  pasoDelCodigo(null);
+  pintarMail();
+  document.getElementById("perfilEmailNuevo").focus();
+});
+registrar("pintar:cuenta-contrasena", () => {
+  mostrarError("cambioPasswordError", "");
+  document.getElementById("formCambioPassword").reset();
+  document.getElementById("perfilPasswordActual").focus();
+});
+registrar("pintar:cuenta-baja", () => {
+  mostrarError("bajaCuentaError", "");
+  document.getElementById("formBajaCuenta").reset();
+});
+
+// El ojo de cada contraseña la muestra u oculta (como en la pantalla de entrada).
+for (const boton of document.querySelectorAll('.config-pagina[data-seccion^="cuenta"] .campo-ver-clave')) {
+  boton.addEventListener("click", () => {
+    const input = boton.parentElement.querySelector("input");
+    const ver = input.type === "password";
+    input.type = ver ? "text" : "password";
+    boton.setAttribute("aria-pressed", String(ver));
+    boton.setAttribute("aria-label", ver ? "Ocultar contraseña" : "Mostrar contraseña");
+    input.focus();
+  });
+}
+
+/* ---------- Nombre (hist. §225) ---------- */
+
+document.getElementById("formCambioNombre").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const boton = e.target.querySelector('button[type="submit"]');
+  if (boton.disabled) return;
+  const nombre = document.getElementById("perfilNombreNuevo").value.trim();
+  if (!nombre) return mostrarError("cambioNombreError", "Escribí tu nombre.");
+  mostrarError("cambioNombreError", "");
+  boton.disabled = true;
+  try {
+    const { ok, datos } = await enviarEnLaPagina("PUT", "/api/auth/nombre", { nombre });
+    if (!ok) return mostrarError("cambioNombreError", datos.error || "No se pudo cambiar el nombre.");
+    // El nombre está en el pie del menú y en el menú de la cuenta.
+    for (const el of document.querySelectorAll("[data-usuario-nombre]")) el.textContent = datos.nombre;
+    volverAMiCuenta("Listo: cambiamos tu nombre.");
+  } finally {
+    boton.disabled = false;
+  }
+});
 
 /* ---------- Foto de perfil (hist. §212) ---------- */
 
@@ -84,6 +151,7 @@ async function pintarMail() {
   const estadoEl = document.getElementById("perfilEmailEstado");
   pintarFoto(usuario?.foto ?? null);
   document.getElementById("perfilEmail").textContent = usuario?.email ?? "—";
+  document.getElementById("perfilEmailActual").textContent = usuario?.email ?? "—";
   estadoEl.hidden = !usuario?.email;
   estadoEl.textContent = usuario?.email_verificado ? "Confirmado" : "Sin confirmar";
   estadoEl.className = usuario?.email_verificado ? "status status-cobrado" : "status status-pendiente";
@@ -110,7 +178,7 @@ alEntrarEnVista("dashboard", async () => {
   if (!usuario?.email || usuario.email_verificado) return;
   avisoMailEl.innerHTML = `${icono("mail")}<p>Confirmá tu mail: te mandamos un enlace a <strong>${esc(usuario.email)}</strong>. Así podés recuperar tu cuenta si te olvidás la contraseña.</p>
     <button type="button" class="btn btn-secundario" data-reenviar-mail>Mandarlo de nuevo</button>
-    <a class="btn-link" href="#/configuracion/cuenta">Cambiar el mail</a>`;
+    <a class="btn-link" href="#/configuracion/cuenta-mail">Cambiar el mail</a>`;
   avisoMailEl.hidden = false;
 });
 avisoMailEl.addEventListener("click", (e) => {
@@ -134,10 +202,10 @@ function errorDelMail(texto) {
 }
 
 // Como la contraseña: el error va en la propia página, no en un toast.
-async function postEnLaPagina(url, cuerpo) {
+async function enviarEnLaPagina(metodo, url, cuerpo) {
   try {
     const res = await fetch(url, {
-      method: "POST",
+      method: metodo,
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(cuerpo)
     });
@@ -146,6 +214,7 @@ async function postEnLaPagina(url, cuerpo) {
     return { ok: false, datos: { error: "Sin conexión con el servidor. Revisá la red y volvé a intentar." } };
   }
 }
+const postEnLaPagina = (url, cuerpo) => enviarEnLaPagina("POST", url, cuerpo);
 
 function pasoDelCodigo(email) {
   mailPendiente = email;
@@ -154,7 +223,7 @@ function pasoDelCodigo(email) {
   document.getElementById("perfilMailPie").textContent = email
     ? "Hasta que lo confirmes, seguís entrando con tu mail de ahora."
     : "Te mandamos un código al mail nuevo, y un aviso al de ahora.";
-  document.getElementById("perfilMailEnviar").textContent = email ? "Confirmar" : "Cambiar mi mail";
+  document.getElementById("perfilMailEnviar").textContent = email ? "Confirmar" : "Seguir";
   if (!email) {
     cortarEspera?.();
     formCambioMail.reset();
@@ -194,8 +263,7 @@ formCambioMail.addEventListener("submit", async (e) => {
         return inputCodigo.focus();
       }
       pasoDelCodigo(null);
-      avisar(`Listo: tu mail ahora es ${datos.usuario.email}.`, "ok");
-      pintarMail();
+      volverAMiCuenta(`Listo: tu mail ahora es ${datos.usuario.email}.`);
       return;
     }
     const email = formCambioMail.perfilEmailNuevo.value.trim();
@@ -256,37 +324,28 @@ formBajaCuenta.addEventListener("submit", async (e) => {
   }
 });
 
+// La nueva se escribe dos veces, como en cualquier app: un error de tipeo
+// dejaría a la persona sin poder entrar.
 document.getElementById("formCambioPassword").addEventListener("submit", async (e) => {
   e.preventDefault();
   const form = e.target;
-  const errorEl = document.getElementById("cambioPasswordError");
-  errorEl.hidden = true;
-
-  // No usa api(): el error se muestra en la propia página, no en un toast.
-  let res;
+  const boton = form.querySelector('button[type="submit"]');
+  if (boton.disabled) return;
+  const actual = form.perfilPasswordActual.value;
+  const nueva = form.perfilPasswordNueva.value;
+  if (!actual) return mostrarError("cambioPasswordError", "Escribí tu contraseña actual.");
+  if (nueva.length < 8) return mostrarError("cambioPasswordError", "La contraseña nueva tiene que tener al menos 8 caracteres.");
+  if (nueva !== form.perfilPasswordRepetida.value) return mostrarError("cambioPasswordError", "Las dos contraseñas nuevas no son iguales.");
+  mostrarError("cambioPasswordError", "");
+  boton.disabled = true;
   try {
-    res = await fetch("/api/auth/cambiar-password", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        actual: form.perfilPasswordActual.value,
-        nueva: form.perfilPasswordNueva.value
-      })
-    });
-  } catch {
-    errorEl.textContent = "Sin conexión con el servidor. Revisá la red y volvé a intentar.";
-    errorEl.hidden = false;
-    return;
+    const { ok, datos } = await postEnLaPagina("/api/auth/cambiar-password", { actual, nueva });
+    if (!ok) return mostrarError("cambioPasswordError", datos.error || "No se pudo cambiar la contraseña.");
+    form.reset();
+    volverAMiCuenta("Listo: cambiamos tu contraseña.");
+  } finally {
+    boton.disabled = false;
   }
-  if (!res.ok) {
-    const datos = await res.json().catch(() => ({}));
-    errorEl.textContent = datos.error || "No se pudo cambiar la contraseña.";
-    errorEl.hidden = false;
-    return;
-  }
-
-  form.reset();
-  avisar("Contraseña actualizada.", "ok");
 });
 
 document.getElementById("btnCerrarSesion").addEventListener("click", () => {

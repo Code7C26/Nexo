@@ -6338,6 +6338,11 @@
               </form>
             </section>
 
+            <!-- Mi cuenta (hist. §225), como Google, Notion o Shopify: acá se ven
+                 los datos, cada uno en su renglón, y cambiar el nombre, el mail
+                 o la contraseña, o dar de baja la cuenta, es una pantalla
+                 aparte (las páginas cuenta-*, con "Volver a Mi cuenta"). Lo
+                 pinta dominios/perfil.js, para los dos roles. -->
             <section class="config-pagina" data-seccion="cuenta" aria-labelledby="configCuentaTitulo" hidden>
               <header class="config-pagina-head">
                 <h2 id="configCuentaTitulo" tabindex="-1">Mi cuenta</h2>
@@ -6346,9 +6351,9 @@
               <!-- La foto de perfil (hist. §212): va en el círculo del pie del
                    menú. Se achica en el navegador (core/marca.js) y se guarda
                    en el momento, como en cualquier app. -->
-              <section class="config-tarjeta" aria-labelledby="perfilFotoTitulo">
+              <section class="config-tarjeta" aria-labelledby="cuentaPerfilTitulo">
                 <div class="config-tarjeta-cuerpo">
-                  <p class="config-tarjeta-titulo" id="perfilFotoTitulo">Foto de perfil</p>
+                  <p class="config-tarjeta-titulo" id="cuentaPerfilTitulo">Perfil</p>
                   <div class="foto-perfil-fila">
                     <span class="foto-perfil" id="perfilFoto"></span>
                     <div class="marca-logo-acciones">
@@ -6361,47 +6366,37 @@
                     <input type="file" id="perfilArchivoFoto" accept="image/png,image/jpeg,image/webp" hidden />
                   </div>
                 </div>
+                <div class="cuenta-filas">
+                  <a class="cuenta-fila" href="#/configuracion/cuenta-nombre">
+                    <span class="cuenta-fila-texto"><span class="cuenta-fila-etiqueta">Nombre</span><span class="cuenta-fila-valor" id="perfilNombre">—</span></span>
+                    <span class="cuenta-fila-accion">Cambiar <svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#chevron-right"></use></svg></span>
+                  </a>
+                </div>
               </section>
-              <!-- El mail de la cuenta (hist. §102): con él se entra y se
-                   recupera la cuenta. Cambiarlo pide la contraseña y el
-                   código que llega al mail nuevo (hist. §108): hasta
-                   entonces sigue el de antes. -->
-              <form class="form config-tarjeta" id="formCambioMail" novalidate>
+              <!-- Con qué se entra (hist. §102, §108): el mail, con su estado, y
+                   la contraseña, que nunca se muestra. -->
+              <section class="config-tarjeta" aria-labelledby="cuentaEntrarTitulo">
                 <div class="config-tarjeta-cuerpo">
-                  <p class="config-tarjeta-titulo">Mail</p>
-                  <div class="perfil-identidad">
-                    <strong id="perfilEmail">—</strong>
-                    <span class="status" id="perfilEmailEstado" hidden></span>
-                  </div>
-                  <p class="form-note" id="perfilEmailNota" hidden>
+                  <p class="config-tarjeta-titulo" id="cuentaEntrarTitulo">Cómo entrás a Nexo</p>
+                </div>
+                <div class="cuenta-filas">
+                  <a class="cuenta-fila" href="#/configuracion/cuenta-mail">
+                    <span class="cuenta-fila-texto">
+                      <span class="cuenta-fila-etiqueta">Mail</span>
+                      <span class="cuenta-fila-valor"><span id="perfilEmail">—</span> <span class="status" id="perfilEmailEstado" hidden></span></span>
+                    </span>
+                    <span class="cuenta-fila-accion">Cambiar <svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#chevron-right"></use></svg></span>
+                  </a>
+                  <p class="form-note cuenta-fila-nota" id="perfilEmailNota" hidden>
                     Te mandamos un enlace para confirmarlo. Si no lo ves, buscalo en el correo no deseado.
                     <button type="button" class="btn-link" id="btnReenviarMail">Mandarlo de nuevo</button>
                   </p>
-                  <p class="form-note" id="cambioMailError" hidden></p>
-                  <div class="perfil-mail-campos" id="perfilMailCampos">
-                    <label>Mail nuevo
-                      <input type="email" id="perfilEmailNuevo" autocomplete="email" autocapitalize="none" spellcheck="false" maxlength="254" placeholder="tu@mail.com" />
-                    </label>
-                    <label>Tu contraseña
-                      <input type="password" id="perfilEmailPassword" autocomplete="current-password" />
-                    </label>
-                  </div>
-                  <div class="perfil-mail-campos" id="perfilCodigoBloque" hidden>
-                    <p class="form-note" id="perfilCodigoTexto"></p>
-                    <label>Código
-                      <input type="text" id="perfilCodigo" class="campo-codigo" inputmode="numeric" autocomplete="one-time-code" autocapitalize="none" spellcheck="false" placeholder="000000" />
-                    </label>
-                    <p class="codigo-acciones">
-                      <button type="button" class="btn-link" id="perfilReenviarCodigo">Mandar otro código</button>
-                      <button type="button" class="btn-link" id="perfilCancelarCodigo">Cancelar</button>
-                    </p>
-                  </div>
+                  <a class="cuenta-fila" href="#/configuracion/cuenta-contrasena">
+                    <span class="cuenta-fila-texto"><span class="cuenta-fila-etiqueta">Contraseña</span><span class="cuenta-fila-valor" aria-label="Escondida">••••••••</span></span>
+                    <span class="cuenta-fila-accion">Cambiar <svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#chevron-right"></use></svg></span>
+                  </a>
                 </div>
-                <div class="config-tarjeta-pie">
-                  <p id="perfilMailPie">Te mandamos un código al mail nuevo, y un aviso al de ahora.</p>
-                  <button type="submit" class="btn btn-primary" id="perfilMailEnviar">Cambiar mi mail</button>
-                </div>
-              </form>
+              </section>
               <!-- Los negocios donde trabaja la persona y qué es en cada uno (hist.
                    §168): el plan es de la cuenta, no del negocio. Lo pinta
                    dominios/negocios.js. -->
@@ -6412,25 +6407,6 @@
                   <ul class="cuenta-negocios" id="cuentaNegociosLista"></ul>
                 </div>
               </section>
-              <form class="form config-tarjeta" id="formCambioPassword">
-                <div class="config-tarjeta-cuerpo">
-                  <div class="perfil-identidad">
-                    <strong id="perfilNombre">—</strong>
-                    <span class="status" id="perfilRol">—</span>
-                  </div>
-                  <p class="form-note" id="cambioPasswordError" hidden></p>
-                  <label>Contraseña actual
-                    <input type="password" id="perfilPasswordActual" autocomplete="current-password" required />
-                  </label>
-                  <label>Contraseña nueva
-                    <input type="password" id="perfilPasswordNueva" autocomplete="new-password" minlength="8" required />
-                  </label>
-                </div>
-                <div class="config-tarjeta-pie">
-                  <p>Al menos 8 caracteres.</p>
-                  <button type="submit" class="btn btn-primary">Cambiar mi contraseña</button>
-                </div>
-              </form>
               <div class="form config-tarjeta">
                 <div class="config-tarjeta-pie config-cuenta-salir">
                   <p>Salís de Nexo en este dispositivo. Para volver a entrar te pide el mail y la contraseña.</p>
@@ -6440,13 +6416,111 @@
                 </div>
               </div>
               <!-- Dar de baja la cuenta (hist. §109): la persona, no el negocio. -->
+              <div class="config-tarjeta cuenta-filas">
+                <a class="cuenta-fila cuenta-fila-peligro" href="#/configuracion/cuenta-baja">
+                  <span class="cuenta-fila-texto"><span class="cuenta-fila-valor">Dar de baja mi cuenta</span><span class="cuenta-fila-etiqueta">Borra tu nombre, tu mail y tu contraseña. No se puede deshacer.</span></span>
+                  <span class="cuenta-fila-accion"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#chevron-right"></use></svg></span>
+                </a>
+              </div>
+            </section>
+
+            <section class="config-pagina" data-seccion="cuenta-nombre" aria-labelledby="configNombreTitulo" hidden>
+              <a class="btn-link config-subpagina-volver" href="#/configuracion/cuenta"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#chevron-left"></use></svg> <span>Volver a Mi cuenta</span></a>
+              <header class="config-pagina-head">
+                <h2 id="configNombreTitulo" tabindex="-1">Tu nombre</h2>
+                <p>Es como aparecés en el menú, en las ventas que hacés y en la auditoría, en todos tus negocios.</p>
+              </header>
+              <form class="form config-tarjeta" id="formCambioNombre" novalidate>
+                <div class="config-tarjeta-cuerpo">
+                  <p class="form-note" id="cambioNombreError" hidden></p>
+                  <label>Nombre
+                    <input type="text" id="perfilNombreNuevo" autocomplete="name" maxlength="120" />
+                  </label>
+                </div>
+                <div class="config-tarjeta-pie">
+                  <a class="btn-link" href="#/configuracion/cuenta">Cancelar</a>
+                  <button type="submit" class="btn btn-primary">Guardar</button>
+                </div>
+              </form>
+            </section>
+
+            <!-- Cambiar el mail (hist. §102, §108): pide la contraseña y el
+                 código que llega al mail nuevo. Hasta entonces sigue el de antes. -->
+            <section class="config-pagina" data-seccion="cuenta-mail" aria-labelledby="configMailTitulo" hidden>
+              <a class="btn-link config-subpagina-volver" href="#/configuracion/cuenta"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#chevron-left"></use></svg> <span>Volver a Mi cuenta</span></a>
+              <header class="config-pagina-head">
+                <h2 id="configMailTitulo" tabindex="-1">Cambiar tu mail</h2>
+                <p>Con tu mail entrás a Nexo y recuperás la cuenta si te olvidás la contraseña.</p>
+              </header>
+              <form class="form config-tarjeta" id="formCambioMail" novalidate>
+                <div class="config-tarjeta-cuerpo">
+                  <p class="cuenta-actual">Tu mail de ahora: <strong id="perfilEmailActual">—</strong></p>
+                  <p class="form-note" id="cambioMailError" hidden></p>
+                  <div class="perfil-mail-campos" id="perfilMailCampos">
+                    <label>Mail nuevo
+                      <input type="email" id="perfilEmailNuevo" autocomplete="email" autocapitalize="none" spellcheck="false" maxlength="254" placeholder="tu@mail.com" />
+                    </label>
+                    <label>Tu contraseña
+                      <span class="campo-icono campo-clave"><input type="password" id="perfilEmailPassword" autocomplete="current-password" /><button type="button" class="campo-ver-clave" aria-label="Mostrar contraseña" aria-pressed="false"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#eye"></use></svg></button></span>
+                    </label>
+                  </div>
+                  <div class="perfil-mail-campos" id="perfilCodigoBloque" hidden>
+                    <p class="form-note" id="perfilCodigoTexto"></p>
+                    <label>Código
+                      <input type="text" id="perfilCodigo" class="campo-codigo" inputmode="numeric" autocomplete="one-time-code" autocapitalize="none" spellcheck="false" placeholder="000000" />
+                    </label>
+                    <p class="codigo-acciones">
+                      <button type="button" class="btn-link" id="perfilReenviarCodigo">Mandar otro código</button>
+                      <button type="button" class="btn-link" id="perfilCancelarCodigo">Usar otro mail</button>
+                    </p>
+                  </div>
+                </div>
+                <div class="config-tarjeta-pie">
+                  <p id="perfilMailPie">Te mandamos un código al mail nuevo, y un aviso al de ahora.</p>
+                  <button type="submit" class="btn btn-primary" id="perfilMailEnviar">Seguir</button>
+                </div>
+              </form>
+            </section>
+
+            <section class="config-pagina" data-seccion="cuenta-contrasena" aria-labelledby="configContrasenaTitulo" hidden>
+              <a class="btn-link config-subpagina-volver" href="#/configuracion/cuenta"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#chevron-left"></use></svg> <span>Volver a Mi cuenta</span></a>
+              <header class="config-pagina-head">
+                <h2 id="configContrasenaTitulo" tabindex="-1">Cambiar tu contraseña</h2>
+                <p>Al cambiarla se cierra tu sesión en los otros aparatos, y te avisamos por mail.</p>
+              </header>
+              <form class="form config-tarjeta" id="formCambioPassword" novalidate>
+                <div class="config-tarjeta-cuerpo">
+                  <p class="form-note" id="cambioPasswordError" hidden></p>
+                  <label>Contraseña actual
+                    <span class="campo-icono campo-clave"><input type="password" id="perfilPasswordActual" autocomplete="current-password" /><button type="button" class="campo-ver-clave" aria-label="Mostrar contraseña" aria-pressed="false"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#eye"></use></svg></button></span>
+                  </label>
+                  <label>Contraseña nueva
+                    <span class="campo-icono campo-clave"><input type="password" id="perfilPasswordNueva" autocomplete="new-password" minlength="8" /><button type="button" class="campo-ver-clave" aria-label="Mostrar contraseña" aria-pressed="false"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#eye"></use></svg></button></span>
+                  </label>
+                  <label>Repetí la contraseña nueva
+                    <span class="campo-icono campo-clave"><input type="password" id="perfilPasswordRepetida" autocomplete="new-password" minlength="8" /><button type="button" class="campo-ver-clave" aria-label="Mostrar contraseña" aria-pressed="false"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#eye"></use></svg></button></span>
+                  </label>
+                </div>
+                <div class="config-tarjeta-pie">
+                  <p>Al menos 8 caracteres.</p>
+                  <button type="submit" class="btn btn-primary">Cambiar la contraseña</button>
+                </div>
+              </form>
+            </section>
+
+            <!-- Dar de baja la cuenta (hist. §109): la persona, no el negocio. -->
+            <section class="config-pagina" data-seccion="cuenta-baja" aria-labelledby="configBajaCuentaTitulo" hidden>
+              <a class="btn-link config-subpagina-volver" href="#/configuracion/cuenta"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#chevron-left"></use></svg> <span>Volver a Mi cuenta</span></a>
+              <header class="config-pagina-head">
+                <h2 id="configBajaCuentaTitulo" tabindex="-1">Dar de baja tu cuenta</h2>
+                <p>Borramos tu nombre, tu mail y tu contraseña, y salís de todos tus negocios. Lo que cargaste en cada uno queda, porque es del negocio.</p>
+              </header>
               <form class="form config-tarjeta" id="formBajaCuenta" novalidate>
                 <div class="config-tarjeta-cuerpo">
-                  <p class="config-tarjeta-titulo">Dar de baja mi cuenta</p>
-                  <p class="config-tarjeta-texto">Borramos tu nombre, tu mail y tu contraseña, y salís de todos tus negocios. Lo que cargaste en cada uno queda, porque es del negocio. Si administrás uno sin nadie más que lo administre, primero dalo de baja o sumá a otra persona como administradora.</p>
+                  <p class="config-tarjeta-texto">Si administrás un negocio sin nadie más que lo administre, primero dalo de baja o sumá a otra persona como administradora.</p>
                   <p class="form-note" id="bajaCuentaError" hidden></p>
-                  <label>Tu contraseña
-                    <input type="password" id="bajaCuentaPassword" autocomplete="current-password" maxlength="1000" />
+                  <label>Tu contraseña, para confirmar
+                    <span class="campo-icono campo-clave"><input type="password" id="bajaCuentaPassword" autocomplete="current-password" maxlength="1000" /><button type="button" class="campo-ver-clave" aria-label="Mostrar contraseña" aria-pressed="false"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#eye"></use></svg></button></span>
                   </label>
                 </div>
                 <div class="config-tarjeta-pie">

@@ -19595,6 +19595,30 @@ app.post('/api/auth/cambiar-password', (req, res) => {
   res.status(204).end();
 });
 
+// Cambiar el nombre con el que aparece la persona (hist. §225): en el menú, en
+// las ventas que hizo y en la auditoría. Es el de la cuenta, el mismo en todos
+// sus negocios. Mismo tope que al crear la cuenta.
+app.put('/api/auth/nombre', (req, res) => {
+  const nombre = typeof req.body?.nombre === 'string' ? req.body.nombre.trim().replace(/\s+/g, ' ') : '';
+  if (!nombre) return res.status(400).json({ error: 'Escribí tu nombre.' });
+  if (nombre.length > 120) return res.status(400).json({ error: 'El nombre puede tener hasta 120 letras.' });
+  const anterior = db.prepare('SELECT nombre FROM usuarios WHERE id = ?').get(req.usuario.id).nombre;
+  if (anterior !== nombre) {
+    withTransaction(() => {
+      db.prepare('UPDATE usuarios SET nombre = ? WHERE id = ?').run(nombre, req.usuario.id);
+      auditar(req, {
+        accion: 'editar',
+        entidad: 'usuario',
+        entidad_id: req.usuario.id,
+        detalle: 'Cambió su nombre',
+        valor_anterior: JSON.stringify({ nombre: anterior }),
+        valor_nuevo: JSON.stringify({ nombre })
+      });
+    });
+  }
+  res.json({ nombre });
+});
+
 // Sumar o cambiar el mail de la cuenta (hist. §102). La primera vez es la
 // página obligatoria "Sumá tu mail" y no pide la contraseña (recién entró con
 // ella); cambiarlo sí, porque con el mail se recupera la cuenta: alguien que
