@@ -1953,7 +1953,12 @@ CREATE TABLE IF NOT EXISTS inscripciones_socio (
   ciclo_desde TEXT NOT NULL,
   cobrar_desde TEXT NOT NULL,
   estado TEXT NOT NULL DEFAULT 'activa' CHECK (estado IN ('activa', 'baja')),
-  fecha_baja TEXT
+  fecha_baja TEXT,
+  -- Un socio que ya venía y se carga con su próxima cuota (hist. §227): lo
+  -- pagó antes de Nexo hasta el día anterior. No es una venta (no se sabe
+  -- cuándo ni cuánto se cobró): solo deja el período cubierto, y el ciclo
+  -- arranca en esa próxima cuota. NULL = todo lo cubierto sale de sus cuotas.
+  pagado_antes_hasta TEXT
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_inscripciones_socio_activa
   ON inscripciones_socio(socio_id, plan_id) WHERE estado = 'activa';

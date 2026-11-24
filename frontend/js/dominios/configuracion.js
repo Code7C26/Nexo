@@ -731,6 +731,13 @@ const PAGINAS = {
     alEntrar: () => invocar("pintar:carga-inicial", "stock-inicial")
   },
   "te-deben": { admin: true, menu: "lo-que-tenias", alEntrar: () => invocar("pintar:carga-inicial", "te-deben") },
+  // Los socios que ya venían: dominios/socios-anteriores.js (hist. §227).
+  "socios-anteriores": {
+    admin: true,
+    modulo: "socios",
+    menu: "lo-que-tenias",
+    alEntrar: () => invocar("pintar:socios-anteriores")
+  },
   "lo-que-debes": { admin: true, menu: "lo-que-tenias", alEntrar: () => invocar("pintar:carga-inicial", "lo-que-debes") },
   "plata-inicial": { admin: true, menu: "lo-que-tenias", alEntrar: () => invocar("pintar:carga-inicial", "plata-inicial") },
   "ventas-anteriores": { admin: true, menu: "lo-que-tenias", alEntrar: () => invocar("pintar:carga-inicial", "ventas-anteriores") },

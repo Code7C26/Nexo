@@ -126,12 +126,13 @@ const SECCIONES_ES = [
     titulo: "Cargar lo que ya tenías",
     pantalla: ["#/configuracion/lo-que-tenias", "Configuración › Lo que ya tenías"],
     admin: true,
-    preguntas: ["cómo cargo el stock que ya tenía", "cómo cargo lo que me deben de antes", "cómo empiezo si mi negocio ya funcionaba", "cómo cargo la plata que tengo hoy", "cómo cargo deudas viejas con proveedores"],
-    palabras: ["inicial", "antes", "tenia", "empezar", "arrancar", "stock", "deuda", "deudas", "saldo", "plata", "caja", "migrar", "pasar", "viejo"],
+    preguntas: ["cómo cargo el stock que ya tenía", "cómo cargo lo que me deben de antes", "cómo empiezo si mi negocio ya funcionaba", "cómo cargo la plata que tengo hoy", "cómo cargo deudas viejas con proveedores", "cómo cargo los socios que ya tenía"],
+    palabras: ["inicial", "antes", "tenia", "empezar", "arrancar", "stock", "deuda", "deudas", "saldo", "plata", "caja", "migrar", "pasar", "viejo", "socios", "alumnos"],
     bloques: [
       "Si tu negocio ya venía funcionando, cargá lo que tenés hoy y Nexo arranca con tus números de verdad. Está en **Configuración › Lo que ya tenías**, en partes que cargás por separado y en el orden que quieras:",
       { lista: [
         "**Tu stock de hoy**: cuántos tenés de cada producto y cuánto te costó cada uno. Con ese costo Nexo calcula la ganancia de cada venta.",
+        "**Tus socios** (si tenés socios): cada uno con su plan, desde cuándo viene y cuándo le toca pagar. Si ya le tocaba, Nexo le arma las cuotas que debe; si pagó, queda al día hasta esa fecha. El plan y la fecha de pago quedan para el siguiente, así los cargás de corrido.",
         "**Lo que te deben**: lo que cada cliente te quedó debiendo. Queda en su cuenta corriente y se cobra como cualquier venta.",
         "**Lo que debés**: lo que les debías a tus proveedores. Se paga como cualquier compra.",
         "**La plata de hoy**: cuánto hay en la caja, en el banco y en Mercado Pago.",

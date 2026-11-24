@@ -63,3 +63,24 @@ Para el punto 1 hay que cambiar el esquema: `cuotas_socio.venta_id` deja de
 ser UNIQUE (varias cuotas, una venta), y eso en SQLite es reconstruir la
 tabla (CLAUDE.md §34). Además, dos planes que arrancaron en días distintos
 tienen períodos distintos: hay que decidir en qué día se cobra.
+
+## Cargar los socios que ya venían (23 de noviembre de 2026, hist. §227)
+
+Pedido del dojo del profe: tiene todo anotado a mano, así que la planilla no
+le sirve. Cómo pasan los socios de antes los sistemas de gimnasios:
+
+- **Clubworx:** en la migración se carga, por socio, el plan, la fecha de
+  inicio, el importe y **la fecha en que vence su próximo pago**
+  (intercom.help/clubworx, "Transitioning to Clubworx").
+- **GymMaster:** separa la fecha de inicio (desde cuándo tiene acceso) de la
+  del primer pago, y la **"Next Payment Date"** es desde donde sigue el ciclo
+  de cobro (gymmaster.com/help, "Changing a member's payment date").
+- **Gymdesk:** su importación lleva fecha de inicio y **"Next Payment Date"**,
+  y recomienda que lo de antes no se cobre al migrar
+  (docs.gymdesk.com/help/data-imports, /help/migration). Una deuda vieja no va
+  en la planilla de socios: se carga aparte como un cargo.
+
+Lo que tomó Nexo: los mismos tres datos (plan, socio desde, próxima cuota), y
+lo que debe sale de ahí. Si la próxima cuota ya pasó, Nexo arma las cuotas que
+debe desde esa fecha; lo que no son esas cuotas ("Además debe") va a su
+cuenta corriente como saldo anterior, como el cargo aparte de Gymdesk.
