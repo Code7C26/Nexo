@@ -252,7 +252,7 @@ pedido del dojo del profe; investigado al final de
 
 **23 de noviembre, hist. §227: "Lo que ya tenías" › Tus socios** (segundo
 pedido del dojo; el profe tiene todo anotado a mano). Investigado al final de
-`docs/investigaciones/investigacion-cuotas-gimnasio.md`.
+`docs/investigaciones/investigacion-cuotas-gimnasio.md`. Publicado (PR #124).
 - Configuración › Lo que ya tenías suma **Tus socios** (con el módulo socios):
   nombre, DNI y teléfono opcionales, plan (las tarjetas del alta), **socio
   desde**, **próxima cuota** y **además debe**. Enter agrega y vuelve al
