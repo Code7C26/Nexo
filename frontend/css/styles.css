@@ -1946,6 +1946,8 @@ input[type="radio"] { accent-color: var(--accent); width: 16px; height: 16px; }
 :root:not([data-modulos~="puntos"]) [data-modulo="puntos"],
 :root:not([data-modulos~="grados"]) [data-modulo="grados"],
 :root:not([data-modulos~="socios"]) [data-modulo="grados"],
+:root:not([data-modulos~="ingreso"]) [data-modulo="ingreso"],
+:root:not([data-modulos~="socios"]) [data-modulo="ingreso"],
 /* La pestaña Servicios de Productos (hist. §88): un servicio no tiene stock. */
 .solo-servicios [data-modulo="stock"] {
   display: none;

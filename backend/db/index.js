@@ -2647,6 +2647,27 @@ if (db.prepare('PRAGMA user_version').get().user_version < 2) {
   db.exec('PRAGMA user_version = 2');
 }
 
+// El ingreso de socios pasó a ser una función aparte (hist. §233): a cada
+// negocio con socios se le prende, como si hubiera nacido con ella. Una vez,
+// así un admin que la apaga no la vuelve a ver prendida.
+if (db.prepare('PRAGMA user_version').get().user_version < 3) {
+  db.exec('BEGIN');
+  try {
+    for (const { id, modulos } of db.prepare('SELECT id, modulos FROM organizaciones').all()) {
+      const actuales = (modulos ?? '').split(' ').filter(Boolean);
+      if (!actuales.includes('socios') || actuales.includes('ingreso')) continue;
+      const conIngreso = MODULOS.filter((m) => m === 'ingreso' || actuales.includes(m));
+      const desconocidos = actuales.filter((m) => !MODULOS.includes(m));
+      db.prepare('UPDATE organizaciones SET modulos = ? WHERE id = ?').run([...conIngreso, ...desconocidos].join(' '), id);
+    }
+    db.exec('COMMIT');
+  } catch (err) {
+    db.exec('ROLLBACK');
+    throw err;
+  }
+  db.exec('PRAGMA user_version = 3');
+}
+
 // A cada cobro de antes se le deduce su medio (hist. §171): el efectivo, el de
 // la cuenta si es el único que va a ella. Donde hay varios (el banco con
 // débito, crédito y transferencia) no se adivina: queda sin medio. Una vez.

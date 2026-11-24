@@ -29,6 +29,7 @@ import { api, refrescar } from "../core/api.js";
 import { icono } from "../core/iconos.js";
 import { alEntrarEnVista, invocar, recargar, registrar } from "../core/registro.js";
 import { mostrarVista } from "../core/router.js";
+import { moduloActivo } from "../core/negocio.js";
 import { limpiarError, limpiarErrores, marcarError } from "../core/campos.js";
 import { LOCALE } from "../core/idioma.js";
 import { botonesDeMedios, cargarMediosDeCobro, confirmarCobroConMedio } from "../core/cobro-medio.js";
@@ -285,7 +286,9 @@ function textoDejo(s) {
   return `Parece que dejó: ${d.vino ? `no viene desde el ${fechaAR(d.desde)}` : "nunca vino"} y debe la cuota del ${cuotas}`;
 }
 
+// Sin el ingreso (hist. §233) nadie anota quién entra: no se dice.
 function textoSinVenir(s) {
+  if (!moduloActivo("ingreso")) return "";
   const dias = diasSinVenir(s);
   if (dias < DIAS_NO_VIENE) return "";
   const meses = Math.round(dias / 30);
@@ -734,9 +737,9 @@ function pintarFicha(s) {
     ["Socio desde", fechaAR(s.fecha_alta)],
     ["DNI", s.documento],
     ["Teléfono", s.telefono],
-    ["Descuento a mano", s.descuento ? `${s.descuento} (${porcentaje(s.descuento_porcentaje)})` : "Ninguno"],
-    ["Último ingreso", s.ultimo_ingreso ? fechaHoraAR(s.ultimo_ingreso) : "Todavía no vino"]
+    ["Descuento a mano", s.descuento ? `${s.descuento} (${porcentaje(s.descuento_porcentaje)})` : "Ninguno"]
   ];
+  if (moduloActivo("ingreso")) datos.push(["Último ingreso", s.ultimo_ingreso ? fechaHoraAR(s.ultimo_ingreso) : "Todavía no vino"]);
   if (s.situacion === "baja" && s.fecha_baja) datos.push(["De baja desde", fechaAR(s.fecha_baja)]);
   document.getElementById("fichaSocioDatos").innerHTML = camposFicha(datos);
   document.getElementById("fichaSocioDaClases").checked = Boolean(s.da_clases);

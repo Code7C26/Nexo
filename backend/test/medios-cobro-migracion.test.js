@@ -93,8 +93,8 @@ test('el medio "Mercado Pago" de antes deja de ofrecerse: pasa a Transferencia, 
     assert.equal(medios(conCobrosId).find((m) => m.nombre === 'Mercado Pago').activo, 0);
     assert.equal(ofrecidos(conCobrosId).length, 0);
     assert.equal(despues.prepare('SELECT COUNT(*) AS n FROM cobros WHERE medio_cobro_id IS NOT NULL').get().n >= 1, true);
-    // Una sola vez: queda marcada con la versión 2.
-    assert.equal(despues.prepare('PRAGMA user_version').get().user_version, 2);
+    // Una sola vez: queda marcada con la versión 2 (o una posterior).
+    assert.ok(despues.prepare('PRAGMA user_version').get().user_version >= 2);
     despues.close();
   } finally {
     rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });

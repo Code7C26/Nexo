@@ -6529,6 +6529,13 @@ export default {
   "Listo para {0}: tiene {1}.": "Ready for {0}: has {1}.",
   "{0} para {1}.": "{0} for {1}.",
   "{0} desde el último paso. {1} no pide un mínimo: lo decidís vos.": "{0} since the last step. {1} has no minimum: you decide.",
+  "{0} lo decidís vos.": "{0} is up to you.",
+  "Como no usás el ingreso, Nexo no sabe a cuántas clases viene cada uno: avisa solo por los meses con el cinturón, y los grados los decidís vos.":
+    "Since you don't use check-in, Nexo doesn't know how many classes each student attends: it only counts the months with the belt, and you decide the stripes.",
+  "Prender el ingreso": "Turn on check-in",
+  "Ingreso de socios": "Member check-in",
+  "La recepción y la pantalla de la entrada: quién entra y a qué clase. Sin esto, no se avisa quién no viene y los cinturones cuentan solo los meses.":
+    "The front desk and the entrance screen: who comes in and to which class. Without it, Nexo doesn't flag who stopped coming and belts only count the months.",
   "No se pudieron cargar los cinturones.": "The belts couldn't be loaded.",
   "Vino a {0}": "Came to {0}",
   "Armar los cinturones de otra actividad:": "Set up the belts of another activity:",
