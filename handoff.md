@@ -351,7 +351,8 @@ combos sin el precio repartido** (dos quejas del usuario; publicado, PR #128).
   se probó en el navegador** (no había servidor local).
 
 **24 de noviembre, hist. §232: las cuotas del combo viejo en una fila, "¿Lo
-mandaste?" y el Volver de la ficha del cliente** (tres quejas del usuario).
+mandaste?" y el Volver de la ficha del cliente** (tres quejas del usuario;
+publicado, PR #129).
 - Las cuotas de Morro de antes de §208 son una venta por plan, y la ficha y
   Socios → Cuotas las mostraban repartidas ($43.636,36 + $36.363,64). Ahora
   `conCobros` (server.js) junta en un cobro las de un mismo socio, combo de
