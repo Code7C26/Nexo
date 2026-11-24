@@ -774,6 +774,24 @@ function pintarFicha(s) {
     </tr>`
           )
           .join("");
+
+  // Las clases a las que vino, por actividad (hist. §226): la base de los
+  // grados. Sin ninguna, el panel no aparece.
+  const clases = s.clases ?? { total: 0, por_actividad: [], ultimas: [] };
+  document.getElementById("fichaSocioClasesPanel").hidden = clases.total === 0;
+  document.getElementById("fichaSocioClasesTitulo").textContent = `Clases (${clases.total})`;
+  document.getElementById("fichaSocioClasesActividades").innerHTML = clases.por_actividad
+    .map(
+      (a) => `
+      <li class="color-${esc(a.color)}">
+        <strong>${esc(a.nombre)}</strong>
+        <span>${esc(a.cantidad)} ${a.cantidad === 1 ? "clase" : "clases"} · la última el ${esc(fechaAR(a.ultima))}</span>
+      </li>`
+    )
+    .join("");
+  document.getElementById("fichaSocioClasesUltimas").textContent = clases.ultimas.length
+    ? `Últimas: ${clases.ultimas.map((u) => `${u.actividad} el ${fechaAR(u.fecha)}`).join(" · ")}`
+    : "";
 }
 
 async function cobrar(socio, medioId, boton) {

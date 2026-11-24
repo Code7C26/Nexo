@@ -15715,3 +15715,35 @@ en verde. Probado en el navegador (compu en claro y 390 px en oscuro) con la
 cuenta sembrada: cambiar el nombre (se ve en el pie del menú), cambiar la
 contraseña, el paso del código del mail, el error de contraseñas distintas y el
 bloqueo del negocio de ejemplo.
+
+## §226 — 23 de noviembre de 2026: asistencia por clase y suplentes
+
+Pedido del usuario (de `ideas.md`, para el dojo del profe): que quede
+registrado quién dio cada clase, también cuando la da otro profe, y la base
+para contar las clases de cada alumno (los grados vienen después). Investigado
+antes al final de `docs/investigaciones/investigacion-gymdesk.md` (Gymdesk,
+Clubworx, Punchpass, iClassPro, Jackrabbit).
+
+- **Esquema aditivo:** `clase_fechas` (un horario de la grilla en una fecha:
+  `estado` dada o suspendida, nota; única por horario y fecha),
+  `clase_fecha_profes` (quién la dio; al nacer, los de la grilla) y
+  `asistencias_clase` (socio, quién lo anotó y cuándo; única por clase). Una
+  fecha sin fila es una clase de la que no se anotó nada.
+- **Rutas** (los dos roles): `GET/PUT /api/clases/:id/fechas/:fecha`,
+  `POST .../asistencias` (uno o varios), `DELETE .../asistencias/:socioId`
+  (auditado) y `GET /api/asistencia` (período, por profe). El cambio de
+  profe o de estado se audita ("la dio Ana (suplente)"). `/api/grilla` suma
+  `semana` (lo anotado de lunes a domingo) y la ficha del socio, `clases`.
+- **Reglas:** solo actividades de horario fijo; la fecha cae en el día de la
+  clase; la lista, de hoy para atrás (hasta un año); quién la da o "no se dio",
+  hasta 14 días adelante; no se suspende una clase con alumnos anotados.
+- **Pantalla** (`dominios/clases.js`): el panel de la clase del día con
+  "Entraron hoy" (con "Anotar a los N"), "Suelen venir" y un buscador propio
+  (sin datalist); "Clases dadas" con el resumen por profe; en la ficha del
+  socio, "Clases" por actividad.
+
+**Verificado:** test nuevo `asistencia` (8 casos, con aislamiento). `npm test`
+548 de 548, lint, i18n y `verificar-migracion` 24 de 24. Probado en el
+navegador con un dojo de prueba en compu y a 390 px: anotar a los que
+entraron, buscar con Enter, poner una suplente, el bloque de la grilla, las
+clases dadas y la ficha; sin errores en la consola.

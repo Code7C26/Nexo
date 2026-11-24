@@ -154,3 +154,40 @@ que sientan el progreso y que el profe se ahorre trabajo.
   la aprobación del profe. Es una etapa aparte.
 - El medallero sale de los torneos aprobados; Smoothcomp es solo un enlace
   (su API sería otra integración, §32).
+
+## Asistencia por clase y suplentes (23 de noviembre, antes de diseñarlo)
+
+Cómo lo resuelven los sistemas de gimnasios y de academias:
+
+- **Gymdesk:** la asistencia se prende en la configuración. El alumno se
+  anota en la clase desde el kiosco o la app (con su número o su nombre), y
+  la recepción puede **marcar a varios de una vez** ("Multiple Check-In") y
+  **cargar asistencias de días pasados**. Los grados piden clases, horas o
+  días **en el grado**, por programa (cada disciplina con su lista), y el
+  alumno aparece como "listo para ascender" con un aviso en el tablero. Cada
+  raya es un grado más de la lista.
+- **Clubworx:** "Roll call", la lista de la clase que toma el profe.
+- **Suplentes** (Gymdesk no lo documenta): en Punchpass se va a la clase de
+  ese día y se le pone otro profe, también a varias juntas. En iClassPro el
+  suplente queda atado a la clase en esas fechas, y eso alimenta la
+  asistencia y las horas del profe. Jackrabbit permite anotar que el profe
+  faltó sin poner reemplazo. ActiveNet le paga al suplente por cada fecha.
+
+**Lo que se toma para Nexo:**
+1. La clase de un día es su propio registro: qué horario de la grilla, qué
+   fecha, si se dio o no, y **quién la dio de verdad** (de partida, los
+   profes de la grilla; si es otro, es un suplente).
+2. La lista se toma desde la clase, con los que entraron hoy arriba y los que
+   suelen venir a esa clase, para marcar de un toque. Se puede cargar un día
+   pasado.
+3. Las clases de cada alumno se cuentan por actividad (la base de los
+   grados), y las de cada profe, con cuántas fueron como suplente.
+
+Fuentes: [Gymdesk, asistencia](https://docs.gymdesk.com/help/attendance-tracking) ·
+[Gymdesk, rangos](https://docs.gymdesk.com/help/member-ranks) ·
+[Gymdesk, programas](https://docs.gymdesk.com/help/gym-programs) ·
+[Clubworx, roll call](https://intercom.help/clubworx/en/articles/2219249-roll-call-for-gyms-pt-and-studios) ·
+[Punchpass, suplentes](https://support.punchpass.com/en/articles/3193362-adding-a-substitute-instructor) ·
+[iClassPro, suplentes](https://support.iclasspro.com/hc/en-us/articles/4420528113815-How-Do-I-Mark-a-Staff-Member-as-Absent-Assign-a-Substitute-Instructor) ·
+[Jackrabbit, suplentes](https://help.jackrabbitclass.com/help/substitutes) ·
+[ActiveNet, pago al suplente](https://help.aw.active.com/ActiveNet/standard/en_US/master_ChangeSubstituteInstructorPayroll.htm)
