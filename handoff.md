@@ -311,8 +311,9 @@ cancelar un horario abierto desde ahí, se vuelve a la actividad. La clase del
 calendario suma **Todos los horarios**. Solo pantalla (`dominios/clases.js`). Publicado (PR #126, con la recepción por clase).
 
 **24 de noviembre, hist. §230: cinturones y grados** (lo que seguía en el dojo;
-investigado al final de `docs/investigaciones/investigacion-gymdesk.md`). Sin
-publicar.
+investigado al final de `docs/investigaciones/investigacion-gymdesk.md`).
+Publicado (PR #127; el CI falló una vez por un puerto ocupado en el test de
+balanza, ajeno al cambio, y pasó al relanzarlo).
 - **Vocabulario (usuario):** en la pantalla las rayas se llaman **grados**
   ("Azul · 2 grados") y la sección y el módulo, **Cinturones**. En el código
   siguen siendo rayas y la tabla `grados` es la lista de cinturones.
@@ -332,8 +333,8 @@ publicar.
   `npm test` 569 de 569, lint, i18n y `verificar-migracion` (24 de 24).
   Probado en el navegador (compu y 390 px) con un dojo de prueba.
 
-**Lo que sigue (próxima sesión):** publicar §230 si el usuario lo pide; cargar
-los cinturones del dojo real (Morro: prender Cinturones, armar BJJ y cargar a
+**Lo que sigue (próxima sesión):** el usuario revisa los cinturones y dice qué
+cambiar ("mañana seguimos y vemos qué cambiar"). Cargar los cinturones del dojo real (Morro: prender Cinturones, armar BJJ y cargar a
 los que ya venían, con lo que pase el profe). Después los medios de cobro (solo
 Efectivo al nacer + "¿Cómo te cobran?", también en `ideas.md`). Si da, el punto
 10 (el resumen del día por WhatsApp o mail). Y lo que el usuario vea al probar
