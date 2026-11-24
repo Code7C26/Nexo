@@ -138,6 +138,15 @@ test('el profe que también es alumno es la misma persona, y dejar de dar clases
   assert.ok((await lista(clase7)).profes.some((p) => p.nombre === 'Tomás Alumno'), 'la clase que dio queda');
 });
 
+test('por la recepción: el ingreso trae las clases de ahora, y nada se anota solo', async () => {
+  const sofia = await socio('Sofía Recepción', '30222777');
+  const r = await recepcion.post(`/api/socios/${sofia.id}/ingresos`, {});
+  assert.equal(r.status, 201, r.texto);
+  assert.deepEqual(r.json.clases.map((c) => [c.id, c.anotado]), [[clase7, false], [clase8, false]]);
+  const anotada = await recepcion.post(`/api/clases/${clase8}/fechas/${hoy}/asistencias`, { socio_id: sofia.id });
+  assert.ok(anotada.json.asistentes.some((a) => a.nombre === 'Sofía Recepción' && !a.por_pantalla));
+});
+
 test('un negocio no ve las clases ni los profes de otro en su entrada', async () => {
   assert.equal((await otro.post('/api/socios/entrada/clases', { codigo: '30222111', clases: [clase7] })).status, 404);
   assert.deepEqual((await otro.get('/api/socios/entrada/profes')).json, []);

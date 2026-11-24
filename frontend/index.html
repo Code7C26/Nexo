@@ -2129,7 +2129,10 @@
                   <p class="config-tarjeta-titulo" id="claseDiaTitulo">—</p>
                   <p class="campo-ayuda" id="claseDiaHorario"></p>
                 </div>
-                <button type="button" class="btn btn-secundario btn-chico col-admin" id="btnClaseDiaEditar"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#pencil"></use></svg> Editar horario</button>
+                <div class="clase-dia-botones col-admin">
+                  <button type="button" class="btn btn-secundario btn-chico" id="btnClaseDiaHorarios"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#calendar-clock"></use></svg> <span id="claseDiaHorariosTexto">Todos los horarios</span></button>
+                  <button type="button" class="btn btn-secundario btn-chico" id="btnClaseDiaEditar"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#pencil"></use></svg> Editar horario</button>
+                </div>
               </div>
               <div class="clase-dia-fechas" role="group" aria-label="Fecha de la clase">
                 <button type="button" class="btn btn-secundario btn-chico" id="btnClaseDiaAntes" aria-label="La semana anterior"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#chevron-left"></use></svg></button>
@@ -2227,6 +2230,15 @@
                 <legend>Color en la grilla</legend>
                 <div class="colores-elegir" id="actividadColores"></div>
               </fieldset>
+              <!-- Todos los horarios de la actividad, para administrarlos de una
+                   (ideas.md del usuario): editar, copiar a otros días, sacar. -->
+              <section class="actividad-horarios" id="actividadHorarios" aria-labelledby="actividadHorariosTitulo" hidden>
+                <div class="actividad-horarios-cabeza">
+                  <p class="config-tarjeta-titulo" id="actividadHorariosTitulo">Horarios</p>
+                  <button type="button" class="btn btn-secundario btn-chico" id="btnActividadSumarHorarios"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#plus"></use></svg> Sumar horarios</button>
+                </div>
+                <ul class="actividad-horarios-lista" id="actividadHorariosLista"></ul>
+              </section>
             </div>
             <div class="config-tarjeta-pie">
               <button type="button" class="btn btn-secundario" id="btnActividadBaja" hidden>Dar de baja</button>

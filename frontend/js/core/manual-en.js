@@ -629,7 +629,7 @@ export const SECCIONES_EN = {
       { pasos: [
         "Tap **New activity**: the name (BJJ, Functional), the color and whether it's **Fixed** (classes at set times) or **Open** (available during a time window, like the weights room).",
         "Tap **New time slot**: the activity, the days (Tuesday and Thursday at 7 pm are added in one go), the start and end time, and the instructors. The detail (Beginners, Kids) and the capacity are optional.",
-        "To change or remove a time slot, tap it on the schedule."
+        "To change or remove a time slot, tap it on the schedule, or tap **Edit** on the activity: all its time slots are there, with **Copy to other days** to repeat one without entering it again."
       ] },
       "Two classes can be at the same time: they go side by side. An instructor can't be in two classes at once; Nexo warns you.",
       "A class shared by several activities (sparring for Boxing, MMA and Kickboxing) is added once, ticking them all: it shows up on each one's schedule.",

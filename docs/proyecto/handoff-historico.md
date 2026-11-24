@@ -15832,3 +15832,28 @@ aislamiento) y `asistencia` adaptado. `npm test` 560 de 560, lint, i18n y
 temporal), compu y 390 px, sin errores en la consola.
 
 **Falta:** la recepción (`#/ingreso`) anota el ingreso sin clase.
+
+## §229 — 23 de noviembre de 2026: los horarios de una actividad, desde su Editar
+
+Pedido del usuario (`ideas.md`): cargar los horarios de a uno tocando el
+calendario era muy lento; quería administrarlos desde el Editar de cada
+actividad, y que al tocar una clase del calendario se pudieran ver las otras.
+
+- **Editar una actividad** (`dominios/clases.js`, `pintarHorariosActividad`):
+  la lista de todos sus horarios por día y hora (una clase compartida aparece
+  en cada actividad, "con Boxeo + MMA"), con Editar, **Copiar a otros días**
+  (`abrirClase(null, { copiaDe })`: un horario nuevo con horas, profes,
+  detalle, cupo y sucursal ya puestos, para marcar los días) y Sacar, más
+  "Sumar horarios" (varios días de una vez, como siempre).
+  `volverAActividad`: guardar o cancelar un horario abierto desde ahí vuelve
+  a la actividad, para seguir de corrido.
+- **El panel de la clase del calendario** suma "Todos los horarios", que abre
+  la actividad.
+- De paso (hist. §228, mismo día): la recepción anota a qué clase entra cada
+  socio desde la tarjeta del ingreso (`POST /api/socios/:id/ingresos` suma
+  `clases`), sin anotar nada solo.
+
+**Verificado:** `npm test` 561 de 561 (con el caso de la recepción en
+`ingreso-por-clase`), lint e i18n. En el navegador con un dojo de prueba:
+copiar el lunes de BJJ a martes y jueves deja los tres en la lista, y desde
+la clase del calendario se abre la lista; compu y 390 px, sin errores.

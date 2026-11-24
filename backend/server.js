@@ -24472,7 +24472,10 @@ app.post('/api/socios/:id/ingresos', (req, res) => {
     .prepare('INSERT INTO ingresos_socio (socio_id, usuario_id, al_dia, deuda) VALUES (?, ?, ?, ?)')
     .run(socio.id, req.usuario.id, situacion.deuda > 0 ? 0 : 1, situacion.deuda);
   const ingreso = db.prepare('SELECT id, fecha FROM ingresos_socio WHERE id = ?').get(lastInsertRowid);
-  res.status(201).json({ ...ingreso, al_dia: situacion.deuda === 0, socio: situacion });
+  // Las clases de ahora (hist. §228): la recepción toca a cuál va, como el
+  // socio en la pantalla de entrada. Nada se anota solo: también se entra a
+  // una actividad libre.
+  res.status(201).json({ ...ingreso, al_dia: situacion.deuda === 0, socio: situacion, clases: clasesDeAhora(organizacionId, { socioId: socio.id }) });
 });
 
 /* ---------- La grilla de clases (hist. §200) ---------- */

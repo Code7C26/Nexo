@@ -11,7 +11,7 @@
 
 - Al cerrar una etapa, se hacen tres cosas:
   - su relato completo se agrega al final de `docs/proyecto/handoff-historico.md` con el
-    siguiente número (hoy el último es §228);
+    siguiente número (hoy el último es §229);
   - acá se actualizan "Estado actual" y "Qué sigue";
   - si cambió alguna decisión vigente, se actualiza también esa lista.
 - Nunca apilar secciones "Última etapa" en este archivo: así fue como llegó a
@@ -278,7 +278,7 @@ pedido del dojo; el profe tiene todo anotado a mano). Investigado al final de
 entraron; el ingreso debe ser por clase"). Investigado al final de
 `docs/investigaciones/investigacion-gymdesk.md` (Gymdesk elige la clase en la
 entrada; Clubworx tiene kiosco por clase; ninguno resuelve al alumno que da
-una clase).
+una clase). Publicado (PR #125).
 - **Pantalla de entrada:** después del DNI, si hay clases de ahora (en curso o
   que empiezan en los próximos 90 minutos), "¿A qué clase venís?", con la de
   ahora ya marcada. Se marcan varias (la de las 7 y la de las 8) o se vuelve
@@ -298,8 +298,17 @@ una clase).
   test` 560 de 560; lint, i18n y `verificar-migracion` (24 de 24). Probado en
   el navegador (compu y 390 px) con un dojo de prueba: socio con dos clases,
   alumno que da una y entrena en otra, profe con PIN y el panel.
-- **Falta:** la recepción (`#/ingreso`) todavía anota el ingreso sin clase:
-  el que entra por recepción se suma desde el panel de la clase.
+- La recepción (`#/ingreso`) también: al registrar el ingreso, la tarjeta
+  muestra las clases de ahora y un toque lo anota o lo saca (nada se anota
+  solo: también se entra a una actividad libre).
+
+**23 de noviembre, hist. §229: los horarios de una actividad, desde su Editar**
+(pedido del usuario en `ideas.md`: cargar clase por clase era muy lento).
+Editar una actividad muestra **todos sus horarios** (día, hora, profes), cada
+uno con **Editar**, **Copiar a otros días** (un horario nuevo con todo puesto,
+para marcar los días) y **Sacar**, más **Sumar horarios**. Al guardar o
+cancelar un horario abierto desde ahí, se vuelve a la actividad. La clase del
+calendario suma **Todos los horarios**. Solo pantalla (`dominios/clases.js`).
 
 **Lo que sigue (próxima sesión):** en el dojo, los **cinturones** (configurables
 por el profe, con avisos por cantidad de clases contando desde un número
