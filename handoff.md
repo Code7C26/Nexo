@@ -278,7 +278,7 @@ pedido del dojo; el profe tiene todo anotado a mano). Investigado al final de
 entraron; el ingreso debe ser por clase"). Investigado al final de
 `docs/investigaciones/investigacion-gymdesk.md` (Gymdesk elige la clase en la
 entrada; Clubworx tiene kiosco por clase; ninguno resuelve al alumno que da
-una clase).
+una clase). Publicado (PR #125).
 - **Pantalla de entrada:** después del DNI, si hay clases de ahora (en curso o
   que empiezan en los próximos 90 minutos), "¿A qué clase venís?", con la de
   ahora ya marcada. Se marcan varias (la de las 7 y la de las 8) o se vuelve
