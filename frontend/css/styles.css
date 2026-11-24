@@ -7693,6 +7693,153 @@ html[data-ejemplo] #btnCompraFactura { display: none; }
   color: var(--sidebar-ink-2);
 }
 
+/* El ingreso por clase (hist. §228): las clases de ahora como tarjetas
+   grandes para tocar, con el color de su actividad. */
+.entrada-paso {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-5);
+  padding: var(--sp-5) 0;
+  text-align: center;
+  animation: aparecer-arriba var(--dur-2) var(--ease-out);
+}
+.entrada-paso[hidden] { display: none; }
+.entrada-paso .entrada-titulo { max-width: 28ch; text-wrap: balance; }
+
+.entrada-paso-ayuda {
+  max-width: 36ch;
+  margin: 0;
+  font-size: clamp(16px, 2.2vw, 20px);
+  color: var(--sidebar-ink-2);
+}
+
+.entrada-clases {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr));
+  gap: 12px;
+  width: min(100%, 760px);
+}
+
+.entrada-clase {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px;
+  text-align: left;
+  background: var(--sidebar-hover);
+  border: 2px solid var(--sidebar-line);
+  border-left: 8px solid var(--c, var(--sidebar-line));
+  border-radius: var(--r-md);
+}
+.entrada-clase:has([aria-pressed="true"]) { border-color: var(--accent-on-dark); border-left-color: var(--c, var(--accent-on-dark)); }
+
+.entrada-clase-nombre {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: clamp(20px, 3vw, 26px);
+  font-weight: 700;
+  color: var(--sidebar-ink);
+}
+
+.entrada-clase-hora { margin: 0; font-size: var(--txt-base); color: var(--sidebar-ink-2); }
+
+.entrada-clase-botones { display: flex; gap: 8px; }
+
+.entrada-clase-botones button {
+  display: inline-flex;
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 52px;
+  padding: 0 12px;
+  font: inherit;
+  font-size: var(--txt-lg);
+  font-weight: 600;
+  color: var(--sidebar-ink);
+  background: transparent;
+  border: 1px solid var(--sidebar-line);
+  border-radius: var(--r-md);
+  cursor: pointer;
+  touch-action: manipulation;
+}
+.entrada-clase-botones button[aria-pressed="true"] {
+  color: var(--accent-on-dark-ink);
+  background: var(--accent-on-dark);
+  border-color: transparent;
+}
+.entrada-clase-botones button:disabled { cursor: default; opacity: 0.75; }
+.entrada-clase-botones .ico { width: 20px; height: 20px; }
+
+/* Los profes con PIN, para elegirse. */
+.entrada-profes {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 200px), 1fr));
+  gap: 12px;
+  width: min(100%, 640px);
+}
+.entrada-profes button {
+  min-height: 64px;
+  font: inherit;
+  font-size: var(--txt-lg);
+  font-weight: 600;
+  color: var(--sidebar-ink);
+  background: var(--sidebar-hover);
+  border: 1px solid var(--sidebar-line);
+  border-radius: var(--r-md);
+  cursor: pointer;
+}
+
+.entrada-paso-acciones { display: flex; flex-wrap: wrap; justify-content: center; gap: 12px; }
+
+.entrada-listo {
+  min-width: min(100%, 260px);
+  min-height: 64px;
+  padding: 0 32px;
+  font: inherit;
+  font-size: clamp(20px, 3vw, 24px);
+  font-weight: 700;
+  color: var(--accent-on-dark-ink);
+  background: var(--accent-on-dark);
+  border: none;
+  border-radius: var(--r-md);
+  cursor: pointer;
+}
+
+.entrada-volver {
+  min-height: 64px;
+  padding: 0 24px;
+  font: inherit;
+  font-size: var(--txt-lg);
+  color: var(--sidebar-ink-2);
+  background: none;
+  border: 1px solid var(--sidebar-line);
+  border-radius: var(--r-md);
+  cursor: pointer;
+}
+
+.entrada-profe {
+  position: absolute;
+  left: 12px;
+  bottom: 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  font: inherit;
+  font-size: var(--txt-sm);
+  color: var(--sidebar-ink-2);
+  background: none;
+  border: 1px solid var(--sidebar-line);
+  border-radius: var(--r-md);
+  cursor: pointer;
+}
+.entrada-profe[hidden] { display: none; }
+.entrada-profe .ico { width: 16px; height: 16px; }
+
 .entrada-salir {
   position: absolute;
   right: 12px;
@@ -12283,25 +12430,6 @@ button.grilla-agenda-clase { cursor: pointer; }
 .clase-dia-quien { flex: 1 1 auto; min-width: 0; }
 .clase-dia-quien small,
 .clase-dia-encontrado small { color: var(--ink-muted); }
-.clase-dia-sugeridos:empty { display: none; }
-.clase-dia-sugeridos .campo-ayuda { margin: 0 0 var(--sp-1); }
-.clase-dia-chips { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
-.chip-sumar {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  min-height: 36px;
-  padding: 4px 12px 4px 8px;
-  font: inherit;
-  font-size: var(--txt-sm);
-  color: var(--ink);
-  background: var(--surface);
-  border: 1px dashed var(--line);
-  border-radius: 999px;
-  cursor: pointer;
-}
-.chip-sumar:hover { border-style: solid; border-color: var(--accent); }
-.chip-sumar .ico { color: var(--accent); }
 .clase-dia-encontrado {
   display: flex;
   align-items: center;

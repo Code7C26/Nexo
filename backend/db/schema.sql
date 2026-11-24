@@ -1734,8 +1734,14 @@ CREATE TABLE IF NOT EXISTS empleados (
   sucursal_id INTEGER REFERENCES sucursales(id),
   encargado INTEGER NOT NULL DEFAULT 0 CHECK (encargado IN (0, 1)),
   activo INTEGER NOT NULL DEFAULT 1 CHECK (activo IN (0, 1)),
-  alta TEXT NOT NULL DEFAULT (datetime('now'))
+  alta TEXT NOT NULL DEFAULT (datetime('now')),
+  -- El profe que también es alumno, o el alumno que da clases (hist. §228):
+  -- la misma persona, socio y empleado. Al entrar con su DNI puede anotarse
+  -- como el que da la clase. NULL = no es socio.
+  socio_id INTEGER REFERENCES socios(id)
 );
+-- (Un socio es un solo empleado: idx_empleados_socio, en db/index.js después
+-- de sumar la columna.)
 -- Una cuenta es un solo empleado en cada negocio, y dos activos no se llaman
 -- igual: en la caja se elige por el nombre.
 CREATE UNIQUE INDEX IF NOT EXISTS idx_empleados_cuenta ON empleados(organizacion_id, usuario_id) WHERE usuario_id IS NOT NULL;
@@ -2079,9 +2085,13 @@ CREATE TABLE IF NOT EXISTS clase_fechas (
 -- Quién la dio de verdad: al nacer, los profes de la grilla; uno que no está
 -- en clase_profes es un suplente. Se reemplazan enteros al cambiarlos, con su
 -- auditoría. Hija de clase_fechas.
+-- confirmado (hist. §228): 0 = lo dice la grilla; 1 = lo marcó alguien (desde
+-- la clase, o el profe al anotarse en la entrada). El primer profe que se
+-- anota en la entrada reemplaza a los de la grilla sin confirmar.
 CREATE TABLE IF NOT EXISTS clase_fecha_profes (
   clase_fecha_id INTEGER NOT NULL REFERENCES clase_fechas(id),
   empleado_id INTEGER NOT NULL REFERENCES empleados(id),
+  confirmado INTEGER NOT NULL DEFAULT 0 CHECK (confirmado IN (0, 1)),
   PRIMARY KEY (clase_fecha_id, empleado_id)
 );
 
@@ -2096,6 +2106,9 @@ CREATE TABLE IF NOT EXISTS asistencias_clase (
   socio_id INTEGER NOT NULL REFERENCES socios(id),
   usuario_id INTEGER NOT NULL REFERENCES usuarios(id),
   creada TEXT NOT NULL DEFAULT (datetime('now')),
+  -- 1 = se anotó él mismo en la pantalla de entrada (hist. §228); 0 = lo
+  -- anotó el profe o la recepción desde la clase.
+  por_pantalla INTEGER NOT NULL DEFAULT 0 CHECK (por_pantalla IN (0, 1)),
   UNIQUE (clase_fecha_id, socio_id)
 );
 

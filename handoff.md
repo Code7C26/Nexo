@@ -11,7 +11,7 @@
 
 - Al cerrar una etapa, se hacen tres cosas:
   - su relato completo se agrega al final de `docs/proyecto/handoff-historico.md` con el
-    siguiente número (hoy el último es §227);
+    siguiente número (hoy el último es §228);
   - acá se actualizan "Estado actual" y "Qué sigue";
   - si cambió alguna decisión vigente, se actualiza también esa lista.
 - Nunca apilar secciones "Última etapa" en este archivo: así fue como llegó a
@@ -272,6 +272,34 @@ pedido del dojo; el profe tiene todo anotado a mano). Investigado al final de
 - Test nuevo `socios-anteriores` (6 casos). `npm test` 554 de 554; lint, i18n
   y `verificar-migracion` (24 de 24). Probado en el navegador (compu y 390
   px) con un dojo de prueba.
+
+**23 de noviembre, hist. §228: el ingreso por clase y los profes en la entrada**
+(el usuario probó §226 y lo corrigió: "el profe se tiene que acordar quiénes
+entraron; el ingreso debe ser por clase"). Investigado al final de
+`docs/investigaciones/investigacion-gymdesk.md` (Gymdesk elige la clase en la
+entrada; Clubworx tiene kiosco por clase; ninguno resuelve al alumno que da
+una clase).
+- **Pantalla de entrada:** después del DNI, si hay clases de ahora (en curso o
+  que empiezan en los próximos 90 minutos), "¿A qué clase venís?", con la de
+  ahora ya marcada. Se marcan varias (la de las 7 y la de las 8) o se vuelve
+  a poner el DNI y se suma otra. A los 25 segundos se anota lo marcado.
+- **Profes:** "Soy profe" en la misma pantalla, se elige y pone su PIN (los
+  empleados con PIN). Un **alumno que da clases** (casilla "Da clases" en su
+  ficha, del admin) ve "La doy" al entrar con su DNI. El primero que se anota
+  reemplaza a los de la grilla (si no es el de la grilla, es suplente).
+- **Panel de la clase:** sin "Entraron ese día" ni "Suelen venir"; cada
+  asistente dice "en la entrada" o "lo anotó X", y el buscador corrige.
+- Esquema aditivo: `empleados.socio_id` (el profe que es socio, índice único
+  en `db/index.js`), `clase_fecha_profes.confirmado` y
+  `asistencias_clase.por_pantalla`. Rutas: `POST /api/socios/entrada/clases`,
+  `GET /api/socios/entrada/profes`, `POST /api/socios/entrada/profe` y
+  `PUT /api/socios/:id/da-clases` (admin).
+- Test nuevo `ingreso-por-clase` (6 casos) y `asistencia` adaptado. `npm
+  test` 560 de 560; lint, i18n y `verificar-migracion` (24 de 24). Probado en
+  el navegador (compu y 390 px) con un dojo de prueba: socio con dos clases,
+  alumno que da una y entrena en otra, profe con PIN y el panel.
+- **Falta:** la recepción (`#/ingreso`) todavía anota el ingreso sin clase:
+  el que entra por recepción se suma desde el panel de la clase.
 
 **Lo que sigue (próxima sesión):** en el dojo, los **cinturones** (configurables
 por el profe, con avisos por cantidad de clases contando desde un número

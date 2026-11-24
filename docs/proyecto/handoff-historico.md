@@ -15785,3 +15785,50 @@ lint, i18n y `verificar-migracion` 24 de 24. En el navegador con un dojo de
 prueba (base temporal), compu y 390 px: tres socios seguidos con Enter, el
 resumen de cada caso, el error de fecha, la lista y "4 socios cargados" en el
 resumen; sin errores en la consola ni desborde.
+
+## §228 — 23 de noviembre de 2026: el ingreso por clase y los profes en la entrada
+
+El usuario probó la lista de §226 y la corrigió: "Entraron ese día" obliga al
+profe a acordarse quién vino; **el ingreso tiene que ser por clase**, como una
+pantalla de ingreso también para los profes. Además: el que entra a la de las
+7 y se queda a la de las 8 no se distinguía, y en los dojos a veces da la
+clase un alumno, y muchos profes también son alumnos. Investigado al final de
+`docs/investigaciones/investigacion-gymdesk.md` (Gymdesk: se elige la clase en
+la entrada y el profe pasa su código ahí; Clubworx: kiosco de clase que
+avanza solo; ninguno registra a un alumno que da la clase).
+
+- **Esquema aditivo** (lista de `db/index.js`): `empleados.socio_id` (nula;
+  el empleado que también es socio, con `idx_empleados_socio` único creado
+  después de la columna), `clase_fecha_profes.confirmado` (0 = los de la
+  grilla; 1 = lo marcó alguien) y `asistencias_clase.por_pantalla`.
+- **Servidor:** `POST /api/socios/entrada` suma `clases` (las de hoy que no
+  terminaron y empiezan dentro de `MINUTOS_ANTES_CLASE` = 90, sin las
+  suspendidas) y `da_clases`. `POST /api/socios/entrada/clases` anota al socio
+  al día en las que eligió (`por_pantalla` 1) y, si da clases, lo anota como
+  profe (`anotarProfe`: borra los de la grilla sin confirmar y lo suma
+  confirmado, con auditoría "se anotó en la entrada como el que la da").
+  `GET /api/socios/entrada/profes` y `POST /api/socios/entrada/profe` (PIN con
+  su propio tope de intentos, `intentosPinEntrada`). `PUT
+  /api/socios/:id/da-clases` (admin): vincula al empleado activo con su mismo
+  nombre o crea uno sin PIN; al sacarlo, el que tiene PIN o cuenta solo se
+  desvincula y el creado para esto queda inactivo. El `PUT` de la clase del
+  día marca a sus profes confirmados. `detalleClaseFecha` deja de calcular
+  `entraron` y `suelen_venir` y suma `alumno` y `por_pantalla`.
+- **Pantalla de entrada** (`dominios/entrada.js`): el paso "¿A qué clase
+  venís?" con tarjetas por clase ("Vengo" y, si da clases, "La doy"; una u
+  otra), la de ahora marcada, "Listo", "No vengo a ninguna" y a los 25
+  segundos se anota lo marcado; "Soy profe" con la lista de profes con PIN y
+  el teclado para el PIN. Clases nuevas `.entrada-paso`, `.entrada-clase*`.
+- **Clases** (`dominios/clases.js`): el panel ya no sugiere; cada asistente
+  dice cómo se anotó, y el profe alumno lleva "alumno". **Socios**: la casilla
+  "Da clases" en la ficha (`col-admin`). Manual (es y en): cómo se anota quién
+  vino y quién la dio.
+
+**Verificado:** test nuevo `ingreso-por-clase` (6 casos: dos clases seguidas,
+el que debe y las clases que no son de ahora, el alumno que da una y entrena
+en otra, el profe con PIN, el profe que también es alumno y sacarlo, y el
+aislamiento) y `asistencia` adaptado. `npm test` 560 de 560, lint, i18n y
+`verificar-migracion` 24 de 24. En el navegador con un dojo de prueba (base
+temporal), compu y 390 px, sin errores en la consola.
+
+**Falta:** la recepción (`#/ingreso`) anota el ingreso sin clase.

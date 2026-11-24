@@ -191,3 +191,51 @@ Fuentes: [Gymdesk, asistencia](https://docs.gymdesk.com/help/attendance-tracking
 [iClassPro, suplentes](https://support.iclasspro.com/hc/en-us/articles/4420528113815-How-Do-I-Mark-a-Staff-Member-as-Absent-Assign-a-Substitute-Instructor) ·
 [Jackrabbit, suplentes](https://help.jackrabbitclass.com/help/substitutes) ·
 [ActiveNet, pago al suplente](https://help.aw.active.com/ActiveNet/standard/en_US/master_ChangeSubstituteInstructorPayroll.htm)
+
+## El ingreso por clase y los profes en la entrada (23 de noviembre de 2026, hist. §228)
+
+El usuario probó la lista de hist. §226 y la corrigió: "Entraron ese día" no
+sirve, porque el profe se tiene que acordar quién vino. **El ingreso tiene que
+ser por clase.** Además: un alumno que entra a la de las 7 y se queda a la de
+las 8 no se distingue, y en los dojos (en El Morro y en muchos otros) a veces
+da la clase un alumno, y muchos profes también son alumnos.
+
+Cómo lo resuelven:
+- **Gymdesk:** en la pantalla de entrada (Front Desk Mode) "se toca una
+  clase antes de poner o pasar el código del socio", y todos los que entran
+  después quedan anotados en esa clase. Desde la app del socio se ven "todas
+  las clases que le corresponden" y se anota de un toque. El profe pasa lista
+  con "Multiple Check-In", que trae solo a los que **deberían** venir a esa
+  clase (por su plan y su grado): "tocás a los que vinieron y confirmás".
+  Quién da la clase es siempre personal ("Instructors" asignados a cada
+  clase); el profe pasa **su propio código en la misma entrada** y eso le
+  suma una clase para el pago. Cada clase puede contar más de una para el
+  grado ("Session Count"), y los grados cuentan "clases en el grado".
+- **Clubworx:** "Class Kiosk" para que los alumnos se anoten solos en la clase
+  elegida, que **avanza sola a la siguiente** a medida que pasa el día; y
+  "Roll Call" para el profe, con los anotados, "Drop in" para sumar a otro y
+  las clases desde el último examen de cada uno.
+- **Ninguno** documenta qué pasa con dos clases seguidas ni con un alumno que
+  da una clase: en los dos, el que enseña es una cuenta de personal.
+
+**Lo que toma Nexo:**
+1. **El socio elige la clase al entrar.** Pone su DNI y la pantalla le
+   muestra las clases de ahora (en curso o por empezar), con la próxima ya
+   marcada. Puede marcar varias: es la respuesta a la de las 7 y la de las 8.
+   Si se olvidó, vuelve a poner el DNI y suma la otra (no es otro ingreso).
+2. **El profe se anota en la misma pantalla**, con "Soy profe" y su PIN, como
+   el código de personal de Gymdesk. Queda como el que la dio, y si no es el
+   de la grilla, como suplente.
+3. **Un alumno que da clases** (lo que ninguno resuelve): en su ficha se lo
+   marca "Da clases" y pasa a ser también profe, la misma persona. Al entrar
+   con su DNI ve "La doy yo" en cada clase.
+4. **La lista de la clase** es la de los que se anotaron en ella. El profe o
+   la recepción solo corrigen, con el buscador (como el "Drop in" de
+   Clubworx), y ya no se adivina por "entraron ese día".
+
+Fuentes: [Gymdesk, asistencia](https://docs.gymdesk.com/help/attendance-tracking) ·
+[Gymdesk, personal](https://docs.gymdesk.com/en/help/docs/managers) ·
+[Gymdesk, grilla](https://docs.gymdesk.com/en/help/docs/schedule) ·
+[Gymdesk, cómo registrar asistencia](https://gymdesk.com/blog/attendance-tracking-methods-for-martial-arts-gym-businesses) ·
+[Clubworx, Class Kiosk](https://intercom.help/clubworx/en/articles/455503-using-class-kiosk-mode) ·
+[Clubworx, Roll Call para artes marciales](https://intercom.help/clubworx/en/articles/2219238-roll-call-for-martial-arts-studios)

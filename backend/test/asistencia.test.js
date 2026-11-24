@@ -74,18 +74,19 @@ test('la fecha tiene que caer el día de la clase, y la lista se toma de hoy par
   assert.deepEqual(r.json.asistentes, []);
 });
 
-test('la recepción toma la lista: los que entraron hoy aparecen a mano y nadie se anota dos veces', async () => {
+test('la recepción corrige la lista desde la clase, y nadie se anota dos veces', async () => {
   const deHoy = bjjDel[diaSemana(hoy)];
+  // Ya no se sugiere por "entraron ese día" (hist. §228): la lista es la de
+  // los que se anotaron en la clase.
   assert.equal((await recepcion.post(`/api/socios/${lucia}/ingresos`, {})).status, 201);
-  assert.equal((await recepcion.post(`/api/socios/${pedro}/ingresos`, {})).status, 201);
   const antes = (await recepcion.get(url(deHoy, hoy))).json;
-  assert.deepEqual(antes.entraron.map((s) => s.nombre), ['Lucía Gómez', 'Pedro Díaz']);
+  assert.equal(antes.entraron, undefined);
   assert.equal((await recepcion.post(`${url(deHoy, hoy)}/asistencias`, {})).status, 400);
   const r = await recepcion.post(`${url(deHoy, hoy)}/asistencias`, { socios: [lucia, pedro] });
   assert.equal(r.status, 201, r.texto);
   assert.equal(r.json.anotada, true);
   assert.deepEqual(r.json.asistentes.map((a) => a.nombre), ['Lucía Gómez', 'Pedro Díaz']);
-  assert.deepEqual(r.json.entraron, [], 'los que ya están no se sugieren');
+  assert.ok(r.json.asistentes.every((a) => a.por_pantalla === false), 'los anotó la recepción');
   const otraVez = await recepcion.post(`${url(deHoy, hoy)}/asistencias`, { socio_id: lucia });
   assert.equal(otraVez.json.asistentes.length, 2);
 });
@@ -120,13 +121,12 @@ test('suspender una clase: no con alumnos anotados; sacar a alguien de la lista 
   assert.equal(feriado.json.estado, 'suspendida');
 });
 
-test('los que suelen venir a esa clase aparecen la semana siguiente', async () => {
+test('la lista de un día pasado se carga desde la clase', async () => {
   const deHoy = bjjDel[diaSemana(hoy)];
-  // Marta vino la semana pasada a esta misma clase.
+  // Marta y Lucía vinieron la semana pasada a esta misma clase.
   const pasada = await admin.post(`${url(deHoy, dia(-7))}/asistencias`, { socios: [marta, lucia] });
   assert.equal(pasada.status, 201, pasada.texto);
-  const hoyDetalle = (await recepcion.get(url(deHoy, hoy))).json;
-  assert.deepEqual(hoyDetalle.suelen_venir.map((s) => s.nombre), ['Marta Ruiz'], 'Lucía ya está anotada hoy');
+  assert.deepEqual(pasada.json.asistentes.map((s) => s.nombre), ['Lucía Gómez', 'Marta Ruiz']);
 });
 
 test('las clases de cada socio por actividad, y una compartida cuenta para las dos', async () => {

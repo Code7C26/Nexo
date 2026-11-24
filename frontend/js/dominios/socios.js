@@ -717,6 +717,7 @@ function pintarFicha(s) {
   ];
   if (s.situacion === "baja" && s.fecha_baja) datos.push(["De baja desde", fechaAR(s.fecha_baja)]);
   document.getElementById("fichaSocioDatos").innerHTML = camposFicha(datos);
+  document.getElementById("fichaSocioDaClases").checked = Boolean(s.da_clases);
 
   document.getElementById("btnSocioEstado").innerHTML =
     s.situacion === "baja" ? `${icono("undo-2")} Reactivar` : `${icono("log-out")} Dar de baja`;
@@ -964,6 +965,29 @@ formSumar.addEventListener("submit", async (e) => {
   await refrescar([cargarSocios(), recargarOtrasVistas()]);
   pintarFicha(socio);
   avisar(`Sumó ${plan.nombre}.`, "ok");
+});
+
+/* Si da clases (hist. §228) */
+
+const fichaDaClases = document.getElementById("fichaSocioDaClases");
+fichaDaClases.addEventListener("change", async () => {
+  const daClases = fichaDaClases.checked;
+  fichaDaClases.disabled = true;
+  let socio;
+  try {
+    socio = await api(`/api/socios/${fichaSocio.id}/da-clases`, {
+      method: "PUT",
+      body: { da_clases: daClases },
+      error: "No se pudo guardar si da clases."
+    });
+  } catch {
+    fichaDaClases.checked = !daClases;
+    return;
+  } finally {
+    fichaDaClases.disabled = false;
+  }
+  pintarFicha(socio);
+  avisar(daClases ? `${socio.nombre} da clases: en la entrada va a ver «La doy».` : `${socio.nombre} ya no da clases.`, "ok");
 });
 
 /* Descuento a mano y baja del socio entero */

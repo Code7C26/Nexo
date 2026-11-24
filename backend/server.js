@@ -23120,7 +23120,15 @@ function detalleSocio(socioId, organizacionId) {
     .all(socioId)
     .map((i) => ({ ...i, al_dia: Boolean(i.al_dia) }));
   const saldoCuenta = db.prepare('SELECT saldo FROM saldo_cc_clientes WHERE cliente_id = ?').get(socio.cliente_id)?.saldo ?? 0;
-  return { ...socio, cuotas: [...socio.cuotas].reverse(), ingresos, saldo_cuenta: redondear2(saldoCuenta), clases: clasesDelSocio(socioId) };
+  return {
+    ...socio,
+    cuotas: [...socio.cuotas].reverse(),
+    ingresos,
+    saldo_cuenta: redondear2(saldoCuenta),
+    clases: clasesDelSocio(socioId),
+    // Si también da clases (hist. §228).
+    da_clases: Boolean(empleadoDelSocio(socioId))
+  };
 }
 
 function socioDeLaEmpresa(id, organizacionId) {
@@ -23813,9 +23821,182 @@ app.post('/api/socios/entrada', (req, res) => {
   if (!reciente) {
     db.prepare('INSERT INTO ingresos_socio (socio_id, usuario_id, al_dia, deuda, por_pantalla) VALUES (?, ?, 1, 0, 1)').run(socioId, req.usuario.id);
   }
-  res
-    .status(reciente ? 200 : 201)
-    .json({ entra: true, socio_id: socioId, nombre, al_dia_hasta: socio.al_dia_hasta, ya_estaba: Boolean(reciente) });
+  res.status(reciente ? 200 : 201).json({
+    entra: true,
+    socio_id: socioId,
+    nombre,
+    al_dia_hasta: socio.al_dia_hasta,
+    ya_estaba: Boolean(reciente),
+    // El ingreso por clase (hist. §228): a cuál viene, o si la da él.
+    clases: clasesDeAhora(org, { socioId }),
+    da_clases: Boolean(empleadoDelSocio(socioId))
+  });
+});
+
+/* ---------- El ingreso por clase (hist. §228) ---------- */
+//
+// Como en Gymdesk y Clubworx (investigacion-gymdesk.md): al entrar, el socio
+// elige a qué clase viene, entre las de ahora; puede marcar varias (la de las
+// 7 y la de las 8) o volver a poner su DNI y sumar otra. El profe se anota en
+// la misma pantalla (con su PIN, o con su DNI si también es socio) como el que
+// la da; si no es el de la grilla, queda de suplente. La lista de la clase es
+// la de los que se anotaron: el profe ya no se tiene que acordar.
+
+// Las clases que se ofrecen: las de hoy que todavía no terminaron y empiezan
+// dentro de un rato.
+const MINUTOS_ANTES_CLASE = 90;
+
+function sumarMinutos(hhmm, minutos) {
+  const [h, m] = hhmm.split(':').map(Number);
+  const total = Math.min(h * 60 + m + minutos, 23 * 60 + 59);
+  return `${String(Math.floor(total / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`;
+}
+
+// El empleado activo de un socio (el que también da clases), o null.
+const empleadoDelSocio = (socioId) => db.prepare('SELECT id, nombre FROM empleados WHERE socio_id = ? AND activo = 1').get(socioId) ?? null;
+
+// Las clases de ahora, para la pantalla de entrada: en curso o por empezar,
+// sin las suspendidas, con si el socio ya se anotó y si el profe ya la da.
+function clasesDeAhora(organizacionId, { socioId = null, empleadoId = null } = {}) {
+  const hoy = fechaDeHoy();
+  const ahora = horaLocalDe(ahoraUtc());
+  const clases = db
+    .prepare(
+      `SELECT clases.id, clases.desde, clases.hasta, actividades.color,
+              (SELECT GROUP_CONCAT(a.nombre, ' + ') FROM clase_actividades
+                 JOIN actividades a ON a.id = clase_actividades.actividad_id
+                WHERE clase_actividades.clase_id = clases.id) AS actividad,
+              clase_fechas.id AS clase_fecha_id
+         FROM clases
+         JOIN actividades ON actividades.id = clases.actividad_id
+         LEFT JOIN clase_fechas ON clase_fechas.clase_id = clases.id AND clase_fechas.fecha = ?
+        WHERE clases.organizacion_id = ? AND clases.activo = 1 AND actividades.horario = 'fijo'
+          AND clases.dia_semana = ? AND clases.hasta > ? AND clases.desde <= ?
+          AND COALESCE(clase_fechas.estado, 'dada') = 'dada'
+        ORDER BY clases.desde, clases.id`
+    )
+    .all(hoy, organizacionId, diaSemanaDe(hoy), ahora, sumarMinutos(ahora, MINUTOS_ANTES_CLASE));
+  const anotado = db.prepare('SELECT 1 FROM asistencias_clase WHERE clase_fecha_id = ? AND socio_id = ?');
+  const laDa = db.prepare('SELECT 1 FROM clase_fecha_profes WHERE clase_fecha_id = ? AND empleado_id = ? AND confirmado = 1');
+  return clases.map((c) => ({
+    id: c.id,
+    actividad: c.actividad,
+    color: c.color,
+    desde: c.desde,
+    hasta: c.hasta,
+    en_curso: c.desde <= ahora,
+    anotado: Boolean(c.clase_fecha_id && socioId && anotado.get(c.clase_fecha_id, socioId)),
+    la_doy: Boolean(c.clase_fecha_id && empleadoId && laDa.get(c.clase_fecha_id, empleadoId))
+  }));
+}
+
+// Los ids pedidos (`clases` o `doy`): una lista sin repetidos, todos entre las
+// clases de ahora. Devuelve { error } o { ids }.
+function clasesPedidas(valor, deAhora) {
+  if (valor == null) return { ids: [] };
+  if (!Array.isArray(valor) || valor.length > 20) return { error: 'Las clases no son válidas.' };
+  const ids = [...new Set(valor.map(Number))];
+  if (!ids.every((id) => deAhora.some((c) => c.id === id))) return { error: 'Esa clase ya terminó o no es de ahora: elegí otra.' };
+  return { ids };
+}
+
+// El profe que se anota como el que da la clase de hoy: reemplaza a los de la
+// grilla que nadie confirmó (el primero que llega es el que la da) y se suma a
+// los que ya se anotaron. Dentro de una transacción.
+function anotarProfe(req, clase, fecha, empleado) {
+  const fila = asegurarClaseFecha(clase, fecha, req.usuario.organizacion_id);
+  db.prepare('DELETE FROM clase_fecha_profes WHERE clase_fecha_id = ? AND confirmado = 0').run(fila.id);
+  db.prepare(
+    `INSERT INTO clase_fecha_profes (clase_fecha_id, empleado_id, confirmado) VALUES (?, ?, 1)
+     ON CONFLICT (clase_fecha_id, empleado_id) DO UPDATE SET confirmado = 1`
+  ).run(fila.id, empleado.id);
+  const suplente = !profesDeGrilla(clase.id).some((p) => p.id === empleado.id);
+  auditar(req, {
+    accion: 'editar',
+    entidad: 'organizacion',
+    entidad_id: req.usuario.organizacion_id,
+    operacion_tipo: 'clase_fecha',
+    operacion_id: fila.id,
+    detalle: `${textoClaseFecha(clase, fecha)}: ${empleado.nombre} se anotó en la entrada como el que la da${suplente ? ' (suplente)' : ''}`
+  });
+}
+
+// El socio, al entrar: a qué clases viene ({ clases: [ids] }) y, si da
+// clases, cuáles da ({ doy: [ids] }). Solo el que está al día: al que debe lo
+// atiende la recepción.
+app.post('/api/socios/entrada/clases', (req, res) => {
+  const org = req.usuario.organizacion_id;
+  const socioId = socioPorCodigo(org, req.body?.codigo);
+  if (!socioId) return res.status(404).json({ error: 'Revisá el número o pasá por recepción.' });
+  ponerCuotasAlDia(org, socioId);
+  const [socio] = sociosConSituacion(org, socioId);
+  if (socio.situacion !== 'al_dia') return res.status(403).json({ error: 'Pasá por recepción.' });
+  const deAhora = clasesDeAhora(org, { socioId });
+  const vengo = clasesPedidas(req.body?.clases, deAhora);
+  const doy = clasesPedidas(req.body?.doy, deAhora);
+  const error = vengo.error ?? doy.error;
+  if (error) return res.status(400).json({ error });
+  if (!vengo.ids.length && !doy.ids.length) return res.status(400).json({ error: 'Elegí a qué clase venís.' });
+  if (vengo.ids.some((id) => doy.ids.includes(id))) return res.status(400).json({ error: 'Una clase la das o la tomás, no las dos.' });
+  const empleado = doy.ids.length ? empleadoDelSocio(socioId) : null;
+  if (doy.ids.length && !empleado) return res.status(403).json({ error: 'Para dar una clase, el dueño te tiene que marcar como profe.' });
+  const hoy = fechaDeHoy();
+  withTransaction(() => {
+    const insertar = db.prepare(
+      'INSERT OR IGNORE INTO asistencias_clase (clase_fecha_id, socio_id, usuario_id, por_pantalla) VALUES (?, ?, ?, 1)'
+    );
+    for (const id of vengo.ids) {
+      const fila = asegurarClaseFecha(claseConActividad(id, org), hoy, org);
+      insertar.run(fila.id, socioId, req.usuario.id);
+    }
+    for (const id of doy.ids) anotarProfe(req, claseConActividad(id, org), hoy, empleado);
+  });
+  const nombres = (ids) => deAhora.filter((c) => ids.includes(c.id)).map((c) => `${c.actividad} de las ${c.desde}`);
+  res.status(201).json({ nombre: primerNombre(socio.nombre), vengo: nombres(vengo.ids), doy: nombres(doy.ids) });
+});
+
+// Los profes que se anotan con su PIN (los que no son socios): quiénes pueden.
+app.get('/api/socios/entrada/profes', (req, res) => {
+  res.json(
+    db
+      .prepare(
+        `SELECT id, nombre FROM empleados
+          WHERE organizacion_id = ? AND activo = 1 AND pin_hash IS NOT NULL
+          ORDER BY nombre COLLATE NOCASE`
+      )
+      .all(req.usuario.organizacion_id)
+  );
+});
+
+// El profe con su PIN: sin `doy`, las clases de ahora; con `doy`, las que da.
+// El PIN tiene su tope de intentos, como en la caja, pero aparte del de ella.
+const intentosPinEntrada = new Map();
+app.post('/api/socios/entrada/profe', (req, res) => {
+  const org = req.usuario.organizacion_id;
+  const { empleado_id: empleadoId, pin } = req.body ?? {};
+  const empleado = esIdValido(empleadoId)
+    ? db.prepare('SELECT id, nombre, pin_hash, pin_salt FROM empleados WHERE id = ? AND organizacion_id = ? AND activo = 1').get(empleadoId, org)
+    : null;
+  if (!empleado?.pin_hash) return res.status(404).json({ error: 'Esa persona no tiene PIN: pedile al dueño que se lo cargue.' });
+  const clave = empleado.id;
+  const intento = intentosPinEntrada.get(clave);
+  if (intento?.hasta > Date.now()) return res.status(429).json({ error: 'Demasiados intentos con ese PIN. Probá de nuevo en unos minutos.' });
+  if (typeof pin !== 'string' || !ES_PIN.test(pin) || !verificarPassword(pin, empleado.pin_hash, empleado.pin_salt)) {
+    const fallos = (intento?.hasta ? 0 : (intento?.fallos ?? 0)) + 1;
+    intentosPinEntrada.set(clave, { fallos, hasta: fallos >= PIN_INTENTOS ? Date.now() + PIN_TRABA_MS : 0 });
+    return res.status(403).json({ error: 'El PIN no es correcto.' });
+  }
+  intentosPinEntrada.delete(clave);
+  const deAhora = clasesDeAhora(org, { empleadoId: empleado.id });
+  if (req.body.doy === undefined) return res.json({ nombre: primerNombre(empleado.nombre), clases: deAhora });
+  const doy = clasesPedidas(req.body.doy, deAhora);
+  if (doy.error) return res.status(400).json({ error: doy.error });
+  if (!doy.ids.length) return res.status(400).json({ error: 'Elegí qué clase das.' });
+  const hoy = fechaDeHoy();
+  withTransaction(() => {
+    for (const id of doy.ids) anotarProfe(req, claseConActividad(id, org), hoy, empleado);
+  });
+  res.status(201).json({ nombre: primerNombre(empleado.nombre), doy: deAhora.filter((c) => doy.ids.includes(c.id)).map((c) => `${c.actividad} de las ${c.desde}`) });
 });
 
 app.get('/api/socios/:id', (req, res) => {
@@ -23985,6 +24166,56 @@ app.post('/api/socios', (req, res) => {
 //   que debe sigue en su cuenta corriente, y una cuota que no corresponde se
 //   anula como cualquier venta;
 // - volver reactiva los planes que tenía cuando se fue.
+// (Si da clases va aparte: PUT /api/socios/:id/da-clases.)
+
+// Un alumno que da clases, o un profe que también es alumno (hist. §228): la
+// misma persona es socio y empleado, y así puede anotarse como el que da la
+// clase. Marcarlo usa al empleado que ya tenía (o a uno activo con su mismo
+// nombre, que es el profe que ya estaba cargado) o crea uno sin PIN; sacarlo
+// desactiva al que se creó para esto, y al que tiene PIN o cuenta (trabaja en
+// el negocio igual) solo lo desvincula. Nada se borra: la auditoría y las
+// clases dadas lo nombran.
+app.put('/api/socios/:id/da-clases', soloAdmin, (req, res) => {
+  const organizacionId = req.usuario.organizacion_id;
+  const socio = socioDeLaEmpresa(Number(req.params.id), organizacionId);
+  if (!socio) return res.status(404).json({ error: 'Socio no encontrado.' });
+  const { da_clases: daClases } = req.body ?? {};
+  if (typeof daClases !== 'boolean') return res.status(400).json({ error: 'Indicá si da clases.' });
+  const vinculado = db.prepare('SELECT * FROM empleados WHERE socio_id = ?').get(socio.id);
+  withTransaction(() => {
+    if (daClases) {
+      if (vinculado?.activo) return;
+      if (vinculado) db.prepare('UPDATE empleados SET activo = 1 WHERE id = ?').run(vinculado.id);
+      else {
+        const mismo = db
+          .prepare('SELECT id FROM empleados WHERE organizacion_id = ? AND activo = 1 AND socio_id IS NULL AND LOWER(nombre) = LOWER(?)')
+          .get(organizacionId, socio.nombre);
+        if (mismo) db.prepare('UPDATE empleados SET socio_id = ? WHERE id = ?').run(socio.id, mismo.id);
+        else {
+          const libre = !db
+            .prepare('SELECT 1 FROM empleados WHERE organizacion_id = ? AND activo = 1 AND LOWER(nombre) = LOWER(?)')
+            .get(organizacionId, socio.nombre);
+          if (!libre) throw new ErrorValidacion(`Ya hay otro empleado que se llama ${socio.nombre}: cambiale el nombre a uno de los dos.`);
+          db.prepare('INSERT INTO empleados (organizacion_id, nombre, socio_id) VALUES (?, ?, ?)').run(organizacionId, socio.nombre, socio.id);
+        }
+      }
+    } else {
+      if (!vinculado?.activo) return;
+      if (vinculado.pin_hash || vinculado.usuario_id) db.prepare('UPDATE empleados SET socio_id = NULL WHERE id = ?').run(vinculado.id);
+      else db.prepare('UPDATE empleados SET activo = 0 WHERE id = ?').run(vinculado.id);
+    }
+    auditar(req, {
+      accion: 'editar',
+      entidad: 'cliente',
+      entidad_id: socio.cliente_id,
+      operacion_tipo: 'socio',
+      operacion_id: socio.id,
+      detalle: `${socio.nombre} ${daClases ? 'da clases: puede anotarse como el que da la clase' : 'ya no da clases'}`
+    });
+  });
+  res.json(detalleSocio(socio.id, organizacionId));
+});
+
 app.patch('/api/socios/:id', (req, res) => {
   const organizacionId = req.usuario.organizacion_id;
   const socio = socioDeLaEmpresa(Number(req.params.id), organizacionId);
@@ -24609,9 +24840,9 @@ app.patch('/api/clases/:id', soloAdmin, (req, res) => {
 //
 // Cada horario de la grilla, en una fecha, es una clase de ese día
 // (clase_fechas, ver schema.sql): si se dio, quién la dio de verdad y quién
-// vino. Como en los sistemas de gimnasios (investigacion-gymdesk.md): la lista
-// se toma desde la clase, con los que entraron ese día y los que suelen venir
-// a mano, y se puede cargar un día pasado. Un profe que no es de la grilla en
+// vino. Como en los sistemas de gimnasios (investigacion-gymdesk.md): cada
+// socio se anota en su clase al entrar (hist. §228, el ingreso por clase), y
+// desde la clase se corrige la lista, también un día pasado. Un profe que no es de la grilla en
 // ese horario es un suplente. Lo hacen los dos roles: la recepción y el profe
 // que la da toman la lista. Solo las actividades de horario fijo tienen
 // clases; a una libre se entra cuando se quiere, y eso ya es el ingreso.
@@ -24621,8 +24852,6 @@ app.patch('/api/clases/:id', soloAdmin, (req, res) => {
 // jueves, el suplente de la semana que viene).
 const DIAS_ATRAS_ASISTENCIA = 366;
 const DIAS_ADELANTE_CLASE = 14;
-// Los que suelen venir: los de esa clase en las últimas semanas.
-const SEMANAS_SUELEN_VENIR = 8;
 
 const diaSemanaDe = (fecha) => (new Date(`${fecha}T12:00:00Z`).getUTCDay() + 6) % 7;
 
@@ -24688,15 +24917,19 @@ function asegurarClaseFecha(clase, fecha, organizacionId) {
 }
 
 // Todo lo de la clase de ese día: si se anotó, quién la dio (marcando a los
-// suplentes), quién vino y a quién conviene tener a mano para marcarlo.
-function detalleClaseFecha(clase, fecha, organizacionId) {
+// suplentes y a los alumnos que la dieron) y quién vino. La lista es la de los
+// que se anotaron en la entrada o los que marcaron desde la clase (hist.
+// §228): ya no se sugiere por "entraron ese día", que obligaba al profe a
+// acordarse quién vino.
+function detalleClaseFecha(clase, fecha) {
   const fila = filaClaseFecha(clase.id, fecha);
   const deGrilla = profesDeGrilla(clase.id);
   const enGrilla = new Set(deGrilla.map((p) => p.id));
   const profes = fila
     ? db
         .prepare(
-          `SELECT empleados.id, empleados.nombre FROM clase_fecha_profes JOIN empleados ON empleados.id = clase_fecha_profes.empleado_id
+          `SELECT empleados.id, empleados.nombre, empleados.socio_id FROM clase_fecha_profes
+             JOIN empleados ON empleados.id = clase_fecha_profes.empleado_id
             WHERE clase_fecha_profes.clase_fecha_id = ? ORDER BY empleados.nombre COLLATE NOCASE`
         )
         .all(fila.id)
@@ -24704,7 +24937,8 @@ function detalleClaseFecha(clase, fecha, organizacionId) {
   const asistentes = fila
     ? db
         .prepare(
-          `SELECT asistencias_clase.socio_id, socios.numero, clientes.nombre, asistencias_clase.creada, usuarios.nombre AS usuario
+          `SELECT asistencias_clase.socio_id, socios.numero, clientes.nombre, asistencias_clase.creada, usuarios.nombre AS usuario,
+                  asistencias_clase.por_pantalla
              FROM asistencias_clase
              JOIN socios ON socios.id = asistencias_clase.socio_id
              JOIN clientes ON clientes.id = socios.cliente_id
@@ -24714,33 +24948,6 @@ function detalleClaseFecha(clase, fecha, organizacionId) {
         )
         .all(fila.id)
     : [];
-  const vinieron = new Set(asistentes.map((a) => a.socio_id));
-  const entraron = db
-    .prepare(
-      `SELECT DISTINCT socios.id AS socio_id, socios.numero, clientes.nombre
-         FROM ingresos_socio
-         JOIN socios ON socios.id = ingresos_socio.socio_id
-         JOIN clientes ON clientes.id = socios.cliente_id
-        WHERE socios.organizacion_id = ? AND ingresos_socio.fecha >= ? AND ingresos_socio.fecha < ?
-        ORDER BY clientes.nombre COLLATE NOCASE`
-    )
-    .all(organizacionId, utcDeLocal(fecha, '00:00'), utcDeLocal(sumarDias(fecha, 1), '00:00'))
-    .filter((s) => !vinieron.has(s.socio_id));
-  const yaSugeridos = new Set(entraron.map((s) => s.socio_id));
-  const suelenVenir = db
-    .prepare(
-      `SELECT socios.id AS socio_id, socios.numero, clientes.nombre, COUNT(*) AS veces
-         FROM asistencias_clase
-         JOIN clase_fechas ON clase_fechas.id = asistencias_clase.clase_fecha_id
-         JOIN socios ON socios.id = asistencias_clase.socio_id
-         JOIN clientes ON clientes.id = socios.cliente_id
-        WHERE clase_fechas.clase_id = ? AND clase_fechas.fecha < ? AND clase_fechas.fecha >= ?
-        GROUP BY socios.id
-        ORDER BY veces DESC, clientes.nombre COLLATE NOCASE
-        LIMIT 40`
-    )
-    .all(clase.id, fecha, sumarDias(fecha, -7 * SEMANAS_SUELEN_VENIR))
-    .filter((s) => !vinieron.has(s.socio_id) && !yaSugeridos.has(s.socio_id));
   return {
     clase_id: clase.id,
     fecha,
@@ -24750,11 +24957,9 @@ function detalleClaseFecha(clase, fecha, organizacionId) {
     anotada: Boolean(fila),
     estado: fila?.estado ?? 'dada',
     nota: fila?.nota ?? null,
-    profes: profes.map((p) => ({ ...p, suplente: !enGrilla.has(p.id) })),
+    profes: profes.map(({ socio_id: socioId, ...p }) => ({ ...p, suplente: !enGrilla.has(p.id), alumno: Boolean(socioId) })),
     profes_grilla: deGrilla,
-    asistentes,
-    entraron,
-    suelen_venir: suelenVenir
+    asistentes: asistentes.map((a) => ({ ...a, por_pantalla: Boolean(a.por_pantalla) }))
   };
 }
 
@@ -24774,7 +24979,7 @@ app.get('/api/clases/:id/fechas/:fecha', (req, res) => {
   if (!clase) return res.status(404).json({ error: 'Ese horario no está en la grilla.' });
   const { fecha, error, status } = fechaDeClaseValida(clase, req.params.fecha, 'clase');
   if (error) return res.status(status).json({ error });
-  res.json(detalleClaseFecha(clase, fecha, organizacionId));
+  res.json(detalleClaseFecha(clase, fecha));
 });
 
 // Quién la dio de verdad, si se dio y una nota. `profes` reemplaza a los de
@@ -24799,7 +25004,7 @@ app.put('/api/clases/:id/fechas/:fecha', (req, res) => {
       profes.push(profe);
     }
   }
-  const antes = detalleClaseFecha(clase, fecha, organizacionId);
+  const antes = detalleClaseFecha(clase, fecha);
   if (body.estado === 'suspendida' && antes.asistentes.length) {
     return res.status(400).json({ error: 'Esa clase ya tiene alumnos anotados: sacalos de la lista antes de suspenderla.' });
   }
@@ -24809,10 +25014,11 @@ app.put('/api/clases/:id/fechas/:fecha', (req, res) => {
     if (nota !== undefined) db.prepare('UPDATE clase_fechas SET nota = ? WHERE id = ?').run(nota, fila.id);
     if (profes) {
       db.prepare('DELETE FROM clase_fecha_profes WHERE clase_fecha_id = ?').run(fila.id);
-      const insertar = db.prepare('INSERT INTO clase_fecha_profes (clase_fecha_id, empleado_id) VALUES (?, ?)');
+      // Marcados a mano: ya no son "los de la grilla" (hist. §228).
+      const insertar = db.prepare('INSERT INTO clase_fecha_profes (clase_fecha_id, empleado_id, confirmado) VALUES (?, ?, 1)');
       for (const profe of profes) insertar.run(fila.id, profe.id);
     }
-    const despues = detalleClaseFecha(clase, fecha, organizacionId);
+    const despues = detalleClaseFecha(clase, fecha);
     const quien = (d) =>
       d.estado === 'suspendida'
         ? 'no se dio'
@@ -24830,7 +25036,7 @@ app.put('/api/clases/:id/fechas/:fecha', (req, res) => {
       detalle: `${textoClaseFecha(clase, fecha)}: ${quien(despues)}`
     });
   });
-  res.json(detalleClaseFecha(clase, fecha, organizacionId));
+  res.json(detalleClaseFecha(clase, fecha));
 });
 
 // Anota a uno o a varios de una vez ({ socios: [ids] }, o { socio_id }). El
@@ -24855,7 +25061,7 @@ app.post('/api/clases/:id/fechas/:fecha/asistencias', (req, res) => {
     const insertar = db.prepare('INSERT OR IGNORE INTO asistencias_clase (clase_fecha_id, socio_id, usuario_id) VALUES (?, ?, ?)');
     for (const socio of socios) insertar.run(fila.id, socio.id, req.usuario.id);
   });
-  res.status(201).json(detalleClaseFecha(clase, fecha, organizacionId));
+  res.status(201).json(detalleClaseFecha(clase, fecha));
 });
 
 // Sacar a alguien de la lista (se marcó por error) queda auditado: la clase
@@ -24880,7 +25086,7 @@ app.delete('/api/clases/:id/fechas/:fecha/asistencias/:socioId', (req, res) => {
       detalle: `${socio.nombre} sacado de la lista de ${textoClaseFecha(clase, fecha)}`
     });
   });
-  res.json(detalleClaseFecha(clase, fecha, organizacionId));
+  res.json(detalleClaseFecha(clase, fecha));
 });
 
 // Las clases de un período (de partida, los últimos 30 días): cada una con

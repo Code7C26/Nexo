@@ -1686,7 +1686,11 @@
             <button type="button" data-tecla="entrar" class="entrada-tecla-entrar">Entrar</button>
           </div>
         </div>
+        <!-- El ingreso por clase (hist. §228): a qué clase viene, o qué clase
+             da el profe. Lo arma dominios/entrada.js. -->
+        <div class="entrada-paso" id="entradaPaso" hidden></div>
         <div class="entrada-resultado" id="entradaResultado" role="status" hidden></div>
+        <button type="button" class="entrada-profe" id="entradaProfe"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#id-card"></use></svg> Soy profe</button>
         <button type="button" class="entrada-salir" id="entradaSalir">Salir</button>
       </section>
 
@@ -2152,9 +2156,7 @@
               <div class="clase-dia-lista" id="claseDiaLista">
                 <p class="config-tarjeta-titulo" id="claseDiaVinieron">Vinieron</p>
                 <ul class="clase-dia-asistentes" id="claseDiaAsistentes"></ul>
-                <div class="clase-dia-sugeridos" id="claseDiaEntraron"></div>
-                <div class="clase-dia-sugeridos" id="claseDiaSuelen"></div>
-                <label>Anotar a alguien más
+                <label>Sumar a alguien que no se anotó en la entrada
                   <input type="search" id="claseDiaBuscar" autocomplete="off" placeholder="Nombre, número de socio o DNI" />
                 </label>
                 <ul class="clase-dia-encontrados" id="claseDiaEncontrados"></ul>
@@ -2309,6 +2311,10 @@
             </label>
             <button type="submit" class="btn btn-secundario" disabled>Guardar</button>
           </form>
+          <!-- Un alumno que da clases, o un profe que también entrena (hist. §228). -->
+          <div class="form col-admin socio-da-clases">
+            <label class="form-check"><input type="checkbox" id="fichaSocioDaClases" /> <span>Da clases: en la entrada puede anotarse como el que da la clase (un alumno que a veces la da, o un profe que también entrena).</span></label>
+          </div>
           <p class="form-note">Un cambio de duración o de descuento rige desde la próxima cuota: lo que ya se generó queda con su precio. Si le tocan varios descuentos, se aplica el mayor.</p>
         </section>
 
