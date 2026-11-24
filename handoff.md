@@ -375,7 +375,7 @@ negocio con socios, `user_version` 3). Apagado: sin Ingreso ni pantalla de
 entrada, sin "No vienen" ni "Parece que dejó", y los cinturones cuentan solo
 los meses (`anotaIngresos` en `server.js`). Test nuevo `ingreso-apagado`;
 `npm test` 576. **No se probó en el navegador** (el Chrome de las
-herramientas estaba tomado). **Sin publicar.**
+herramientas estaba tomado). Publicado (PR #130).
 - **Decisión del usuario:** nada de "Empezar de cero". Cuando dé acceso a
   Morro, Claude borra lo de prueba que él pida (cuotas, ingresos…), **nunca
   planes, combos ni horarios**.
