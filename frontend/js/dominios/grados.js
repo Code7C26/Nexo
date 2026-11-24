@@ -24,7 +24,20 @@ import { alEntrarEnVista, invocar, registrar } from "../core/registro.js";
 import { mostrarVista } from "../core/router.js";
 import { moduloActivo } from "../core/negocio.js";
 import { ordenarArrastrando } from "../core/arrastrar.js";
-import { COLORES_CINTURON, MAX_CLASES_GRADO, MAX_RAYAS, PLANTILLAS_GRADOS, nombreDelPaso, revisarGrados } from "../core/grados.js";
+import {
+  COLORES_CINTURON,
+  FORMAS_DE_SUBIR,
+  MAX_CLASES_CINTURON,
+  MAX_CLASES_GRADO,
+  MAX_MESES_GRADO,
+  MAX_RAYAS,
+  PLANTILLAS_GRADOS,
+  clasesDelPaso,
+  mesesDeCadaPaso,
+  nombreDelPaso,
+  pasosDelCinturon,
+  revisarGrados
+} from "../core/grados.js";
 import { formatear, t } from "../core/idioma.js";
 
 let pagina = null; // lo de GET /api/grados
@@ -60,7 +73,7 @@ const leerPaso = (valor) => {
 
 // Lo que le falta para el paso que sigue, en palabras, y cuánto lleva (de 0 a
 // 1) para la barrita. Sin el ingreso (hist. §233) el servidor no cuenta las
-// clases (a.clases es null) y el paso pide solo los meses.
+// clases (a.clases es null): solo avisa lo que sube por tiempo.
 function cuantoFalta(a) {
   if (!a.siguiente) return { texto: t("Tiene el último cinturón."), avance: 1 };
   const { clases, meses } = a.siguiente;
@@ -73,7 +86,7 @@ function cuantoFalta(a) {
     partes.push(plural(a.clases, "clase", "clases"));
   }
   if (meses != null) {
-    partes.push(a.meses >= meses ? formatear("los {0} meses", numero(meses)) : formatear("{0} de {1} meses", numero(a.meses), numero(meses)));
+    partes.push(a.meses >= meses ? duracion(meses) : formatear("{0} de {1}", duracion(a.meses), duracion(meses)));
     avances.push(a.meses / meses);
   }
   const lleva = partes.join(t(" y "));
@@ -273,10 +286,14 @@ function filaDeGrado(g = {}) {
   const franjas = Object.entries(COLORES_CINTURON)
     .map(([valor, nombre]) => `<option value="${valor}" ${valor === g.color2 ? "selected" : ""}>${esc(t(nombre))}</option>`)
     .join("");
+  // El tiempo se muestra en años cuando da justo (el negro de BJJ, cada 3).
+  const cada = mesesDeCadaPaso(g.meses_pasos);
+  const enAnios = (cada ?? [g.meses_paso]).every((m) => m == null || m % 12 === 0);
+  const enLaUnidad = (m) => (m != null && enAnios ? m / 12 : m);
   const numeroCampo = (nombre, valor, max, placeholder) =>
     `<input type="number" name="${nombre}" min="1" max="${max}" step="1" inputmode="numeric" value="${esc(valor ?? "")}" placeholder="${esc(t(placeholder))}" />`;
   return `
-    <li class="grado-fila" data-id="${g.id ?? ""}" data-alumnos="${esc(g.alumnos ?? 0)}">
+    <li class="grado-fila" data-id="${g.id ?? ""}" data-alumnos="${esc(g.alumnos ?? 0)}" data-cada="${esc(cada ? cada.map((m) => enLaUnidad(m) ?? "").join(" ") : "")}">
       <div class="grado-fila-cabeza">
         <button type="button" class="btn-icon tablero-arrastrar" data-arrastrar aria-label="${esc(t("Mover el cinturón: arrastralo o usá las flechas"))}" title="${esc(t("Arrastrá para cambiarlo de lugar"))}">${icono("menu")}</button>
         <span data-dibujo>${dibujoCinturon({ color: g.color ?? "blanco", color2: g.color2 }, g.rayas ?? 0)}</span>
@@ -296,47 +313,126 @@ function filaDeGrado(g = {}) {
         <label>${esc(t("Grados"))}
           <input type="number" name="rayas" min="0" max="${MAX_RAYAS}" step="1" inputmode="numeric" value="${esc(g.rayas ?? 0)}" />
         </label>
-        <label data-si-rayas>${esc(t("Clases por grado"))}
-          ${numeroCampo("clases_raya", g.clases_raya, MAX_CLASES_GRADO, "A ojo")}
+        <label data-si-pasos>${esc(t("Cómo sube"))}
+          <select name="por">${Object.entries(FORMAS_DE_SUBIR)
+            .map(([valor, nombre]) => `<option value="${valor}" ${valor === (g.por ?? "clases") ? "selected" : ""}>${esc(t(nombre))}</option>`)
+            .join("")}</select>
         </label>
-        <label data-no-primero>${esc(t("Clases para llegar"))}
-          ${numeroCampo("clases", g.clases, MAX_CLASES_GRADO, "A ojo")}
+        <label data-por="clases">${esc(t("Clases en el cinturón"))}
+          ${numeroCampo("clases_cinturon", g.clases_cinturon, MAX_CLASES_CINTURON, "A ojo")}
         </label>
-        <label data-no-primero>${esc(t("Meses con el anterior"))}
-          ${numeroCampo("meses", g.meses, 240, "Sin mínimo")}
+        <label data-por="tiempo"><span data-tiempo-titulo>${esc(t("Un grado cada"))}</span>
+          <span class="grado-tiempo">
+            ${numeroCampo("tiempo", enLaUnidad(g.meses_paso), MAX_MESES_GRADO, "A ojo")}
+            <select name="unidad" aria-label="${esc(t("Años o meses"))}">
+              <option value="anios" ${enAnios ? "selected" : ""}>${esc(t("años"))}</option>
+              <option value="meses" ${enAnios ? "" : "selected"}>${esc(t("meses"))}</option>
+            </select>
+          </span>
         </label>
+        <label class="grado-distinto" data-por="tiempo"><input type="checkbox" name="distinto" ${cada ? "checked" : ""} /> ${esc(t("Distinto en cada grado"))}</label>
+        <div class="grado-cada" data-pasos-tiempo hidden></div>
+        <p class="campo-ayuda grado-fila-reparto" data-reparto></p>
       </div>
     </li>`;
 }
 
 function leerFila(li) {
   const valor = (nombre) => li.querySelector(`[name="${nombre}"]`).value;
+  const factor = valor("unidad") === "anios" ? 12 : 1;
+  const enMeses = (v) => (v === "" || v == null ? null : Number(v) * factor);
+  // Un tiempo para cada paso: los campos de la fila o, si todavía no se
+  // armaron, lo que trajo (data-cada).
+  const campos = [...li.querySelectorAll('[name="cada"]')];
+  const distinto = li.querySelector('[name="distinto"]').checked && li.querySelector('[name="rayas"]').value > 0;
+  const cada = campos.length ? campos.map((c) => c.value) : li.dataset.cada ? li.dataset.cada.split(" ") : [];
   return {
     id: li.dataset.id ? Number(li.dataset.id) : null,
     nombre: valor("nombre"),
     color: li.querySelector('input[type="radio"]:checked')?.value ?? null,
     color2: valor("color2") || null,
     rayas: valor("rayas") === "" ? 0 : Number(valor("rayas")),
-    clases_raya: valor("clases_raya") || null,
-    clases: valor("clases") || null,
-    meses: valor("meses") || null
+    por: valor("por"),
+    clases_cinturon: valor("clases_cinturon") || null,
+    meses_paso: distinto ? null : enMeses(valor("tiempo")),
+    meses_pasos: distinto ? cada.map(enMeses) : null
   };
+}
+
+// Los campos del tiempo de cada paso ("1.º grado", "2.º grado"… "Al
+// siguiente"), uno por paso, sin perder lo que ya estaba escrito.
+function armarPasosDeTiempo(li, rayas, haySiguiente) {
+  const zona = li.querySelector("[data-pasos-tiempo]");
+  const pasos = pasosDelCinturon({ rayas }, haySiguiente);
+  const antes = [...zona.querySelectorAll('[name="cada"]')].map((c) => c.value);
+  const valores = antes.length ? antes : li.dataset.cada ? li.dataset.cada.split(" ") : [li.querySelector('[name="tiempo"]').value];
+  if (antes.length === pasos && zona.dataset.siguiente === String(haySiguiente)) return;
+  zona.dataset.siguiente = String(haySiguiente);
+  zona.innerHTML = Array.from({ length: pasos }, (_, i) => {
+    const titulo = i < rayas ? formatear("{0}.º grado", i + 1) : t("Al siguiente");
+    return `<label>${esc(titulo)}<input type="number" name="cada" min="1" max="${MAX_MESES_GRADO}" step="1" inputmode="numeric" value="${esc(valores[i] ?? valores.at(-1) ?? "")}" placeholder="${esc(t("A ojo"))}" /></label>`;
+  }).join("");
 }
 
 const leerFilas = () => [...listaGrados.querySelectorAll(".grado-fila")].map(leerFila);
 
-// Lo que cambia con cada fila: el dibujo, las clases por raya (sin rayas no
-// van) y lo que pide el primero, que no viene de ningún otro.
-function refrescarFila(li, primero) {
+// "3 años", "1 año y 6 meses", "8 meses".
+function duracion(meses) {
+  const anios = Math.floor(meses / 12);
+  const resto = meses % 12;
+  if (!anios) return plural(resto, "mes", "meses");
+  return resto ? formatear("{0} y {1}", plural(anios, "año", "años"), plural(resto, "mes", "meses")) : plural(anios, "año", "años");
+}
+
+// Cómo queda lo que pide el cinturón, en palabras: las clases repartidas entre
+// sus grados (las calcula Nexo) o cada cuánto tiempo.
+function repartoDelCinturon(g, haySiguiente) {
+  const pasos = pasosDelCinturon(g, haySiguiente);
+  if (!pasos) return t("Es el último y no tiene grados: no pide nada.");
+  if (g.por === "tiempo" && g.meses_pasos) {
+    const partes = g.meses_pasos.map((m, i) => `${i < g.rayas ? formatear("{0}.º", i + 1) : t("el siguiente")}: ${m > 0 ? duracion(m) : t("a ojo")}`);
+    return formatear("Cada paso: {0}.", partes.join(" · "));
+  }
+  if (g.por === "tiempo") {
+    const meses = Number(g.meses_paso);
+    if (!(meses > 0)) return t("Sin tiempo: lo decidís vos a ojo.");
+    if (!g.rayas) return formatear("Pasa al siguiente después de {0}.", duracion(meses));
+    return haySiguiente
+      ? formatear("Un grado cada {0}, y {0} más para pasar al siguiente.", duracion(meses))
+      : formatear("Un grado cada {0}.", duracion(meses));
+  }
+  const total = Number(g.clases_cinturon);
+  if (!(total > 0)) return t("Sin clases: lo decidís vos a ojo.");
+  if (total < pasos) return formatear("Son {0} pasos: pedí al menos {0} clases.", numero(pasos));
+  if (!g.rayas) return formatear("Pasa al siguiente a las {0} clases.", numero(total));
+  const cada = Array.from({ length: pasos }, (_, i) => clasesDelPaso(total, pasos, i + 1));
+  const [menos, mas] = [Math.min(...cada), Math.max(...cada)];
+  const porGrado = menos === mas ? numero(menos) : formatear("{0} o {1}", numero(menos), numero(mas));
+  return haySiguiente
+    ? formatear("{0} clases por grado, y otras tantas para pasar al siguiente.", porGrado)
+    : formatear("{0} clases por grado.", porGrado);
+}
+
+// Lo que cambia con cada fila: el dibujo y lo que pide, que depende de si
+// después viene otro cinturón (el último no salta a ninguno).
+function refrescarFila(li, ultimo) {
   const g = leerFila(li);
+  const pasos = pasosDelCinturon(g, !ultimo);
   li.querySelector("[data-dibujo]").innerHTML = dibujoCinturon({ color: g.color ?? "blanco", color2: g.color2 }, Math.min(g.rayas || 0, MAX_RAYAS));
-  li.querySelector("[data-si-rayas]").hidden = !(g.rayas > 0);
-  for (const campo of li.querySelectorAll("[data-no-primero]")) campo.hidden = primero;
+  li.querySelector("[data-si-pasos]").hidden = pasos === 0;
+  for (const campo of li.querySelectorAll("[data-por]")) campo.hidden = pasos === 0 || campo.dataset.por !== g.por;
+  li.querySelector(".grado-distinto").hidden ||= !(g.rayas > 0);
+  const distinto = g.por === "tiempo" && Boolean(g.meses_pasos);
+  if (distinto) armarPasosDeTiempo(li, g.rayas, !ultimo);
+  li.querySelector("[data-pasos-tiempo]").hidden = !distinto || pasos === 0;
+  li.querySelector('[name="tiempo"]').hidden = distinto;
+  li.querySelector("[data-tiempo-titulo]").textContent = distinto ? t("En") : g.rayas > 0 ? t("Un grado cada") : t("Tiempo en el cinturón");
+  li.querySelector("[data-reparto]").textContent = repartoDelCinturon(g, !ultimo);
 }
 
 function refrescarFilas() {
   const filas = [...listaGrados.querySelectorAll(".grado-fila")];
-  filas.forEach((li, i) => refrescarFila(li, i === 0));
+  filas.forEach((li, i) => refrescarFila(li, i === filas.length - 1));
   document.getElementById("gradosPlantillas").hidden = filas.length > 0;
   formGrados.hidden = filas.length === 0;
   document.getElementById("gradosArmarAyuda").textContent = filas.length
@@ -390,7 +486,7 @@ document.getElementById("gradosPlantillasLista").addEventListener("click", (e) =
   const plantilla = PLANTILLAS_GRADOS[boton.dataset.plantilla];
   listaGrados.innerHTML = plantilla ? plantilla.grados.map((g) => filaDeGrado({ ...g, nombre: t(g.nombre) })).join("") : filaDeGrado();
   refrescarFilas();
-  listaGrados.querySelector(plantilla ? '[name="clases_raya"]' : '[name="nombre"]')?.focus();
+  listaGrados.querySelector(plantilla ? '[name="clases_cinturon"]' : '[name="nombre"]')?.focus();
 });
 
 document.getElementById("btnSumarCinturon").addEventListener("click", () => {
@@ -402,7 +498,7 @@ document.getElementById("btnSumarCinturon").addEventListener("click", () => {
 for (const evento of ["input", "change"]) {
   listaGrados.addEventListener(evento, (e) => {
     const li = e.target.closest(".grado-fila");
-    if (li) refrescarFila(li, li === listaGrados.firstElementChild);
+    if (li) refrescarFila(li, li === listaGrados.lastElementChild);
   });
 }
 

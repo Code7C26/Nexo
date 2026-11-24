@@ -16055,3 +16055,34 @@ el Chrome de las herramientas estaba tomado por otra sesión.
 **Ideas que quedaron:** la lista rápida del profe (los que suelen venir, con
 una casilla cada uno) para cuando quiera contar clases sin la entrada; y un
 celular o una tablet vieja en la puerta como pantalla de entrada.
+
+## §234. Los cinturones suben por clases del cinturón o por tiempo (24 de noviembre de 2026)
+
+Pedido del usuario: definir clases por cinturón (no por grado), que Nexo las
+reparta entre sus grados, y poder elegir por tiempo (el negro de BJJ, un grado
+cada 3 años).
+- `core/grados.js`: `por` ('clases' | 'tiempo'), `clases_cinturon` y
+  `meses_paso`. Los pasos de un cinturón son sus rayas más el salto al
+  siguiente (el último no salta); `clasesDelPaso` reparte con redondeo
+  acumulado (suman el total). Lo que pide el paso lo dice el cinturón de hoy.
+  `revisarGrados` exige al menos una clase por paso.
+- `server.js`: los meses se cuentan desde el último paso (antes, desde el
+  cinturón); `desde_cinturon` sigue para mostrar.
+- Editor: "Cómo sube", "Clases en el cinturón" o "Un grado cada" (años o
+  meses), y una línea que dice cómo queda ("30 clases por grado, y otras
+  tantas para pasar al siguiente").
+- Esquema aditivo en `grados`; `user_version` 4: clases_cinturon = rayas ×
+  clases_raya + las clases que pedía el siguiente. Los `meses` mínimos de antes
+  quedan sin usar (decisión: se elige una sola forma por cinturón).
+- Tests adaptados. `npm test` 575/576: falla el `EPERM` de Windows al borrar la
+  carpeta temporal de `ingreso-apagado` (ajeno). Sin probar en el navegador.
+
+## §235. Un tiempo distinto para cada grado (24 de noviembre de 2026)
+
+Pedido del usuario: en el negro es cada 3 años y desde el 5.º cada 5; tiene que
+ser personalizable. Por tiempo, la casilla **Distinto en cada grado** muestra un
+campo por paso (1.º grado… y "Al siguiente" si hay otro cinturón), con la misma
+unidad (años o meses). Columna aditiva `grados.meses_pasos` ("36 36 36 36 60
+60"; NULL = `meses_paso` para todos), `mesesDeCadaPaso` en `core/grados.js`.
+La plantilla de BJJ trae el negro así. `npm test` 575/576 (el `EPERM` de
+Windows de siempre), lint e i18n en verde. Sin probar en el navegador.
