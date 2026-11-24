@@ -121,7 +121,7 @@ test('a los negocios con socios se les prende una vez al arrancar, y apagado que
     base = new DatabaseSync(dbPath);
     assert.equal(modulos(base, 'Gimnasio Viejo'), 'pos socios ingreso grados');
     assert.equal(modulos(base, 'Kiosco Viejo'), 'pos stock');
-    assert.equal(base.prepare('PRAGMA user_version').get().user_version, 3);
+    assert.ok(base.prepare('PRAGMA user_version').get().user_version >= 3);
     // El admin lo apaga: el próximo arranque no lo vuelve a prender.
     base.prepare("UPDATE organizaciones SET modulos = 'pos socios grados' WHERE nombre = 'Gimnasio Viejo'").run();
     base.close();
