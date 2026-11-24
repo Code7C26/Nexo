@@ -120,7 +120,7 @@
              Planes, los precios y descuentos (solo admin, hist. §76). -->
         <div class="nav-seccion" data-modulo="socios">
           <p class="nav-grupo">Socios</p>
-          <a href="#" class="nav-item" data-view="ingreso">
+          <a href="#" class="nav-item" data-view="ingreso" data-modulo="ingreso">
             <svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#door-open"></use></svg> Ingreso
           </a>
           <a href="#" class="nav-item" data-view="socios">
@@ -495,12 +495,12 @@
               <span class="pendiente-cifra mono" id="gimnasioVentas">$0</span>
               <span class="pendiente-detalle">Lo que vendiste aparte de las cuotas</span>
             </a>
-            <a class="pendiente-item" href="#/ingreso">
+            <a class="pendiente-item" href="#/ingreso" data-modulo="ingreso">
               <span class="pendiente-etiqueta">Entradas</span>
               <span class="pendiente-cifra mono" id="gimnasioEntradas">0</span>
               <span class="pendiente-detalle" id="gimnasioEntradasDetalle"></span>
             </a>
-            <a class="pendiente-item" href="#/socios">
+            <a class="pendiente-item" href="#/socios" data-modulo="ingreso">
               <span class="pendiente-etiqueta">No vienen</span>
               <span class="pendiente-cifra mono" id="gimnasioNoVienen">0</span>
               <span class="pendiente-detalle" id="gimnasioNoVienenDetalle"></span>
@@ -511,8 +511,8 @@
               <span class="pendiente-detalle">Llegaron a lo que pide su próximo cinturón o grado</span>
             </a>
           </div>
-          <h3 class="cuando-titulo gimnasio-titulo">Entradas por día</h3>
-          <div class="grafico columnas" id="graficoEntradas"></div>
+          <h3 class="cuando-titulo gimnasio-titulo" data-modulo="ingreso">Entradas por día</h3>
+          <div class="grafico columnas" id="graficoEntradas" data-modulo="ingreso"></div>
         </section>
         </div>
 
@@ -1745,8 +1745,8 @@
                 <button type="button" class="segmento" data-filtro="activos" aria-pressed="true">Activos</button>
                 <button type="button" class="segmento" data-filtro="debe" aria-pressed="false">Deben</button>
                 <button type="button" class="segmento" data-filtro="al_dia" aria-pressed="false">Al día</button>
-                <button type="button" class="segmento" data-filtro="no_vienen" aria-pressed="false" title="Activos que hace dos semanas o más no vienen">No vienen</button>
-                <button type="button" class="segmento" data-filtro="dejaron" aria-pressed="false" title="Hace un mes que no vienen y no pagaron la cuota">Parece que dejaron</button>
+                <button type="button" class="segmento" data-filtro="no_vienen" data-modulo="ingreso" aria-pressed="false" title="Activos que hace dos semanas o más no vienen">No vienen</button>
+                <button type="button" class="segmento" data-filtro="dejaron" data-modulo="ingreso" aria-pressed="false" title="Hace un mes que no vienen y no pagaron la cuota">Parece que dejaron</button>
                 <button type="button" class="segmento" data-filtro="baja" aria-pressed="false">De baja</button>
               </div>
             </div>
@@ -1822,10 +1822,10 @@
                     <select name="descuento_id" id="socioAltaDescuento"></select>
                   </label>
                 </div>
-                <label id="socioAltaUltimaVezCampo" hidden>La última vez que vino (opcional)
+                <label id="socioAltaUltimaVezCampo" data-modulo="ingreso" hidden>La última vez que vino (opcional)
                   <input type="date" name="ultima_vez" />
                 </label>
-                <p class="campo-ayuda" id="socioAltaUltimaVezAyuda" hidden>Si ya venía antes de cargarlo en Nexo: así aparece en "No vienen" si hace mucho que no viene.</p>
+                <p class="campo-ayuda" id="socioAltaUltimaVezAyuda" data-modulo="ingreso" hidden>Si ya venía antes de cargarlo en Nexo: así aparece en "No vienen" si hace mucho que no viene.</p>
                 <p class="opciones-nota" id="socioAltaVencimiento" aria-live="polite"></p>
                 <ul class="cotizacion" id="socioAltaCotizacion" aria-live="polite" hidden></ul>
               </div>
@@ -2289,8 +2289,8 @@
             <span class="ledger-label">Debe de cuotas</span>
             <span class="ledger-value mono ledger-warn" id="fichaSocioDeuda">$0,00</span>
           </div>
-          <div class="ledger-divider" aria-hidden="true"></div>
-          <div class="ledger-item">
+          <div class="ledger-divider" aria-hidden="true" data-modulo="ingreso"></div>
+          <div class="ledger-item" data-modulo="ingreso">
             <span class="ledger-label">Ingresos del último mes</span>
             <span class="ledger-value mono" id="fichaSocioIngresos">0</span>
           </div>
@@ -2382,7 +2382,7 @@
           <p class="campo-ayuda" id="fichaSocioClasesUltimas"></p>
         </section>
 
-        <section class="panel">
+        <section class="panel" data-modulo="ingreso">
           <div class="panel-head">
             <h2>Últimos ingresos</h2>
           </div>
@@ -3677,6 +3677,8 @@
                 <a class="btn btn-secundario" id="gradosEditar" href="#/grados"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#pencil"></use></svg> <span>Editar los cinturones</span></a>
               </div>
             </div>
+
+            <p class="opciones-nota" id="gradosSinIngreso" hidden>Como no usás el ingreso, Nexo no sabe a cuántas clases viene cada uno: avisa solo por los meses con el cinturón, y los grados los decidís vos. <a class="btn-link col-admin" href="#/configuracion/funciones">Prender el ingreso</a></p>
 
             <section class="ledger-strip" aria-label="Los alumnos de la actividad">
               <div class="ledger-item">

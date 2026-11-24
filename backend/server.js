@@ -20379,6 +20379,14 @@ function perfilDeEmpresa(organizacionId) {
   };
 }
 
+// Si el negocio anota quién entra (hist. §233): uno con socios que apagó el
+// ingreso no lo sabe, y entonces no se avisa quién no viene ni se cuentan las
+// clases de los cinturones.
+function anotaIngresos(organizacionId) {
+  const { modulos } = perfilDeEmpresa(organizacionId);
+  return !modulos.includes('socios') || modulos.includes('ingreso');
+}
+
 /* ---------- Datos del negocio (membrete de los comprobantes) ---------- */
 
 // Quién es el negocio: lo que va impreso en el encabezado de un presupuesto o
@@ -20494,9 +20502,10 @@ function validarDatosNegocio(cuerpo, { parcial }) {
     if (!Array.isArray(lista) || lista.some((m) => !MODULOS.includes(m))) {
       return { error: 'Los módulos no son válidos.' };
     }
-    // Los grados cuentan las clases de los socios (hist. §230): sin socios se
-    // apagan con ellos.
-    datos.modulos = MODULOS.filter((m) => lista.includes(m) && (m !== 'grados' || lista.includes('socios'))).join(' ');
+    // Los grados y el ingreso son de los socios (hist. §230, §233): sin socios
+    // se apagan con ellos.
+    const deSocios = (m) => m === 'grados' || m === 'ingreso';
+    datos.modulos = MODULOS.filter((m) => lista.includes(m) && (!deSocios(m) || lista.includes('socios'))).join(' ');
   }
   return { datos };
 }
@@ -23088,7 +23097,7 @@ const SELECT_SOCIO = `
 // La deuda se informa también de un socio de baja: sigue en su cuenta. Cada
 // plan lleva el precio que va a pagar en su próxima cuota, con su descuento.
 const DIAS_PARECE_QUE_DEJO = 30;
-function conSituacion(socio, inscripciones, cuotas, descuentos, hoy) {
+function conSituacion(socio, inscripciones, cuotas, descuentos, hoy, usaIngreso = true) {
   const planesActivos = new Set(inscripciones.filter((i) => i.estado === 'activa').map((i) => i.plan_id));
   const planes = inscripciones.map((i) => {
     const descuento = i.estado === 'activa' ? mejorDescuento(i.plan_id, planesActivos, socio.descuento_id, descuentos) : null;
@@ -23127,9 +23136,10 @@ function conSituacion(socio, inscripciones, cuotas, descuentos, hoy) {
   // pagó nada de la cuota de un período que empezó después: lo más común es
   // que haya dejado sin avisar. Nexo no lo da de baja solo (decisión del
   // usuario): lo marca, y el dueño decide si lo da de baja y si borra esa
-  // cuota (PATCH /api/socios/:id con bonificar_sin_venir).
+  // cuota (PATCH /api/socios/:id con bonificar_sin_venir). Sin el ingreso
+  // (hist. §233) no se sabe quién viene: no se avisa.
   let pareceQueDejo = null;
-  if (situacion !== 'baja') {
+  if (situacion !== 'baja' && usaIngreso) {
     const base = [socio.ultimo_ingreso ? fechaLocalDe(socio.ultimo_ingreso) : null, ...activos.map((p) => p.ciclo_desde)]
       .filter(Boolean)
       .sort()
@@ -23184,7 +23194,8 @@ function sociosConSituacion(organizacionId, socioId = null) {
     )
   );
   const descuentos = descuentosDeLaEmpresa(organizacionId);
-  return socios.map((s) => conSituacion(s, inscripciones.get(s.id) ?? [], cuotas.get(s.id) ?? [], descuentos, hoy));
+  const usaIngreso = anotaIngresos(organizacionId);
+  return socios.map((s) => conSituacion(s, inscripciones.get(s.id) ?? [], cuotas.get(s.id) ?? [], descuentos, hoy, usaIngreso));
 }
 
 // La ficha: el socio con sus planes, todas sus cuotas (la más nueva primero),
@@ -25381,13 +25392,16 @@ const pasoConSuGrado = (grados, paso) => {
 };
 
 // Dónde está un alumno en una actividad: su paso de hoy, las clases que lleva
-// en él, los meses con el cinturón, el paso que sigue y si ya llegó.
-function situacionEnGrado(socioId, actividadId, grados, historial, hoy) {
+// en él, los meses con el cinturón, el paso que sigue y si ya llegó. Sin el
+// ingreso (hist. §233) nadie anota quién viene: las clases no se cuentan
+// (null) y el paso pide solo los meses; los grados los decide el profe.
+function situacionEnGrado(socioId, actividadId, grados, historial, hoy, contarClases = true) {
   const ultimo = historial.at(-1);
-  const clases = ultimo.clases_antes + SQL_CLASES_EN_GRADO.get(socioId, actividadId, ultimo.fecha).n;
+  const clases = contarClases ? ultimo.clases_antes + SQL_CLASES_EN_GRADO.get(socioId, actividadId, ultimo.fecha).n : null;
   const desde = desdeElCinturon(historial);
   const meses = mesesEntre(desde, hoy);
-  const paso = proximoPaso(grados, ultimo);
+  const proximo = proximoPaso(grados, ultimo);
+  const paso = proximo && !contarClases ? { ...proximo, clases: null } : proximo;
   return {
     actividad_id: actividadId,
     grado_id: ultimo.grado_id,
@@ -25419,6 +25433,7 @@ const gradoParaMostrar = (g) => ({
 // grados y todavía no tienen el suyo.
 function paginaDeGrados(organizacionId) {
   const hoy = fechaDeHoy();
+  const contarClases = anotaIngresos(organizacionId);
   const porActividad = gradosPorActividad(organizacionId);
   const pasos = pasosPorAlumno(organizacionId);
   const activos = SQL_SOCIOS_ACTIVOS.all(organizacionId);
@@ -25442,7 +25457,7 @@ function paginaDeGrados(organizacionId) {
         socio_id: socio.id,
         numero: socio.numero,
         alumno: socio.nombre,
-        ...situacionEnGrado(socio.id, actividad.id, porActividad.get(actividad.id), historial, hoy)
+        ...situacionEnGrado(socio.id, actividad.id, porActividad.get(actividad.id), historial, hoy, contarClases)
       });
     }
   }
@@ -25466,6 +25481,7 @@ function paginaDeGrados(organizacionId) {
 // para elegir.
 function gradosDelSocio(socioId, organizacionId) {
   const hoy = fechaDeHoy();
+  const contarClases = anotaIngresos(organizacionId);
   const porActividad = gradosPorActividad(organizacionId);
   const pasos = pasosPorAlumno(organizacionId, socioId);
   const clasesPor = new Map(
@@ -25481,7 +25497,7 @@ function gradosDelSocio(socioId, organizacionId) {
       return {
         actividad: { id: a.id, nombre: a.nombre, color: a.color },
         grados: grados.filter((g) => g.activo).map(gradoParaMostrar),
-        situacion: historial.length ? situacionEnGrado(socioId, a.id, grados, historial, hoy) : null,
+        situacion: historial.length ? situacionEnGrado(socioId, a.id, grados, historial, hoy, contarClases) : null,
         clases_total: clasesPor.get(a.id) ?? 0,
         historial: historial
           .map((p, i) => ({

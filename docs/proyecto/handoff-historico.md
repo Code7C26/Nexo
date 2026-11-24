@@ -16007,3 +16007,51 @@ de antes de §208: la ficha, la fila de Cuotas y el cobro de las dos ventas).
 `npm test` 572 de 572, lint e i18n. En el navegador, con un dojo de prueba en
 una base temporal: la fila de $80.000, cobrarla desde Cuotas, Recordar con No
 y con Sí, y Volver desde la ficha del cliente a la del socio.
+
+## §233 — 24 de noviembre de 2026: el ingreso de socios se puede apagar
+
+**Pedido del usuario:** el profe todavía no tiene una compu en la entrada, así
+que nadie anota quién entra. "No vienen" y "Parece que dejó" marcaban a todos,
+y los cinturones nunca sumaban clases. Pidió "una opción para que el ingreso no
+afecte a 'no viene' y a los cinturones, mientras no usemos el ingreso".
+
+**Decisión del usuario sobre limpiar Morro:** nada de un "Empezar de cero" en
+la app. Cuando dé acceso, Claude borra lo que él pida (cuotas, ingresos y
+demás de prueba), **sin tocar planes, combos ni horarios**.
+
+**Qué se hizo:**
+- Función nueva **Ingreso de socios** (`ingreso` en `MODULOS`,
+  `backend/perfiles.js`), en Configuración → Funciones. Va con Socios: sin
+  socios se apaga con ellos (`validarNegocio`). El gimnasio la trae de
+  partida.
+- Migración de una vez (`PRAGMA user_version` 3, `db/index.js`): a cada
+  negocio con socios se le prende. Si el admin la apaga, el próximo arranque
+  no la vuelve a prender. Sin cambio de esquema.
+- `anotaIngresos(organizacionId)` en `server.js`: un negocio con socios que
+  apagó el ingreso.
+  - `conSituacion` no arma "Parece que dejó".
+  - `situacionEnGrado` no cuenta clases (`clases: null`), y el paso que sigue
+    pide solo los meses. Un grado que pedía clases lo decide el profe.
+- Pantalla (`data-modulo="ingreso"` y el CSS de módulos):
+  - se esconden Ingreso del menú y la pantalla de entrada (el router manda
+    `ingreso` y `entrada` al módulo `ingreso`);
+  - en Socios, los filtros "No vienen" y "Parece que dejaron", y el "hace X
+    días que no viene" de cada fila;
+  - en el alta, "La última vez que vino";
+  - en la ficha, el último ingreso, los ingresos del mes y la tabla de
+    ingresos;
+  - en el Resumen, Entradas, No vienen y el gráfico de entradas;
+  - en Cinturones, "cuánto falta" se dice solo con meses, más un aviso con
+    "Prender el ingreso".
+- La lista de clase que toma el profe (Clases) sigue andando, pero con el
+  ingreso apagado no cuenta para los cinturones.
+
+**Verificado:** test nuevo `ingreso-apagado` (4 casos: va con socios, "Parece
+que dejó", los cinturones por meses y la migración de una vez). `grados`,
+`registro` y `medios-cobro-migracion` se ajustaron. `npm test` 576, lint, i18n
+y `verificar-migracion` (24 de 24) en verde. **No se probó en el navegador:**
+el Chrome de las herramientas estaba tomado por otra sesión.
+
+**Ideas que quedaron:** la lista rápida del profe (los que suelen venir, con
+una casilla cada uno) para cuando quiera contar clases sin la entrada; y un
+celular o una tablet vieja en la puerta como pantalla de entrada.

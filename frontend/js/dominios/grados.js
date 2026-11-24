@@ -59,7 +59,8 @@ const leerPaso = (valor) => {
 };
 
 // Lo que le falta para el paso que sigue, en palabras, y cuánto lleva (de 0 a
-// 1) para la barrita.
+// 1) para la barrita. Sin el ingreso (hist. §233) el servidor no cuenta las
+// clases (a.clases es null) y el paso pide solo los meses.
 function cuantoFalta(a) {
   if (!a.siguiente) return { texto: t("Tiene el último cinturón."), avance: 1 };
   const { clases, meses } = a.siguiente;
@@ -68,7 +69,7 @@ function cuantoFalta(a) {
   if (clases != null) {
     partes.push(a.clases >= clases ? formatear("las {0} clases", numero(clases)) : formatear("{0} de {1} clases", numero(a.clases), numero(clases)));
     avances.push(a.clases / clases);
-  } else {
+  } else if (a.clases != null) {
     partes.push(plural(a.clases, "clase", "clases"));
   }
   if (meses != null) {
@@ -76,11 +77,11 @@ function cuantoFalta(a) {
     avances.push(a.meses / meses);
   }
   const lleva = partes.join(t(" y "));
-  const texto = a.listo
-    ? formatear("Listo para {0}: tiene {1}.", a.siguiente.nombre, lleva)
-    : avances.length
-      ? formatear("{0} para {1}.", lleva, a.siguiente.nombre)
-      : formatear("{0} desde el último paso. {1} no pide un mínimo: lo decidís vos.", lleva, a.siguiente.nombre);
+  let texto;
+  if (a.listo) texto = formatear("Listo para {0}: tiene {1}.", a.siguiente.nombre, lleva);
+  else if (avances.length) texto = formatear("{0} para {1}.", lleva, a.siguiente.nombre);
+  else if (lleva) texto = formatear("{0} desde el último paso. {1} no pide un mínimo: lo decidís vos.", lleva, a.siguiente.nombre);
+  else texto = formatear("{0} lo decidís vos.", a.siguiente.nombre);
   return { texto, avance: avances.length ? Math.min(1, ...avances) : null };
 }
 
@@ -112,6 +113,7 @@ function pintarLista() {
   document.getElementById("gradosEditar").href = `#/grados/armar/${a.id}`;
   document.getElementById("gradosCargar").href = `#/grados/cargar/${a.id}`;
   document.getElementById("gradosSinCargar").href = `#/grados/cargar/${a.id}`;
+  document.getElementById("gradosSinIngreso").hidden = moduloActivo("ingreso");
 
   const alumnos = pagina.alumnos.filter((x) => x.actividad_id === a.id);
   const listos = alumnos.filter((x) => x.listo);

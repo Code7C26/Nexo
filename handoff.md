@@ -11,7 +11,7 @@
 
 - Al cerrar una etapa, se hacen tres cosas:
   - su relato completo se agrega al final de `docs/proyecto/handoff-historico.md` con el
-    siguiente número (hoy el último es §232);
+    siguiente número (hoy el último es §233);
   - acá se actualizan "Estado actual" y "Qué sigue";
   - si cambió alguna decisión vigente, se actualiza también esa lista.
 - Nunca apilar secciones "Última etapa" en este archivo: así fue como llegó a
@@ -351,7 +351,8 @@ combos sin el precio repartido** (dos quejas del usuario; publicado, PR #128).
   se probó en el navegador** (no había servidor local).
 
 **24 de noviembre, hist. §232: las cuotas del combo viejo en una fila, "¿Lo
-mandaste?" y el Volver de la ficha del cliente** (tres quejas del usuario).
+mandaste?" y el Volver de la ficha del cliente** (tres quejas del usuario;
+publicado, PR #129).
 - Las cuotas de Morro de antes de §208 son una venta por plan, y la ficha y
   Socios → Cuotas las mostraban repartidas ($43.636,36 + $36.363,64). Ahora
   `conCobros` (server.js) junta en un cobro las de un mismo socio, combo de
@@ -367,7 +368,20 @@ mandaste?" y el Volver de la ficha del cliente** (tres quejas del usuario).
 - Test nuevo `combo-viejo`; `npm test` 572, lint e i18n. Probado en el
   navegador con un dojo de prueba (la fila, el cobro, el Recordar y el Volver).
 
-**Lo que sigue (próxima sesión):** el usuario revisa los cinturones y dice qué
+**24 de noviembre, hist. §233: el ingreso de socios se puede apagar** (pedido
+del usuario: el profe no tiene compu en la entrada). Configuración → Funciones
+› **Ingreso de socios** (`ingreso`, va con Socios; se prendió una vez en todo
+negocio con socios, `user_version` 3). Apagado: sin Ingreso ni pantalla de
+entrada, sin "No vienen" ni "Parece que dejó", y los cinturones cuentan solo
+los meses (`anotaIngresos` en `server.js`). Test nuevo `ingreso-apagado`;
+`npm test` 576. **No se probó en el navegador** (el Chrome de las
+herramientas estaba tomado). **Sin publicar.**
+- **Decisión del usuario:** nada de "Empezar de cero". Cuando dé acceso a
+  Morro, Claude borra lo de prueba que él pida (cuotas, ingresos…), **nunca
+  planes, combos ni horarios**.
+
+**Lo que sigue (próxima sesión):** en Morro, apagar el ingreso y borrar lo de
+prueba que pase el usuario. Después, el usuario revisa los cinturones y dice qué
 cambiar ("mañana seguimos y vemos qué cambiar"). Cargar los cinturones del dojo real (Morro: prender Cinturones, armar BJJ y cargar a
 los que ya venían, con lo que pase el profe). Después los medios de cobro (solo
 Efectivo al nacer + "¿Cómo te cobran?", también en `ideas.md`). Si da, el punto

@@ -14,7 +14,7 @@
 // se vende mientras no hay nada cargado (hist. §78, §88); sin él, "productos".
 // `etapas_crm` son las etapas abiertas con que nace el embudo de consultas
 // (hist. §89); Ganada y Perdida son comunes a todos y no se listan.
-export const MODULOS = ['pos', 'canales', 'crm', 'presupuestos', 'trabajos', 'abonos', 'compras', 'stock', 'produccion', 'socios', 'grados', 'puntos'];
+export const MODULOS = ['pos', 'canales', 'crm', 'presupuestos', 'trabajos', 'abonos', 'compras', 'stock', 'produccion', 'socios', 'ingreso', 'grados', 'puntos'];
 export const MODULOS_INFO = {
   pos: { nombre: 'Punto de venta', descripcion: 'Cobrá en el mostrador, con lector de códigos y turno de caja.', icono: 'scan-barcode' },
   // Lo de vender por internet (hist. §128): las tiendas conectadas (Tienda
@@ -37,6 +37,14 @@ export const MODULOS_INFO = {
     icono: 'chef-hat'
   },
   socios: { nombre: 'Socios y cuotas', descripcion: 'Planes, cuotas que se generan solas y control de ingreso en la recepción.', icono: 'id-card' },
+  // La recepción y la pantalla de la entrada (hist. §233): un dojo sin compu en
+  // la puerta no anota quién entra, y entonces "No vienen" y las clases de los
+  // cinturones dirían cualquier cosa. Apagado, no se cuentan. Va con socios.
+  ingreso: {
+    nombre: 'Ingreso de socios',
+    descripcion: 'La recepción y la pantalla de la entrada: quién entra y a qué clase. Sin esto, no se avisa quién no viene y los cinturones cuentan solo los meses.',
+    icono: 'door-open'
+  },
   // Los cinturones de las artes marciales (hist. §230): va con socios, porque
   // cuenta las clases de la asistencia por clase. Ningún tipo lo trae: un
   // gimnasio de musculación no los usa.
@@ -137,7 +145,7 @@ export const PERFILES_RUBRO = {
     icono: 'dumbbell',
     unidad_defecto: 'unidad',
     tipo_defecto: 'producto',
-    modulos: ['pos', 'crm', 'compras', 'stock', 'socios'],
+    modulos: ['pos', 'crm', 'compras', 'stock', 'socios', 'ingreso'],
     etapas_crm: ['Consulta', 'Clase de prueba', 'Seguimiento']
   }
 };

@@ -135,7 +135,8 @@ test('los que ya venían: su cinturón con las clases que llevaban, y cuándo ll
 test('el Resumen cuenta a los que están listos, solo con el módulo prendido', async () => {
   assert.equal((await admin.get('/api/reportes/socios')).json.para_graduar, null);
   const negocio = (await admin.get('/api/negocio')).json;
-  const conGrados = [...new Set([...negocio.modulos, 'socios', 'grados'])];
+  // Con el ingreso: las clases cuentan (sin él, solo los meses; hist. §233).
+  const conGrados = [...new Set([...negocio.modulos, 'socios', 'ingreso', 'grados'])];
   const r = await admin.put('/api/negocio', { nombre: negocio.nombre, modulos: conGrados });
   assert.equal(r.status, 200, r.texto);
   assert.equal((await admin.get('/api/reportes/socios')).json.para_graduar, 1);
