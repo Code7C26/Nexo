@@ -14,7 +14,7 @@
 // se vende mientras no hay nada cargado (hist. §78, §88); sin él, "productos".
 // `etapas_crm` son las etapas abiertas con que nace el embudo de consultas
 // (hist. §89); Ganada y Perdida son comunes a todos y no se listan.
-export const MODULOS = ['pos', 'canales', 'crm', 'presupuestos', 'trabajos', 'abonos', 'compras', 'stock', 'produccion', 'socios', 'puntos'];
+export const MODULOS = ['pos', 'canales', 'crm', 'presupuestos', 'trabajos', 'abonos', 'compras', 'stock', 'produccion', 'socios', 'grados', 'puntos'];
 export const MODULOS_INFO = {
   pos: { nombre: 'Punto de venta', descripcion: 'Cobrá en el mostrador, con lector de códigos y turno de caja.', icono: 'scan-barcode' },
   // Lo de vender por internet (hist. §128): las tiendas conectadas (Tienda
@@ -37,6 +37,14 @@ export const MODULOS_INFO = {
     icono: 'chef-hat'
   },
   socios: { nombre: 'Socios y cuotas', descripcion: 'Planes, cuotas que se generan solas y control de ingreso en la recepción.', icono: 'id-card' },
+  // Los cinturones de las artes marciales (hist. §230): va con socios, porque
+  // cuenta las clases de la asistencia por clase. Ningún tipo lo trae: un
+  // gimnasio de musculación no los usa.
+  grados: {
+    nombre: 'Cinturones',
+    descripcion: 'Para artes marciales: el cinturón y los grados de cada alumno, las clases que lleva y quién está listo para graduarse. Va con Socios y cuotas.',
+    icono: 'award'
+  },
   // El programa de fidelidad (hist. §223): ningún tipo lo trae prendido, porque
   // la regla (cada cuántos pesos un punto) la tiene que decidir el negocio.
   puntos: {

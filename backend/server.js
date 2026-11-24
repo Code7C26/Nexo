@@ -97,6 +97,16 @@ import {
   textoPuntos,
   venceDe
 } from '../frontend/js/core/puntos.js';
+// Las de los grados y cinturones (hist. §230).
+import {
+  MAX_CLASES_GRADO,
+  desdeElCinturon,
+  estaListo,
+  mesesEntre,
+  nombreDelPaso,
+  proximoPaso,
+  revisarGrados
+} from '../frontend/js/core/grados.js';
 import { MAX_FILAS_PLANILLA, TIPOS_PLANILLA, interpretarFila } from '../frontend/js/core/planilla.js';
 import { MAX_MENSAJE, MENSAJES } from '../frontend/js/core/mensajes.js';
 import { esListaDeSecciones, menuDeSiempre, normalizarMenu } from '../frontend/js/core/menu.js';
@@ -17669,7 +17679,10 @@ app.get('/api/reportes/socios', soloAdmin, (req, res) => {
       por_dia: [...porDia].sort(([a], [b]) => a.localeCompare(b)).map(([fecha, cantidad]) => ({ fecha, cantidad })),
       no_vienen: noVienen.length,
       parece_que_dejaron: activos.filter((s) => s.parece_que_dejo).length
-    }
+    },
+    // Los que llegaron a lo que pide su próximo grado (hist. §230), con el
+    // módulo prendido.
+    para_graduar: perfilDeEmpresa(organizacionId).modulos.includes('grados') ? listosParaGraduar(organizacionId) : null
   });
 });
 
@@ -20441,7 +20454,9 @@ function validarDatosNegocio(cuerpo, { parcial }) {
     if (!Array.isArray(lista) || lista.some((m) => !MODULOS.includes(m))) {
       return { error: 'Los módulos no son válidos.' };
     }
-    datos.modulos = MODULOS.filter((m) => lista.includes(m)).join(' ');
+    // Los grados cuentan las clases de los socios (hist. §230): sin socios se
+    // apagan con ellos.
+    datos.modulos = MODULOS.filter((m) => lista.includes(m) && (m !== 'grados' || lista.includes('socios'))).join(' ');
   }
   return { datos };
 }
@@ -23126,6 +23141,8 @@ function detalleSocio(socioId, organizacionId) {
     ingresos,
     saldo_cuenta: redondear2(saldoCuenta),
     clases: clasesDelSocio(socioId),
+    // Su cinturón en cada actividad que tiene (hist. §230).
+    grados: gradosDelSocio(socioId, organizacionId),
     // Si también da clases (hist. §228).
     da_clases: Boolean(empleadoDelSocio(socioId))
   };
@@ -25191,6 +25208,359 @@ function clasesDelSocio(socioId) {
     .all(socioId);
   return { total: ultimas.length, por_actividad: porActividad, ultimas: ultimas.slice(0, 10) };
 }
+
+/* ---------- Grados y cinturones (hist. §230) ---------- */
+//
+// El módulo `grados` (ver las tablas en schema.sql; las reglas, en
+// core/grados.js): cada actividad con su lista de cinturones, el historial de
+// cada alumno y quién llegó a lo que pide el paso que sigue. Lo ven los dos
+// roles, porque la recepción y el profe lo miran en la clase; la lista y los
+// ascensos son del admin, que es quien decide graduar a alguien. Las clases
+// salen de la asistencia por clase (hist. §226): las de una clase compartida
+// cuentan para cada una de sus actividades.
+
+const LARGO_NOTA_GRADO = 200;
+const MAX_PASOS_JUNTOS = 300;
+
+const SQL_GRADOS_DE = db.prepare(
+  `SELECT id, actividad_id, nombre, orden, color, color2, rayas, clases_raya, clases, meses, activo
+     FROM grados WHERE organizacion_id = ? ORDER BY actividad_id, orden, id`
+);
+const SQL_PASOS_DE = db.prepare(
+  `SELECT socio_grados.id, socio_grados.socio_id, socio_grados.grado_id, socio_grados.raya, socio_grados.fecha,
+          socio_grados.clases_antes, socio_grados.nota, socio_grados.creada, grados.actividad_id, usuarios.nombre AS usuario
+     FROM socio_grados
+     JOIN grados ON grados.id = socio_grados.grado_id
+     JOIN usuarios ON usuarios.id = socio_grados.usuario_id
+    WHERE grados.organizacion_id = ? AND (? IS NULL OR socio_grados.socio_id = ?)
+    ORDER BY socio_grados.fecha, socio_grados.id`
+);
+// Las clases de un alumno en una actividad después del día de su último paso:
+// la de ese mismo día la hizo con el grado de antes.
+const SQL_CLASES_EN_GRADO = db.prepare(
+  `SELECT COUNT(*) AS n FROM asistencias_clase
+     JOIN clase_fechas ON clase_fechas.id = asistencias_clase.clase_fecha_id
+     JOIN clase_actividades ON clase_actividades.clase_id = clase_fechas.clase_id
+    WHERE asistencias_clase.socio_id = ? AND clase_actividades.actividad_id = ?
+      AND clase_fechas.estado = 'dada' AND clase_fechas.fecha > ?`
+);
+const SQL_CLASES_POR_ACTIVIDAD = db.prepare(
+  `SELECT asistencias_clase.socio_id, clase_actividades.actividad_id, COUNT(*) AS n
+     FROM asistencias_clase
+     JOIN clase_fechas ON clase_fechas.id = asistencias_clase.clase_fecha_id
+     JOIN clase_actividades ON clase_actividades.clase_id = clase_fechas.clase_id
+    WHERE clase_fechas.organizacion_id = ? AND clase_fechas.estado = 'dada'
+    GROUP BY asistencias_clase.socio_id, clase_actividades.actividad_id`
+);
+// Los socios que siguen viniendo: con algún plan activo.
+const SQL_SOCIOS_ACTIVOS = db.prepare(
+  `SELECT socios.id, socios.numero, socios.cliente_id, clientes.nombre, clientes.documento
+     FROM socios JOIN clientes ON clientes.id = socios.cliente_id
+    WHERE socios.organizacion_id = ?
+      AND EXISTS (SELECT 1 FROM inscripciones_socio WHERE inscripciones_socio.socio_id = socios.id AND inscripciones_socio.estado = 'activa')
+    ORDER BY clientes.nombre COLLATE NOCASE`
+);
+
+// Los grados de cada actividad: Map actividad_id → lista en orden.
+function gradosPorActividad(organizacionId) {
+  const porActividad = new Map();
+  for (const g of SQL_GRADOS_DE.all(organizacionId)) {
+    if (!porActividad.has(g.actividad_id)) porActividad.set(g.actividad_id, []);
+    porActividad.get(g.actividad_id).push({ ...g, activo: Boolean(g.activo) });
+  }
+  return porActividad;
+}
+
+// Los pasos de cada alumno en cada actividad, del más viejo al más nuevo:
+// Map "socio:actividad" → lista.
+function pasosPorAlumno(organizacionId, socioId = null) {
+  const porAlumno = new Map();
+  for (const p of SQL_PASOS_DE.all(organizacionId, socioId, socioId)) {
+    const clave = `${p.socio_id}:${p.actividad_id}`;
+    if (!porAlumno.has(clave)) porAlumno.set(clave, []);
+    porAlumno.get(clave).push(p);
+  }
+  return porAlumno;
+}
+
+const pasoConSuGrado = (grados, paso) => {
+  const grado = grados.find((g) => g.id === paso.grado_id);
+  return { nombre: nombreDelPaso(grado, paso.raya), color: grado.color, color2: grado.color2, rayas: grado.rayas };
+};
+
+// Dónde está un alumno en una actividad: su paso de hoy, las clases que lleva
+// en él, los meses con el cinturón, el paso que sigue y si ya llegó.
+function situacionEnGrado(socioId, actividadId, grados, historial, hoy) {
+  const ultimo = historial.at(-1);
+  const clases = ultimo.clases_antes + SQL_CLASES_EN_GRADO.get(socioId, actividadId, ultimo.fecha).n;
+  const desde = desdeElCinturon(historial);
+  const meses = mesesEntre(desde, hoy);
+  const paso = proximoPaso(grados, ultimo);
+  return {
+    actividad_id: actividadId,
+    grado_id: ultimo.grado_id,
+    raya: ultimo.raya,
+    ...pasoConSuGrado(grados, ultimo),
+    fecha: ultimo.fecha,
+    desde_cinturon: desde,
+    clases,
+    meses,
+    siguiente: paso ? { ...paso, ...pasoConSuGrado(grados, paso) } : null,
+    listo: estaListo(paso, clases, meses)
+  };
+}
+
+const gradoParaMostrar = (g) => ({
+  id: g.id,
+  nombre: g.nombre,
+  orden: g.orden,
+  color: g.color,
+  color2: g.color2,
+  rayas: g.rayas,
+  clases_raya: g.clases_raya,
+  clases: g.clases,
+  meses: g.meses
+});
+
+// La página: las actividades con sus grados, cada alumno que tiene uno (de los
+// que siguen viniendo) y los que vinieron a clases de una actividad con
+// grados y todavía no tienen el suyo.
+function paginaDeGrados(organizacionId) {
+  const hoy = fechaDeHoy();
+  const porActividad = gradosPorActividad(organizacionId);
+  const pasos = pasosPorAlumno(organizacionId);
+  const activos = SQL_SOCIOS_ACTIVOS.all(organizacionId);
+  const actividades = actividadesDe(organizacionId)
+    .filter((a) => a.activo)
+    .map((a) => ({
+      id: a.id,
+      nombre: a.nombre,
+      color: a.color,
+      horario: a.horario,
+      grados: (porActividad.get(a.id) ?? []).filter((g) => g.activo).map(gradoParaMostrar)
+    }));
+  const conGrados = actividades.filter((a) => a.grados.length);
+  const alumnos = [];
+  for (const socio of activos) {
+    for (const actividad of conGrados) {
+      const historial = pasos.get(`${socio.id}:${actividad.id}`);
+      if (!historial) continue;
+      // `nombre` es el de su paso ("Azul · 2 grados"); el del socio, `alumno`.
+      alumnos.push({
+        socio_id: socio.id,
+        numero: socio.numero,
+        alumno: socio.nombre,
+        ...situacionEnGrado(socio.id, actividad.id, porActividad.get(actividad.id), historial, hoy)
+      });
+    }
+  }
+  const porId = new Map(activos.map((s) => [s.id, s]));
+  const sinGrado = SQL_CLASES_POR_ACTIVIDAD.all(organizacionId)
+    .filter((c) => porId.has(c.socio_id) && conGrados.some((a) => a.id === c.actividad_id) && !pasos.has(`${c.socio_id}:${c.actividad_id}`))
+    .map((c) => ({ socio_id: c.socio_id, numero: porId.get(c.socio_id).numero, nombre: porId.get(c.socio_id).nombre, actividad_id: c.actividad_id, clases: c.n }));
+  for (const actividad of actividades) {
+    for (const g of actividad.grados) g.alumnos = alumnos.filter((a) => a.grado_id === g.id).length;
+  }
+  return {
+    actividades,
+    alumnos,
+    sin_grado: sinGrado,
+    socios: activos.map((s) => ({ id: s.id, numero: s.numero, nombre: s.nombre, documento: s.documento }))
+  };
+}
+
+// Lo de un socio, para su ficha: en cada actividad con grados (o en la que
+// tuvo alguno), dónde está, su historial (el más nuevo primero) y los grados
+// para elegir.
+function gradosDelSocio(socioId, organizacionId) {
+  const hoy = fechaDeHoy();
+  const porActividad = gradosPorActividad(organizacionId);
+  const pasos = pasosPorAlumno(organizacionId, socioId);
+  const clasesPor = new Map(
+    SQL_CLASES_POR_ACTIVIDAD.all(organizacionId)
+      .filter((c) => c.socio_id === socioId)
+      .map((c) => [c.actividad_id, c.n])
+  );
+  return actividadesDe(organizacionId)
+    .filter((a) => (a.activo && (porActividad.get(a.id) ?? []).some((g) => g.activo)) || pasos.has(`${socioId}:${a.id}`))
+    .map((a) => {
+      const grados = porActividad.get(a.id) ?? [];
+      const historial = pasos.get(`${socioId}:${a.id}`) ?? [];
+      return {
+        actividad: { id: a.id, nombre: a.nombre, color: a.color },
+        grados: grados.filter((g) => g.activo).map(gradoParaMostrar),
+        situacion: historial.length ? situacionEnGrado(socioId, a.id, grados, historial, hoy) : null,
+        clases_total: clasesPor.get(a.id) ?? 0,
+        historial: historial
+          .map((p, i) => ({
+            id: p.id,
+            ...pasoConSuGrado(grados, p),
+            fecha: p.fecha,
+            nota: p.nota,
+            clases_antes: p.clases_antes,
+            usuario: p.usuario,
+            primero: i === 0,
+            ultimo: i === historial.length - 1
+          }))
+          .reverse()
+      };
+    });
+}
+
+// Cuántos llegaron a lo que pide su paso que sigue: para el Resumen.
+const listosParaGraduar = (organizacionId) => paginaDeGrados(organizacionId).alumnos.filter((a) => a.listo).length;
+
+const nombreConRayas = (g) => (g.rayas ? `${g.nombre} (${g.rayas} ${g.rayas === 1 ? 'grado' : 'grados'})` : g.nombre);
+
+app.get('/api/grados', (req, res) => {
+  res.json(paginaDeGrados(req.usuario.organizacion_id));
+});
+
+// La lista de una actividad, entera y en su orden (la que arma el profe, o
+// una plantilla). Lo que se saca: si algún alumno lo tuvo queda dado de baja
+// (su historial lo nombra), si no, se borra.
+app.put('/api/actividades/:id/grados', soloAdmin, (req, res) => {
+  const organizacionId = req.usuario.organizacion_id;
+  const actividad = db
+    .prepare('SELECT * FROM actividades WHERE id = ? AND organizacion_id = ? AND activo = 1')
+    .get(Number(req.params.id), organizacionId);
+  if (!actividad) return res.status(404).json({ error: 'Actividad no encontrada.' });
+  const { error, grados } = revisarGrados(req.body?.grados);
+  if (error) return res.status(400).json({ error });
+  const antes = SQL_GRADOS_DE.all(organizacionId).filter((g) => g.actividad_id === actividad.id);
+  if (grados.some((g) => g.id != null && !antes.some((a) => a.id === g.id))) {
+    return res.status(400).json({ error: 'Uno de los cinturones no es de esta actividad.' });
+  }
+  const usado = db.prepare('SELECT 1 FROM socio_grados WHERE grado_id = ? LIMIT 1');
+  withTransaction(() => {
+    for (const g of grados) {
+      const valores = [g.nombre, g.orden, g.color, g.color2, g.rayas, g.clases_raya, g.clases, g.meses];
+      if (g.id != null) {
+        db.prepare(
+          'UPDATE grados SET nombre = ?, orden = ?, color = ?, color2 = ?, rayas = ?, clases_raya = ?, clases = ?, meses = ?, activo = 1 WHERE id = ?'
+        ).run(...valores, g.id);
+      } else {
+        db.prepare(
+          `INSERT INTO grados (nombre, orden, color, color2, rayas, clases_raya, clases, meses, actividad_id, organizacion_id)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        ).run(...valores, actividad.id, organizacionId);
+      }
+    }
+    for (const viejo of antes.filter((a) => !grados.some((g) => g.id === a.id))) {
+      if (usado.get(viejo.id)) db.prepare('UPDATE grados SET activo = 0 WHERE id = ?').run(viejo.id);
+      else db.prepare('DELETE FROM grados WHERE id = ?').run(viejo.id);
+    }
+    const lista = (filas) => filas.filter((g) => g.activo !== 0).map(nombreConRayas);
+    auditar(req, {
+      accion: 'editar',
+      entidad: 'organizacion',
+      entidad_id: organizacionId,
+      operacion_tipo: 'actividad',
+      operacion_id: actividad.id,
+      valor_anterior: JSON.stringify({ grados: lista(antes) }),
+      valor_nuevo: JSON.stringify({ grados: lista(grados) }),
+      detalle: grados.length ? `Cinturones de ${actividad.nombre}: ${lista(grados).join(', ')}` : `${actividad.nombre} ya no tiene cinturones`
+    });
+  });
+  res.json(paginaDeGrados(organizacionId).actividades.find((a) => a.id === actividad.id));
+});
+
+// Anotar pasos: graduar a uno o a varios juntos (el examen), o cargar el grado
+// de los que ya venían, con las clases que ya llevaban en él. Cada paso:
+// { socio_id, grado_id, raya, fecha, clases_antes, nota }. Va todo o nada.
+app.post('/api/grados/pasos', soloAdmin, (req, res) => {
+  const organizacionId = req.usuario.organizacion_id;
+  const hoy = fechaDeHoy();
+  const pedidos = req.body?.pasos;
+  if (!Array.isArray(pedidos) || !pedidos.length) return res.status(400).json({ error: 'Elegí a quién graduar.' });
+  if (pedidos.length > MAX_PASOS_JUNTOS) return res.status(400).json({ error: `Hasta ${MAX_PASOS_JUNTOS} de una vez.` });
+  const todos = SQL_GRADOS_DE.all(organizacionId);
+  const porActividad = gradosPorActividad(organizacionId);
+  const pasos = pasosPorAlumno(organizacionId);
+  const vistos = new Set();
+  const listos = [];
+  for (const p of pedidos) {
+    const socio = socioDeLaEmpresa(p?.socio_id, organizacionId);
+    if (!socio) return res.status(400).json({ error: 'Uno de los socios no existe.' });
+    const grado = esIdValido(p.grado_id) ? todos.find((g) => g.id === p.grado_id && g.activo) : null;
+    if (!grado) return res.status(400).json({ error: `${socio.nombre}: elegí el cinturón.` });
+    const raya = p.raya == null ? 0 : p.raya;
+    if (!Number.isInteger(raya) || raya < 0 || raya > grado.rayas) {
+      return res.status(400).json({ error: `${socio.nombre}: ${grado.nombre} tiene ${grado.rayas} ${grado.rayas === 1 ? 'grado' : 'grados'}.` });
+    }
+    const fecha = p.fecha == null || p.fecha === '' ? hoy : validarFecha(p.fecha);
+    if (!fecha || fecha > hoy) return res.status(400).json({ error: `${socio.nombre}: la fecha va de hoy para atrás.` });
+    const clave = `${socio.id}:${grado.actividad_id}`;
+    if (vistos.has(clave)) return res.status(400).json({ error: `${socio.nombre} está dos veces.` });
+    vistos.add(clave);
+    const ultimo = (pasos.get(clave) ?? []).at(-1);
+    if (ultimo && fecha < ultimo.fecha) {
+      return res.status(400).json({ error: `${socio.nombre}: su último paso es del ${fechaLegible(ultimo.fecha)}; la fecha va desde ahí.` });
+    }
+    if (ultimo && ultimo.grado_id === grado.id && ultimo.raya === raya) {
+      return res.status(400).json({ error: `${socio.nombre} ya tiene ${nombreDelPaso(grado, raya)}.` });
+    }
+    const clasesAntes = p.clases_antes == null || p.clases_antes === '' ? 0 : p.clases_antes;
+    if (!Number.isInteger(clasesAntes) || clasesAntes < 0 || clasesAntes > MAX_CLASES_GRADO) {
+      return res.status(400).json({ error: `${socio.nombre}: las clases que ya lleva van de 0 a ${MAX_CLASES_GRADO}.` });
+    }
+    if (p.nota != null && typeof p.nota !== 'string') return res.status(400).json({ error: 'La nota no es válida.' });
+    const nota = (p.nota ?? '').trim();
+    if (nota.length > LARGO_NOTA_GRADO) return res.status(400).json({ error: `La nota puede tener hasta ${LARGO_NOTA_GRADO} letras.` });
+    const anterior = ultimo ? pasoConSuGrado(porActividad.get(grado.actividad_id), ultimo).nombre : null;
+    listos.push({ socio, grado, raya, fecha, clasesAntes, nota: nota || null, anterior });
+  }
+  const actividadDe = new Map(actividadesDe(organizacionId).map((a) => [a.id, a.nombre]));
+  withTransaction(() => {
+    for (const l of listos) {
+      db.prepare(
+        'INSERT INTO socio_grados (socio_id, grado_id, raya, fecha, clases_antes, nota, usuario_id) VALUES (?, ?, ?, ?, ?, ?, ?)'
+      ).run(l.socio.id, l.grado.id, l.raya, l.fecha, l.clasesAntes, l.nota, req.usuario.id);
+      const paso = nombreDelPaso(l.grado, l.raya);
+      auditar(req, {
+        accion: 'editar',
+        entidad: 'cliente',
+        entidad_id: l.socio.cliente_id,
+        operacion_tipo: 'socio',
+        operacion_id: l.socio.id,
+        valor_anterior: l.anterior ? JSON.stringify({ grado: l.anterior }) : null,
+        valor_nuevo: JSON.stringify({ grado: paso }),
+        detalle:
+          `${l.socio.nombre}: ${paso} en ${actividadDe.get(l.grado.actividad_id)} el ${fechaLegible(l.fecha)}` +
+          (l.anterior ? ` (antes, ${l.anterior})` : ' (su primer cinturón en Nexo)') +
+          (l.clasesAntes ? `, con ${l.clasesAntes} ${l.clasesAntes === 1 ? 'clase' : 'clases'} que ya llevaba` : '') +
+          (l.nota ? `. Nota: ${l.nota}` : '')
+      });
+    }
+  });
+  res.status(201).json(paginaDeGrados(organizacionId));
+});
+
+// Deshacer el último paso de un alumno en una actividad (se anotó mal): vuelve
+// al que tenía, con sus clases.
+app.delete('/api/socios/:id/grados/:pasoId', soloAdmin, (req, res) => {
+  const organizacionId = req.usuario.organizacion_id;
+  const socio = socioDeLaEmpresa(Number(req.params.id), organizacionId);
+  if (!socio) return res.status(404).json({ error: 'Socio no encontrado.' });
+  const paso = SQL_PASOS_DE.all(organizacionId, socio.id, socio.id).find((p) => p.id === Number(req.params.pasoId));
+  if (!paso) return res.status(404).json({ error: 'Ese paso no está en su historial.' });
+  const historial = pasosPorAlumno(organizacionId, socio.id).get(`${socio.id}:${paso.actividad_id}`);
+  if (historial.at(-1).id !== paso.id) return res.status(400).json({ error: 'Solo se deshace el último.' });
+  const nombre = pasoConSuGrado(gradosPorActividad(organizacionId).get(paso.actividad_id), paso).nombre;
+  withTransaction(() => {
+    db.prepare('DELETE FROM socio_grados WHERE id = ?').run(paso.id);
+    auditar(req, {
+      accion: 'anular',
+      entidad: 'cliente',
+      entidad_id: socio.cliente_id,
+      operacion_tipo: 'socio',
+      operacion_id: socio.id,
+      valor_anterior: JSON.stringify({ grado: nombre, fecha: paso.fecha }),
+      detalle: `${socio.nombre}: se deshizo ${nombre} del ${fechaLegible(paso.fecha)}`
+    });
+  });
+  res.json(detalleSocio(socio.id, organizacionId));
+});
 
 /* ---------- Abonos (CLAUDE.md §29, hist. §79) ---------- */
 

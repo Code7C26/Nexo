@@ -328,7 +328,7 @@ function pintarCanales({ canales, colores }) {
 // de columnas.
 const DIAS_ENTRADAS = 14;
 const fechaCorta = (iso) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}`;
-function pintarGimnasio({ hasta, socios, cuotas, asistencia }) {
+function pintarGimnasio({ hasta, socios, cuotas, asistencia, para_graduar: paraGraduar }) {
   const texto = (id, valor) => (document.getElementById(id).textContent = valor);
   texto("gimnasioActivos", numero(socios.activos));
   texto(
@@ -350,6 +350,8 @@ function pintarGimnasio({ hasta, socios, cuotas, asistencia }) {
   texto("gimnasioEntradas", numero(asistencia.entradas));
   texto("gimnasioEntradasDetalle", formatear("En promedio, {0} por socio activo", asistencia.por_socio.toLocaleString(LOCALE, { maximumFractionDigits: 1 })));
   texto("gimnasioNoVienen", numero(asistencia.no_vienen));
+  // Con el módulo de grados (hist. §230); sin él, el servidor manda null.
+  texto("gimnasioParaGraduar", numero(paraGraduar ?? 0));
   texto(
     "gimnasioNoVienenDetalle",
     formatear("Hace dos semanas o más; {0} parece que dejaron", numero(asistencia.parece_que_dejaron))

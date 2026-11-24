@@ -132,6 +132,9 @@
           <a href="#" class="nav-item" data-view="clases">
             <svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#calendar"></use></svg> Clases
           </a>
+          <a href="#" class="nav-item" data-view="grados" data-modulo="grados">
+            <svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#award"></use></svg> Cinturones
+          </a>
           <a href="#" class="nav-item col-admin" data-view="planes-socio">
             <svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#calendar-clock"></use></svg> Planes
           </a>
@@ -496,6 +499,11 @@
               <span class="pendiente-etiqueta">No vienen</span>
               <span class="pendiente-cifra mono" id="gimnasioNoVienen">0</span>
               <span class="pendiente-detalle" id="gimnasioNoVienenDetalle"></span>
+            </a>
+            <a class="pendiente-item" href="#/grados" data-modulo="grados">
+              <span class="pendiente-etiqueta">Para graduar</span>
+              <span class="pendiente-cifra mono" id="gimnasioParaGraduar">0</span>
+              <span class="pendiente-detalle">Llegaron a lo que pide su próximo cinturón o grado</span>
             </a>
           </div>
           <h3 class="cuando-titulo gimnasio-titulo">Entradas por día</h3>
@@ -2350,6 +2358,15 @@
           </div>
         </section>
 
+        <!-- Su cinturón en cada actividad (hist. §230, dominios/grados.js):
+             dónde está, cuánto le falta, graduarlo y su historial. -->
+        <section class="panel" id="fichaSocioGradosPanel" data-modulo="grados" hidden>
+          <div class="panel-head">
+            <h2>Cinturones</h2>
+          </div>
+          <div class="socio-grados" id="fichaSocioGrados"></div>
+        </section>
+
         <!-- Las clases a las que vino (hist. §226), por actividad. -->
         <section class="panel" id="fichaSocioClasesPanel" hidden>
           <div class="panel-head">
@@ -3622,6 +3639,131 @@
                   <button type="button" class="btn-link" data-accion="pausar" hidden>Pausar</button>
                   <button type="submit" class="btn btn-primary">Crear premio</button>
                 </div>
+              </div>
+            </div>
+          </form>
+        </div>
+      </section>
+
+      <!-- Vista: Grados y cinturones (hist. §230, dominios/grados.js). La
+           página (#/grados), por actividad: los listos para graduar, los
+           alumnos por cinturón y los que vienen sin el suyo; la de armar los
+           cinturones (#/grados/armar/<actividad>) y la de cargar a los que ya
+           venían (#/grados/cargar/<actividad>), las dos del admin. -->
+      <section class="view" data-view="grados" hidden>
+        <div class="grados-pagina" data-pagina="lista">
+          <section class="panel grados-vacio" id="gradosVacio" hidden>
+            <div class="grados-vacio-cuerpo">
+              <span class="grados-vacio-icono" aria-hidden="true"><svg class="ico"><use href="/img/iconos.svg#award"></use></svg></span>
+              <h2>Armá los cinturones de tu academia</h2>
+              <p>Cada actividad tiene los suyos, con sus grados y lo que pide cada paso. Nexo cuenta las clases de cada alumno y te avisa cuando está listo para graduarse.</p>
+              <p class="col-admin">¿De qué actividad?</p>
+              <div class="grados-vacio-actividades col-admin" id="gradosVacioActividades"></div>
+              <p class="grados-solo-empleado">Los arma el administrador del negocio.</p>
+            </div>
+          </section>
+
+          <div id="gradosContenido" hidden>
+            <div class="grados-cabecera">
+              <div class="segmentos" role="group" aria-label="Actividad" id="gradosActividades"></div>
+              <div class="grados-acciones col-admin">
+                <a class="btn btn-secundario" id="gradosCargar" href="#/grados"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#users"></use></svg> <span>Cargar los que ya venían</span></a>
+                <a class="btn btn-secundario" id="gradosEditar" href="#/grados"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#pencil"></use></svg> <span>Editar los cinturones</span></a>
+              </div>
+            </div>
+
+            <section class="ledger-strip" aria-label="Los alumnos de la actividad">
+              <div class="ledger-item">
+                <span class="ledger-label">Con cinturón</span>
+                <span class="ledger-value mono" id="gradosConCinturon">0</span>
+              </div>
+              <div class="ledger-divider" aria-hidden="true"></div>
+              <div class="ledger-item">
+                <span class="ledger-label">Listos para graduar</span>
+                <span class="ledger-value mono" id="gradosListosCifra">0</span>
+              </div>
+              <div class="ledger-divider" aria-hidden="true"></div>
+              <div class="ledger-item">
+                <span class="ledger-label">Vienen sin cinturón</span>
+                <span class="ledger-value mono" id="gradosSinCifra">0</span>
+              </div>
+            </section>
+
+            <section class="panel" id="gradosListosPanel" hidden>
+              <div class="panel-head">
+                <h2>Listos para graduar</h2>
+              </div>
+              <p class="opciones-nota">Llegaron a lo que pide su próximo paso.<span class="col-admin"> Marcá a los que gradúes y anotalo con la fecha del examen.</span></p>
+              <ul class="grados-filas" id="gradosListos"></ul>
+              <form class="form grados-graduar col-admin" id="formGraduarMarcados" novalidate>
+                <label>Fecha
+                  <input type="date" name="fecha" required />
+                </label>
+                <label><span>Nota <span class="campo-opcional">(opcional)</span></span>
+                  <input type="text" name="nota" maxlength="200" autocomplete="off" placeholder="Ej: examen de noviembre" />
+                </label>
+                <button type="submit" class="btn btn-primary" disabled>Graduar a los marcados</button>
+              </form>
+            </section>
+
+            <section class="panel">
+              <div class="panel-head">
+                <h2>Por cinturón</h2>
+              </div>
+              <div class="grados-por-cinturon" id="gradosPorCinturon"></div>
+            </section>
+
+            <section class="panel" id="gradosSinPanel" hidden>
+              <div class="panel-head">
+                <h2>Vienen sin cinturón</h2>
+                <a class="btn btn-secundario col-admin" id="gradosSinCargar" href="#/grados">Ponerles el suyo</a>
+              </div>
+              <p class="opciones-nota">Vinieron a clases de esta actividad y todavía no tienen su cinturón en Nexo.</p>
+              <ul class="grados-filas" id="gradosSin"></ul>
+            </section>
+
+            <div class="grados-otras col-admin" id="gradosOtras" hidden></div>
+          </div>
+        </div>
+
+        <div class="socio-alta grados-pagina" data-pagina="armar" hidden>
+          <a class="btn-link" href="#/grados"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#chevron-left"></use></svg> Cinturones</a>
+          <div class="grados-titulo">
+            <h2 id="gradosArmarTitulo">Cinturones</h2>
+            <p class="opciones-nota">En orden, del primero al último. Cada uno con sus grados y lo que pide: lo que dejes vacío lo decidís vos a ojo, y Nexo no avisa.</p>
+          </div>
+          <section class="grados-plantillas" id="gradosPlantillas" aria-labelledby="gradosPlantillasTitulo" hidden>
+            <p class="config-tarjeta-titulo" id="gradosPlantillasTitulo">Empezá con una lista armada</p>
+            <div class="opciones-tarjetas" id="gradosPlantillasLista"></div>
+          </section>
+          <form class="form" id="formGrados" novalidate>
+            <ol class="grados-lista" id="gradosLista"></ol>
+            <button type="button" class="btn btn-secundario grados-sumar" id="btnSumarCinturon"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#plus"></use></svg> Sumar cinturón</button>
+            <div class="config-tarjeta-pie grados-pie">
+              <p class="campo-ayuda" id="gradosArmarAyuda"></p>
+              <div class="config-tarjeta-botones">
+                <button type="submit" class="btn btn-primary">Guardar los cinturones</button>
+              </div>
+            </div>
+          </form>
+        </div>
+
+        <div class="socio-alta grados-pagina" data-pagina="cargar" hidden>
+          <a class="btn-link" href="#/grados"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#chevron-left"></use></svg> Cinturones</a>
+          <div class="grados-titulo">
+            <h2 id="gradosCargarTitulo">Los que ya venían</h2>
+            <p class="opciones-nota">El cinturón de cada uno, desde cuándo lo tiene y cuántas clases lleva desde su último ascenso: Nexo sigue contando desde ahí. A los que no hacen esta actividad, dejalos sin elegir.</p>
+          </div>
+          <label class="form grados-buscar">
+            <span class="visualmente-oculto">Buscar</span>
+            <input type="search" id="gradosCargarBuscar" placeholder="Buscar por nombre o DNI" autocomplete="off" />
+          </label>
+          <form class="form" id="formCargarGrados" novalidate>
+            <ul class="grados-cargar" id="gradosCargarLista"></ul>
+            <div class="config-tarjeta-pie grados-pie">
+              <p class="campo-ayuda" id="gradosCargarAyuda" aria-live="polite"></p>
+              <div class="config-tarjeta-botones">
+                <button type="submit" class="btn btn-primary">Guardar</button>
               </div>
             </div>
           </form>

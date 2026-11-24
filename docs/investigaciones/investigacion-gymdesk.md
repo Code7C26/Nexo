@@ -239,3 +239,29 @@ Fuentes: [Gymdesk, asistencia](https://docs.gymdesk.com/help/attendance-tracking
 [Gymdesk, cómo registrar asistencia](https://gymdesk.com/blog/attendance-tracking-methods-for-martial-arts-gym-businesses) ·
 [Clubworx, Class Kiosk](https://intercom.help/clubworx/en/articles/455503-using-class-kiosk-mode) ·
 [Clubworx, Roll Call para artes marciales](https://intercom.help/clubworx/en/articles/2219238-roll-call-for-martial-arts-studios)
+
+## Cinturones y grados (24 de noviembre de 2026, hist. §230)
+
+Cómo lo hace Gymdesk ([rangos](https://docs.gymdesk.com/help/member-ranks),
+[programas](https://docs.gymdesk.com/help/gym-programs),
+[habilidades](https://docs.gymdesk.com/help/skills),
+[importar](https://docs.gymdesk.com/en/help/docs/data-imports)):
+- Cada **programa** (disciplina) tiene su lista de rangos en orden, que se
+  ordena arrastrando, con plantillas, color primario y secundario y franjas.
+  **Cada raya es un rango más de la lista.**
+- Cada rango pide clases, horas, días en el rango, días entrenados o
+  habilidades, todo **contado en el rango** (desde el último ascenso).
+- El alumno aparece **listo para ascender** en un informe filtrable y con un
+  aviso en el tablero; ascender es manual: uno por uno desde su perfil (con la
+  fecha) o varios juntos en un examen, con "No asciende" para el que no pasó.
+- Para los que ya venían, se importa el programa, el rango y la fecha del
+  ascenso; no hay un campo de "clases que ya llevaba" (habría que importar la
+  asistencia vieja).
+
+**Lo que toma Nexo:** la lista por actividad con plantillas y arrastre, lo que
+pide cada paso contado desde el último, "listos para graduar" con varios
+juntos y el aviso en el Resumen. **Distinto:** cada fila es un cinturón con
+sus grados (en BJJ, 5 filas y no 25), los meses se cuentan desde que tiene el
+cinturón (como la IBJJF) y, para los que ya venían, se cargan las clases que
+llevan en vez de su asistencia vieja. En la pantalla las rayas se llaman
+grados (usuario).

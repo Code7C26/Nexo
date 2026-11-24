@@ -1163,6 +1163,32 @@ const SECCIONES_ES = [
     ],
     ver: ["socios", "horarios"]
   },
+  {
+    id: "cinturones",
+    grupo: "Servicios y gimnasio",
+    titulo: "Cinturones y grados",
+    pantalla: ["#/grados", "Cinturones"],
+    modulo: "grados",
+    preguntas: ["cómo cargo los cinturones", "cómo gradúo a un alumno", "quién está listo para graduarse", "cuántas clases lleva un alumno para el próximo grado", "cómo cargo el cinturón de los alumnos que ya tenía", "cómo le doy un grado a un alumno"],
+    palabras: ["cinturon", "cinturones", "grado", "grados", "raya", "rayas", "graduar", "graduacion", "ascenso", "examen", "faja", "kyu", "dan", "bjj", "judo", "karate"],
+    bloques: [
+      "Para artes marciales: el cinturón y los grados de cada alumno, las clases que lleva y quién está listo para graduarse. Primero prendé **Cinturones** en Configuración → Funciones (va con Socios y cuotas).",
+      { pasos: [
+        "En **Cinturones**, elegí la actividad y empezá con una lista armada (BJJ adultos, BJJ chicos, judo o karate) o de cero. Cada cinturón tiene sus grados y lo que pide: clases por grado, clases para llegar y meses con el anterior. Ordenalos arrastrando desde las tres rayas.",
+        "Tocá **Cargar los que ya venían**: el cinturón de cada uno, desde cuándo lo tiene y cuántas clases lleva desde su último ascenso. Nexo sigue contando desde ahí.",
+        "Las clases se cuentan solas con la lista de cada clase (la pantalla de entrada o la clase en **Clases**). Cuando alguien llega a lo que pide su próximo paso, aparece en **Listos para graduar** y en el Resumen.",
+        "Marcá a los que gradúes, poné la fecha del examen y tocá **Graduar**. También se gradúa de a uno desde la ficha del socio."
+      ] },
+      { lista: [
+        "Lo que dejes vacío no pide nada: ese paso lo decidís vos a ojo y Nexo no avisa.",
+        "Las clases se cuentan desde el último paso; los meses, desde que tiene el cinturón.",
+        "Una clase de varias actividades cuenta para cada una.",
+        "Si anotaste mal un ascenso, en la ficha del socio, en su **Historial**, tocá **Deshacer** en el último."
+      ] },
+      { nota: "Los cinturones los arma y gradúa quien administra; la recepción y el equipo los ven." }
+    ],
+    ver: ["clases", "socios"]
+  },
 
   /* ---------- Tu cuenta y tu equipo ---------- */
   {
