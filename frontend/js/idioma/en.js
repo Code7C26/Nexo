@@ -6612,5 +6612,18 @@ export default {
   ". Nota: {0}": ". Note: {0}",
   "Ese paso no está en su historial.": "That step isn't in their history.",
   "Solo se deshace el último.": "Only the last one can be undone.",
-  "{0}: se deshizo {1} del {2}": "{0}: undid {1} from {2}"
+  "{0}: se deshizo {1} del {2}": "{0}: undid {1} from {2}",
+  "Dejar de usar esta compu como caja": "Stop using this computer as a till",
+  "Dejar de usarla como caja": "Stop using it as a till",
+  "¿Dejar de usar esta compu como la caja «{0}»?": "Stop using this computer as the till «{0}»?",
+  "Al abrir Nexo ya no va a preguntar quién atiende: pide entrar con una cuenta. Las otras compus de la caja siguen igual.": "When Nexo opens it will no longer ask who is serving: it asks to sign in with an account. The till's other computers stay as they are.",
+  "No se pudo desvincular esta compu.": "This computer couldn't be unlinked.",
+  "Esta compu ya no es la caja «{0}».": "This computer is no longer the till «{0}».",
+  "Esta compu es la caja «{0}»: cuando salgas de tu cuenta, vuelve a preguntar quién atiende.{1}": "This computer is the till «{0}»: when you sign out, it asks who is serving again.{1}",
+  "{0} en esta caja.": "{0} on this till.",
+  "Hay otra compu": "There is another computer",
+  "Hay {0} compus más": "There are {0} more computers",
+  "Desvincular todas": "Unlink all",
+  "Esta compu es una caja de «{0}»: cambiá a ese negocio para desvincularla.": "This computer is a till of «{0}»: switch to that business to unlink it.",
+  "Dejó de usar una compu como la caja \"{0}\"": "Stopped using a computer as the till \"{0}\""
 };

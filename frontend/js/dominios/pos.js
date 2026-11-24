@@ -31,6 +31,7 @@ import { limpiarError, limpiarErrores, marcarError } from "../core/campos.js";
 import { armarHojaFactura, armarReciboPago, cargarQr, imprimirComprobante, imprimirTicket, imprimirTicketDeVenta } from "../core/comprobante.js";
 import { alEntrarEnVista, recargar } from "../core/registro.js";
 import { formatear, t } from "../core/idioma.js";
+import { dejarEstaCompu } from "./cuenta-menu.js";
 
 const CONSUMIDOR_FINAL = "Consumidor final";
 const MAX_RESULTADOS = 40;
@@ -2582,13 +2583,26 @@ async function renderCompu() {
     panel.hidden = true;
     return;
   }
-  document.getElementById("posCompuTexto").textContent = caja.compus
-    ? `${caja.compus === 1 ? "Una compu es" : `${numero(caja.compus)} compus son`} la caja «${caja.nombre}», sin una cuenta: ahí cada uno atiende con su PIN.`
-    : `¿Esta es la compu del mostrador? Dejala como la caja «${caja.nombre}»: sin tu cuenta, solo se vende y cada uno atiende con su PIN.`;
+  // Esta compu ya es la caja: lo dice, y se deja de usar solo esta.
+  const esEsta = window.nexoEstaCompu?.id === caja.id;
+  const otras = caja.compus - (esEsta ? 1 : 0);
+  document.getElementById("posCompuTexto").textContent = esEsta
+    ? `Esta compu es la caja «${caja.nombre}»: cuando salgas de tu cuenta, vuelve a preguntar quién atiende.${otras ? ` ${otras === 1 ? "Hay otra compu" : `Hay ${numero(otras)} compus más`} en esta caja.` : ""}`
+    : caja.compus
+      ? `${caja.compus === 1 ? "Una compu es" : `${numero(caja.compus)} compus son`} la caja «${caja.nombre}», sin una cuenta: ahí cada uno atiende con su PIN.`
+      : `¿Esta es la compu del mostrador? Dejala como la caja «${caja.nombre}»: sin tu cuenta, solo se vende y cada uno atiende con su PIN.`;
   document.getElementById("btnPosVincular").textContent = "Usar esta compu como caja";
-  document.getElementById("btnPosDesvincular").hidden = !caja.compus;
+  document.getElementById("btnPosVincular").hidden = esEsta;
+  document.getElementById("btnPosDejarCompu").hidden = !esEsta;
+  const todas = document.getElementById("btnPosDesvincular");
+  todas.hidden = esEsta ? !otras : !caja.compus;
+  todas.textContent = esEsta ? "Desvincular todas" : "Desvincular";
   panel.hidden = false;
 }
+
+document.getElementById("btnPosDejarCompu").addEventListener("click", async (e) => {
+  if (await enviando(e.currentTarget, dejarEstaCompu)) await renderCompu();
+});
 
 document.getElementById("btnPosVincular").addEventListener("click", async (e) => {
   const boton = e.currentTarget;
@@ -2621,6 +2635,10 @@ document.getElementById("btnPosDesvincular").addEventListener("click", async (e)
   });
   if (!ok) return;
   await enviando(boton, () => api(`/api/cajas/${cajaId}/vinculo`, { method: "DELETE", error: "No se pudo desvincular." }));
+  if (window.nexoEstaCompu?.id === cajaId) {
+    window.nexoEstaCompu = null;
+    document.getElementById("cuentaCaja").hidden = true;
+  }
   avisar(`La caja «${caja.nombre}» ya no tiene compus vinculadas.`, "ok");
   await renderCompu();
 });

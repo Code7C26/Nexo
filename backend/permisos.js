@@ -140,6 +140,7 @@ export const RUTAS_PERMISOS = {
   'GET /api/cajas/compus': 'admin',
   'POST /api/cajas/:id/vincular': 'admin',
   'DELETE /api/cajas/:id/vinculo': 'admin',
+  'DELETE /api/cajas/esta-compu': 'admin',
   // La compu vinculada: quién atiende y fichar con el PIN.
   'GET /api/caja': 'caja',
   'POST /api/caja/atender': 'caja',

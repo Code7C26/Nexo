@@ -11,7 +11,7 @@
 
 - Al cerrar una etapa, se hacen tres cosas:
   - su relato completo se agrega al final de `docs/proyecto/handoff-historico.md` con el
-    siguiente número (hoy el último es §230);
+    siguiente número (hoy el último es §231);
   - acá se actualizan "Estado actual" y "Qué sigue";
   - si cambió alguna decisión vigente, se actualiza también esa lista.
 - Nunca apilar secciones "Última etapa" en este archivo: así fue como llegó a
@@ -311,8 +311,9 @@ cancelar un horario abierto desde ahí, se vuelve a la actividad. La clase del
 calendario suma **Todos los horarios**. Solo pantalla (`dominios/clases.js`). Publicado (PR #126, con la recepción por clase).
 
 **24 de noviembre, hist. §230: cinturones y grados** (lo que seguía en el dojo;
-investigado al final de `docs/investigaciones/investigacion-gymdesk.md`). Sin
-publicar.
+investigado al final de `docs/investigaciones/investigacion-gymdesk.md`).
+Publicado (PR #127; el CI falló una vez por un puerto ocupado en el test de
+balanza, ajeno al cambio, y pasó al relanzarlo).
 - **Vocabulario (usuario):** en la pantalla las rayas se llaman **grados**
   ("Azul · 2 grados") y la sección y el módulo, **Cinturones**. En el código
   siguen siendo rayas y la tabla `grados` es la lista de cinturones.
@@ -332,8 +333,25 @@ publicar.
   `npm test` 569 de 569, lint, i18n y `verificar-migracion` (24 de 24).
   Probado en el navegador (compu y 390 px) con un dojo de prueba.
 
-**Lo que sigue (próxima sesión):** publicar §230 si el usuario lo pide; cargar
-los cinturones del dojo real (Morro: prender Cinturones, armar BJJ y cargar a
+**24 de noviembre, hist. §231: dejar de usar esta compu como caja, y los
+combos sin el precio repartido** (dos quejas del usuario, sin publicar).
+- La compu vinculada a una caja abría siempre "¿Quién atiende?" y el dueño, con
+  su cuenta adentro, no encontraba cómo sacarla (solo había "Desvincular" en el
+  punto de venta, y cortaba todas las compus de la caja). Ahora
+  `/api/auth/estado` y el login traen `usuario.esta_compu` (la caja de esta
+  compu, solo para un admin de ese negocio), el menú de la cuenta suma **Dejar
+  de usar esta compu como caja** y el punto de venta lo dice y lo ofrece.
+  `DELETE /api/cajas/esta-compu` borra solo la sesión de su cookie (auditado).
+- La ficha del socio volvía a mostrar el combo de precio fijo repartido
+  ($60.000 tachado → $43.636,36): el usuario ya había pedido que no (§204).
+  Con un combo de precio fijo, cada plan muestra su precio y la promo dice lo
+  que cuestan juntos (`precioConDescuento` en `socios.js`; la cotización
+  también). Las cuotas siguen cobrando el reparto (suman el precio justo).
+- Test nuevo en `caja-vinculada`; `npm test` 570, lint e i18n en verde. **No
+  se probó en el navegador** (no había servidor local).
+
+**Lo que sigue (próxima sesión):** el usuario revisa los cinturones y dice qué
+cambiar ("mañana seguimos y vemos qué cambiar"). Cargar los cinturones del dojo real (Morro: prender Cinturones, armar BJJ y cargar a
 los que ya venían, con lo que pase el profe). Después los medios de cobro (solo
 Efectivo al nacer + "¿Cómo te cobran?", también en `ideas.md`). Si da, el punto
 10 (el resumen del día por WhatsApp o mail). Y lo que el usuario vea al probar

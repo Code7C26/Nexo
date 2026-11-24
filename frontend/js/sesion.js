@@ -286,6 +286,10 @@
     // sabe de la caja (cuál es, quién atiende) lo lee dominios/pos.js.
     document.documentElement.toggleAttribute("data-caja", !!usuario.caja);
     window.nexoCaja = usuario.caja ?? null;
+    // El admin con su cuenta en esa compu: la puede dejar de usar como caja
+    // (dominios/cuenta-menu.js y el punto de venta).
+    window.nexoEstaCompu = usuario.esta_compu ?? null;
+    document.getElementById("cuentaCaja").hidden = !usuario.esta_compu;
     // El nombre va en el pie y en la cabecera del menú de la cuenta, con el
     // mail (dominios/cuenta-menu.js).
     for (const el of document.querySelectorAll("[data-usuario-nombre]")) el.textContent = usuario.nombre;
