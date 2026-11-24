@@ -15936,3 +15936,35 @@ la ficha; compu y 390 px, sin errores en la consola.
 profe), y lo que vea el usuario al probarlo. Ideas para después: avisar en la
 clase (el panel de asistencia) quién está listo, y el cinturón mínimo por
 horario (anotado en la investigación).
+
+## §231 — 24 de noviembre de 2026: dejar de usar esta compu como caja, y los combos sin el precio repartido
+
+**La compu de la caja.** El usuario vinculó su compu a la caja «Efectivo» y
+desde entonces Nexo abría siempre "¿Quién atiende?". Entrando como dueño no
+encontraba cómo sacarla: el único camino era "Desvincular" en el panel del
+punto de venta, que además corta todas las compus de la caja. Ahora:
+- `cajaDeEstaCompu` (server.js): con la sesión de un admin y la cookie
+  `nexo_caja` válida de una caja de ese mismo negocio, `/api/auth/estado` y
+  `/api/auth/login` devuelven `usuario.esta_compu` ({ id, nombre }).
+- `DELETE /api/cajas/esta-compu` (admin, en `permisos.js`): borra solo la
+  sesión de esa cookie, la audita (`caja_vinculada`) y limpia la cookie. Si la
+  caja es de otro negocio de la cuenta, 403 pidiendo cambiar a ese negocio.
+- Menú de la cuenta: "Dejar de usar esta compu como caja" (`#cuentaCaja`,
+  visible solo con `esta_compu`; `dejarEstaCompu` en `cuenta-menu.js`, que
+  también usa el punto de venta). El panel del punto de venta dice "Esta
+  compu es la caja…", ofrece "Dejar de usarla como caja" y deja
+  "Desvincular todas" solo si hay otras compus.
+- Test: "el dueño, con su cuenta en la compu de la caja, deja de usar solo esa
+  compu como caja" (la otra compu de la caja sigue).
+
+**Los combos de precio fijo.** La ficha del socio mostraba cada plan del combo
+BJJ + MMA con su precio tachado y la parte repartida ($43.636,36 y
+$36.363,64). El usuario ya había pedido en §204 que eso no se viera. Con un
+combo de precio fijo, `precioConDescuento` muestra el precio del plan sin
+tachar y la etiqueta de la promo ("Promo BJJ + MMA, $80.000 por mes"); lo
+mismo en las líneas "Desde su próxima cuota…" de la cotización (el servidor
+les suma `precio_lista`). Las cuotas no cambian: el reparto sigue siendo como
+se cobra, y suma el precio del combo.
+
+**Verificado:** `npm test` 570 de 570, lint e i18n (13 textos nuevos
+traducidos). No se probó en el navegador: no había servidor local.

@@ -173,9 +173,19 @@ const textoDescuento = (d) =>
   d.precio_combo != null ? `${d.nombre}, ${money(d.precio_combo)} por mes` : `−${porcentaje(d.porcentaje)} · ${d.nombre}`;
 
 // Un precio con su descuento: el de lista tachado, el final y de dónde sale.
+// Un combo de precio fijo no se reparte a la vista ($43.636,36 de BJJ no le
+// dice nada a nadie): el plan muestra su precio y la promo, lo que cuestan
+// juntos.
 function precioConDescuento(lista, precio, descuento) {
   if (!descuento) return `<span class="cotizacion-precio"><strong class="mono">${money(precio)}</strong></span>`;
   const etiqueta = textoDescuento(descuento);
+  if (descuento.precio_combo != null) {
+    return `
+    <span class="cotizacion-precio">
+      <strong class="mono">${money(lista)}</strong>
+      <span class="cotizacion-descuento">${esc(etiqueta)}</span>
+    </span>`;
+  }
   return `
     <span class="cotizacion-precio">
       <s class="mono">${money(lista)}</s> <strong class="mono">${money(precio)}</strong>
@@ -205,7 +215,7 @@ function lineasCotizacion(cotizacion, desde) {
     return `
     <li class="cotizacion-linea cotizacion-cambia">
       <span class="cotizacion-plan">${esc(c.plan)}<span class="cotizacion-meta">${esc(texto)}</span></span>
-      <span class="cotizacion-precio"><strong class="mono">${money(c.precio)}</strong></span>
+      <span class="cotizacion-precio"><strong class="mono">${money(c.descuento?.precio_combo != null ? c.precio_lista : c.precio)}</strong></span>
     </li>`;
   });
   return [...lineas, ...cambian].join("");

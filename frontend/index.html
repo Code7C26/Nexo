@@ -278,6 +278,11 @@
             <svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#circle-alert"></use></svg> Avisar un problema
           </a>
           <div class="negocio-menu-separador" role="separator"></div>
+          <!-- Solo en la compu vinculada a una caja (hist. §199), para el admin
+               que entró con su cuenta: sesion.js lo muestra. -->
+          <button type="button" class="negocio-opcion cuenta-opcion" role="menuitem" id="cuentaCaja" hidden>
+            <svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#store"></use></svg> Dejar de usar esta compu como caja
+          </button>
           <button type="button" class="negocio-opcion cuenta-opcion" role="menuitem" id="cuentaOtra">
             <svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#repeat"></use></svg> Entrar con otra cuenta
           </button>
@@ -1445,6 +1450,7 @@
           <p id="posCompuTexto"></p>
           <div class="pos-compu-botones">
             <button type="button" class="btn btn-secundario btn-chico" id="btnPosDesvincular" hidden>Desvincular</button>
+            <button type="button" class="btn btn-secundario btn-chico" id="btnPosDejarCompu" hidden>Dejar de usarla como caja</button>
             <button type="button" class="btn btn-primary btn-chico" id="btnPosVincular"></button>
           </div>
         </section>

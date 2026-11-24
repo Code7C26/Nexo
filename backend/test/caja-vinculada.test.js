@@ -135,6 +135,27 @@ test('el dueño entra con su cuenta en la compu de la caja y, al salir, vuelve l
   assert.equal((await compu.get('/api/auth/estado')).json.usuario.caja.id, caja.id);
 });
 
+test('el dueño, con su cuenta en la compu de la caja, deja de usar solo esa compu como caja', async () => {
+  // Otra compu de la misma caja, que tiene que seguir siéndolo.
+  const otraCompu = crearCliente(servidor.url);
+  await otraCompu.post('/api/auth/login', { email: 'almacencaja@nexo.test', password: 'clave-segura-1' });
+  assert.equal((await otraCompu.post(`/api/cajas/${caja.id}/vincular`)).status, 201);
+  await otraCompu.post('/api/auth/logout');
+
+  const login = await compu.post('/api/auth/login', { email: 'almacencaja@nexo.test', password: 'clave-segura-1' });
+  assert.deepEqual(login.json.usuario.esta_compu, { id: caja.id, nombre: caja.nombre });
+  assert.deepEqual((await compu.get('/api/auth/estado')).json.usuario.esta_compu, { id: caja.id, nombre: caja.nombre });
+  assert.equal((await admin.get('/api/auth/estado')).json.usuario.esta_compu, null, 'una compu sin vincular no es caja');
+
+  const r = await compu.del('/api/cajas/esta-compu');
+  assert.equal(r.status, 200, r.texto);
+  assert.equal(r.json.desvinculada, true);
+  assert.equal((await compu.get('/api/auth/estado')).json.usuario.esta_compu, null);
+  await compu.post('/api/auth/logout');
+  assert.equal((await compu.get('/api/auth/estado')).json.autenticado, false, 'al salir pide entrar, no quién atiende');
+  assert.equal((await otraCompu.get('/api/auth/estado')).json.usuario.caja.id, caja.id, 'la otra compu sigue siendo la caja');
+});
+
 test('el admin ve las compus vinculadas y las desvincula', async () => {
   const compus = (await admin.get('/api/cajas/compus')).json;
   assert.equal(compus.find((c) => c.id === caja.id).compus, 1);

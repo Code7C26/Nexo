@@ -16,6 +16,8 @@
  */
 
 import { aplicarTema, temaActual } from "../core/tema.js";
+import { api } from "../core/api.js";
+import { avisar, confirmar } from "../core/ui.js";
 
 const boton = document.getElementById("cuentaBoton");
 const menu = document.getElementById("cuentaMenu");
@@ -110,6 +112,8 @@ menu.addEventListener("click", (e) => {
     window.nexoCerrarSesion();
   } else if (opcion.id === "cuentaSalir") {
     window.nexoCerrarSesion();
+  } else if (opcion.id === "cuentaCaja") {
+    dejarEstaCompu();
   }
   // Los enlaces siguen solos: el router abre la página de Configuración.
 });
@@ -117,4 +121,24 @@ menu.addEventListener("click", (e) => {
 document.addEventListener("click", (e) => {
   if (!boton.contains(e.target) && !menu.contains(e.target)) cerrarMenu();
 });
+
+// La compu vinculada a una caja (hist. §199), con el admin adentro: deja de
+// ser la caja (solo esta; las otras compus de la caja siguen). También lo
+// ofrece el punto de venta. Devuelve si se desvinculó.
+export async function dejarEstaCompu() {
+  const caja = window.nexoEstaCompu;
+  if (!caja) return false;
+  const ok = await confirmar({
+    titulo: `¿Dejar de usar esta compu como la caja «${caja.nombre}»?`,
+    cuerpo: "Al abrir Nexo ya no va a preguntar quién atiende: pide entrar con una cuenta. Las otras compus de la caja siguen igual.",
+    aceptar: "Dejar de usarla",
+    destructivo: true
+  });
+  if (!ok) return false;
+  await api("/api/cajas/esta-compu", { method: "DELETE", error: "No se pudo desvincular esta compu." });
+  window.nexoEstaCompu = null;
+  document.getElementById("cuentaCaja").hidden = true;
+  avisar(`Esta compu ya no es la caja «${caja.nombre}».`, "ok");
+  return true;
+}
 window.addEventListener("resize", () => cerrarMenu());

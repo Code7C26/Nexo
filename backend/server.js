@@ -518,6 +518,15 @@ function datosCaja(sesion) {
   };
 }
 
+// El admin que entra con su cuenta en una compu vinculada: cuál caja es, así el
+// menú de la cuenta y el punto de venta le ofrecen dejar de usarla como caja.
+// Solo si la caja es del negocio de la sesión.
+function cajaDeEstaCompu(req, { rol, organizacion_id }) {
+  if (rol !== 'admin') return null;
+  const caja = sesionDeCaja(leerCookie(req, COOKIE_CAJA));
+  return caja && caja.organizacion_id === organizacion_id ? { id: caja.caja_id, nombre: caja.caja_nombre } : null;
+}
+
 // Se renueva una vez por día como mucho: la caja pide algo cada pocos
 // segundos, y no hace falta escribir la sesión en cada pedido.
 function renovarSesionCaja(token) {
@@ -1108,7 +1117,14 @@ app.get('/api/auth/estado', (req, res) => {
     return res.json({ requiere_bootstrap: false, autenticado: false, usuario: null, registro_abierto: registroAbierto, ejemplos, google });
   }
   renovarSesion(token);
-  res.json({ requiere_bootstrap: false, autenticado: true, usuario: datosUsuario(sesion), registro_abierto: registroAbierto, ejemplos, google });
+  res.json({
+    requiere_bootstrap: false,
+    autenticado: true,
+    usuario: { ...datosUsuario(sesion), esta_compu: cajaDeEstaCompu(req, sesion) },
+    registro_abierto: registroAbierto,
+    ejemplos,
+    google
+  });
 });
 
 app.post('/api/auth/login', (req, res) => {
@@ -1207,7 +1223,7 @@ app.post('/api/auth/login', (req, res) => {
     detalle: 'Inició sesión'
   });
 
-  res.json({ usuario: datosUsuario(fila) });
+  res.json({ usuario: { ...datosUsuario(fila), esta_compu: cajaDeEstaCompu(req, fila) } });
 });
 
 // Rate limit del registro, por IP y en memoria (mismo criterio que
@@ -5693,6 +5709,30 @@ app.delete('/api/cajas/:id/vinculo', soloAdmin, (req, res) => {
     return changes;
   });
   res.json({ desvinculadas });
+});
+
+// "Dejar de usar esta compu como caja": solo esta (su cookie); las otras
+// compus de la caja siguen. Al abrir Nexo de nuevo, pide entrar.
+app.delete('/api/cajas/esta-compu', soloAdmin, (req, res) => {
+  const token = leerCookie(req, COOKIE_CAJA);
+  const caja = sesionDeCaja(token);
+  if (caja && caja.organizacion_id !== req.usuario.organizacion_id) {
+    return res.status(403).json({ error: `Esta compu es una caja de «${caja.negocio_nombre}»: cambiá a ese negocio para desvincularla.` });
+  }
+  if (caja) {
+    withTransaction(() => {
+      db.prepare('DELETE FROM sesiones WHERE token = ?').run(token);
+      auditar(req, {
+        accion: 'anular',
+        entidad: 'cuenta_tesoreria',
+        entidad_id: caja.caja_id,
+        operacion_tipo: 'caja_vinculada',
+        detalle: `Dejó de usar una compu como la caja "${caja.caja_nombre}"`
+      });
+    });
+  }
+  res.clearCookie(COOKIE_CAJA, { path: '/' });
+  res.json({ desvinculada: Boolean(caja) });
 });
 
 // Quiénes pueden atender en esta caja: los empleados activos con PIN, de su
@@ -23276,6 +23316,7 @@ function cotizar(opciones, existentes, descuentoManualId, organizacionId) {
       plan: e.plan,
       duracion: nombreDuracion(e.meses),
       descuento: resumenDescuento(nuevo),
+      precio_lista: e.precio_lista,
       precio: conDescuento(e.precio_lista, nuevo?.porcentaje ?? 0)
     });
   }
