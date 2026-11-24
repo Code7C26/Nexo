@@ -1142,8 +1142,8 @@ const SECCIONES_ES = [
     titulo: "La grilla de clases",
     pantalla: ["#/clases", "Clases"],
     modulo: "socios",
-    preguntas: ["cómo armo la grilla de clases", "cómo cargo los horarios de las clases", "cómo le asigno un profe a una clase", "qué clases hay hoy", "cómo comparto la grilla en instagram"],
-    palabras: ["clase", "clases", "grilla", "horario", "horarios", "actividad", "actividades", "profe", "profes", "profesor", "instructor", "cupo", "semana", "turno"],
+    preguntas: ["cómo armo la grilla de clases", "cómo cargo los horarios de las clases", "cómo le asigno un profe a una clase", "qué clases hay hoy", "cómo comparto la grilla en instagram", "cómo anoto quién vino a la clase", "cómo se anota el profe que da la clase", "un alumno puede dar una clase"],
+    palabras: ["clase", "clases", "grilla", "horario", "horarios", "actividad", "actividades", "profe", "profes", "profesor", "instructor", "cupo", "semana", "turno", "asistencia", "lista", "suplente", "alumno"],
     bloques: [
       "En **Clases** está la semana del gimnasio: todas las actividades con sus horarios y quién da cada clase. La ve todo el equipo; la arma quien administra.",
       { pasos: [
@@ -1155,6 +1155,9 @@ const SECCIONES_ES = [
       "Una clase de varias actividades a la vez (el sparring de Boxeo, MMA y Kickboxing) se carga una sola vez, marcando todas: aparece en la grilla de cada una.",
       "Tocá una actividad arriba de la grilla para ver solo sus clases; tocala de nuevo para ver todas. La imagen para compartir sale filtrada igual.",
       "Los profes son los empleados del negocio: si sumás uno desde la grilla, aparece también en **Empleados**.",
+      "**Quién vino a cada clase:** en la **pantalla de entrada**, cada socio pone su DNI y elige a qué clase viene, con la de ahora ya marcada. Si se queda a la siguiente, marca las dos (o vuelve a poner su DNI y suma la otra).",
+      "**Quién la dio:** el profe toca **Soy profe** en la misma pantalla, se elige y pone su PIN (se lo cargás en **Empleados**). Un alumno que a veces da clases, o un profe que también entrena, se marca con **Da clases** en su ficha de socio: al entrar con su DNI ve **La doy**. Si no es el profe de la grilla, queda como suplente.",
+      "Tocá una clase en la grilla para ver quién la dio y quién vino. Ahí se corrige la lista (sumar a alguien que no se anotó, o sacarlo), se marca otro profe o que no se dio, también un día pasado.",
       "**Imagen para compartir** arma la grilla de la semana en una imagen para Instagram o el estado de WhatsApp: vertical, u horizontal y más grande; con fondo oscuro o claro. En el celular se comparte directo.",
       { nota: "En el celular la grilla se ve de a un día: elegí el día arriba." }
     ],

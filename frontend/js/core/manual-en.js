@@ -622,8 +622,8 @@ export const SECCIONES_EN = {
   clases: {
     titulo: "The class schedule",
     pantalla: "Classes",
-    preguntas: ["how do i set up the class schedule", "how do i add class times", "how do i assign an instructor to a class", "what classes are on today", "how do i share the schedule on instagram"],
-    palabras: ["class", "classes", "schedule", "timetable", "time", "times", "activity", "activities", "instructor", "instructors", "coach", "capacity", "week"],
+    preguntas: ["how do i set up the class schedule", "how do i add class times", "how do i assign an instructor to a class", "what classes are on today", "how do i share the schedule on instagram", "how do i record who came to the class", "how does the instructor check in", "can a student teach a class"],
+    palabras: ["class", "classes", "schedule", "timetable", "time", "times", "activity", "activities", "instructor", "instructors", "coach", "capacity", "week", "attendance", "roll", "substitute", "student"],
     bloques: [
       "**Classes** shows the gym's week: every activity with its times and who teaches each class. The whole team sees it; whoever runs the business sets it up.",
       { pasos: [
@@ -635,6 +635,9 @@ export const SECCIONES_EN = {
       "A class shared by several activities (sparring for Boxing, MMA and Kickboxing) is added once, ticking them all: it shows up on each one's schedule.",
       "Tap an activity above the schedule to see only its classes; tap it again to see them all. The image to share comes out filtered the same way.",
       "Instructors are the business's employees: if you add one from the schedule, they also show up in **Employees**.",
+      "**Who came to each class:** on the **entrance screen**, each member enters their ID and chooses which class they're here for, with the current one already marked. If they stay for the next one, they mark both (or enter their ID again and add the other).",
+      "**Who taught it:** the instructor taps **I'm an instructor** on the same screen, picks their name and enters their PIN (you set it in **Employees**). A student who sometimes teaches, or an instructor who also trains, is marked with **Teaches classes** on their member profile: when they enter with their ID they see **I teach it**. If they aren't the scheduled instructor, they're recorded as a substitute.",
+      "Tap a class on the schedule to see who taught it and who came. There you fix the list (add someone who didn't check in, or remove them), mark another instructor or that it wasn't held, also for a past day.",
       "**Image to share** turns the week's schedule into an image for Instagram or your WhatsApp status: vertical, or horizontal and bigger; with a dark or light background. On a phone it's shared directly.",
       { nota: "On a phone the schedule shows one day at a time: choose the day at the top." }
     ]

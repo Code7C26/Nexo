@@ -8,9 +8,11 @@
  * cada día, no en la línea de horas. La imagen para compartir es la misma
  * grilla dibujada en un PNG, para Instagram o el estado de WhatsApp.
  * Tocar una clase de horario fijo abre esa clase en un día (hist. §226): quién
- * la dio de verdad (el suplente), si se dio y la lista de los que vinieron,
- * con los que entraron ese día y los que suelen venir a mano. "Clases dadas"
- * junta lo anotado, por profe.
+ * la dio de verdad (el suplente), si se dio y la lista de los que vinieron.
+ * Desde hist. §228 cada socio se anota en su clase al entrar (y el profe, en
+ * la misma pantalla de entrada): acá se corrige la lista con el buscador,
+ * sin adivinar por "entraron ese día". "Clases dadas" junta lo anotado, por
+ * profe.
  * Pantalla sobre /api/grilla, /api/actividades, /api/clases, /api/empleados,
  * /api/clases/:id/fechas/:fecha, /api/asistencia y /api/socios.
  */
@@ -654,6 +656,8 @@ function pintarDia() {
   // Los profes del negocio, más los de ese día que ya no están (uno dado de baja).
   const elegidos = new Set(detalle.profes.map((p) => p.id));
   const deGrilla = new Set(detalle.profes_grilla.map((p) => p.id));
+  // Un alumno que la dio (hist. §228).
+  const alumnos = new Set(detalle.profes.filter((p) => p.alumno).map((p) => p.id));
   const todos = [...datos.profes, ...detalle.profes.filter((p) => !datos.profes.some((x) => x.id === p.id))];
   document.getElementById("claseDiaProfes").innerHTML = todos.length
     ? todos
@@ -661,11 +665,11 @@ function pintarDia() {
           (p) => `
           <label class="chip-elegir">
             <input type="checkbox" value="${p.id}" ${elegidos.has(p.id) ? "checked" : ""} />
-            ${esc(p.nombre)}${elegidos.has(p.id) && !deGrilla.has(p.id) ? " <small>suplente</small>" : ""}
+            ${esc(p.nombre)}${elegidos.has(p.id) && !deGrilla.has(p.id) ? " <small>suplente</small>" : ""}${alumnos.has(p.id) ? " <small>alumno</small>" : ""}
           </label>`
         )
         .join("")
-    : `<p class="campo-ayuda">Todavía no hay profes: sumalos en Empleados o al cargar el horario.</p>`;
+    : `<p class="campo-ayuda">Todavía no hay profes: sumalos en Empleados, o marcá a un alumno con «Da clases» en su ficha.</p>`;
   document.getElementById("claseDiaSuspendida").checked = detalle.estado === "suspendida";
   document.getElementById("claseDiaNota").value = detalle.nota ?? "";
 
@@ -681,30 +685,21 @@ function pintarDia() {
   if (futura || suspendida) return;
 
   const n = detalle.asistentes.length;
-  document.getElementById("claseDiaVinieron").textContent = n ? `Vinieron ${n}` : "Todavía no se anotó a nadie";
+  document.getElementById("claseDiaVinieron").textContent = n
+    ? `Vinieron ${n}`
+    : esHoy
+      ? "Todavía no se anotó nadie en la entrada"
+      : "No se anotó a nadie";
+  // Cada uno con cómo se anotó: solo en la entrada, o quién lo anotó.
   document.getElementById("claseDiaAsistentes").innerHTML = detalle.asistentes
     .map(
       (a) => `
       <li>
-        <span class="clase-dia-quien"><strong>${esc(a.nombre)}</strong> <small>N° ${esc(a.numero)}</small> ${marcaSituacion(a.socio_id)}</span>
+        <span class="clase-dia-quien"><strong>${esc(a.nombre)}</strong> <small>N° ${esc(a.numero)} · ${a.por_pantalla ? "en la entrada" : `lo anotó ${esc(a.usuario)}`}</small> ${marcaSituacion(a.socio_id)}</span>
         <button type="button" class="btn-icon" data-sacar="${a.socio_id}" aria-label="Sacar a ${esc(a.nombre)} de la lista" title="Sacar de la lista"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#x"></use></svg></button>
       </li>`
     )
     .join("");
-  const chips = (lista) =>
-    lista
-      .map((s) => `<button type="button" class="chip-sumar" data-anotar="${s.socio_id}"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#plus"></use></svg>${esc(s.nombre)}</button>`)
-      .join("");
-  const { entraron, suelen_venir: suelen } = detalle;
-  const chipsEntraron = chips(entraron);
-  const chipsSuelen = chips(suelen);
-  const botonTodos = entraron.length > 1 ? `<button type="button" class="btn btn-secundario btn-chico" data-anotar-todos>Anotar a los ${esc(entraron.length)}</button>` : "";
-  document.getElementById("claseDiaEntraron").innerHTML = entraron.length
-    ? `<p class="campo-ayuda">${esHoy ? "Entraron hoy" : "Entraron ese día"}</p><div class="clase-dia-chips">${chipsEntraron}${botonTodos}</div>`
-    : "";
-  document.getElementById("claseDiaSuelen").innerHTML = suelen.length
-    ? `<p class="campo-ayuda">Suelen venir a esta clase</p><div class="clase-dia-chips">${chipsSuelen}</div>`
-    : "";
   pintarEncontrados();
 }
 
@@ -754,7 +749,6 @@ async function anotar(ids) {
 
 panelDia.addEventListener("click", async (e) => {
   const anotarUno = e.target.closest("[data-anotar]");
-  const todos = e.target.closest("[data-anotar-todos]");
   const sacar = e.target.closest("[data-sacar]");
   if (anotarUno) {
     await anotar([Number(anotarUno.dataset.anotar)]);
@@ -764,8 +758,6 @@ panelDia.addEventListener("click", async (e) => {
       pintarEncontrados();
       buscar.focus();
     }
-  } else if (todos) {
-    await anotar(abierta.detalle.entraron.map((s) => s.socio_id));
   } else if (sacar) {
     const { clase, fecha } = abierta;
     abierta.detalle = await api(`/api/clases/${clase.id}/fechas/${fecha}/asistencias/${sacar.dataset.sacar}`, {

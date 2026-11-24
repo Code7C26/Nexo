@@ -300,6 +300,12 @@ export const RUTAS_PERMISOS = {
   'POST /api/notificaciones/apagar': 'ambos',
   'POST /api/notificaciones/probar': 'ambos',
   'POST /api/socios/entrada': 'ambos',
+  // El ingreso por clase (hist. §228): la pantalla de entrada usa la sesión
+  // del negocio, de cualquier rol. Marcar a un socio como profe, del admin.
+  'POST /api/socios/entrada/clases': 'ambos',
+  'GET /api/socios/entrada/profes': 'ambos',
+  'POST /api/socios/entrada/profe': 'ambos',
+  'PUT /api/socios/:id/da-clases': 'admin',
   'GET /api/socios/:id': 'ambos',
   'POST /api/socios/cotizacion': 'ambos',
   'POST /api/socios': 'ambos',

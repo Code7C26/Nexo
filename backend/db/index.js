@@ -2359,7 +2359,14 @@ for (const [tabla, columna] of [
   ['ventas', 'puntos_vencen TEXT'],
   // Hasta cuándo pagó un socio que ya venía, antes de Nexo (hist. §227): los
   // planes de antes, NULL (lo cubierto sale solo de sus cuotas).
-  ['inscripciones_socio', 'pagado_antes_hasta TEXT']
+  ['inscripciones_socio', 'pagado_antes_hasta TEXT'],
+  // El ingreso por clase (hist. §228): el empleado que también es socio, si
+  // el profe del día lo marcó alguien y si el alumno se anotó solo. Lo de
+  // antes: no es socio, lo dice la grilla (o se tomó desde la clase) y lo
+  // anotó la clase.
+  ['empleados', 'socio_id INTEGER REFERENCES socios(id)'],
+  ['clase_fecha_profes', 'confirmado INTEGER NOT NULL DEFAULT 0 CHECK (confirmado IN (0, 1))'],
+  ['asistencias_clase', 'por_pantalla INTEGER NOT NULL DEFAULT 0 CHECK (por_pantalla IN (0, 1))']
 ]) {
   if (!db.prepare(`PRAGMA table_info(${tabla})`).all().some((col) => col.name === columna.split(' ')[0])) {
     db.exec(`ALTER TABLE ${tabla} ADD COLUMN ${columna}`);
@@ -2368,6 +2375,8 @@ for (const [tabla, columna] of [
 // Cada vez de un gasto fijo se anota una sola vez. Los gastos sin gasto fijo
 // (NULL) no chocan entre sí, en SQLite ni en Postgres.
 db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_gastos_fijo_periodo ON gastos(gasto_fijo_id, periodo)');
+// Un socio es un solo empleado (hist. §228).
+db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_empleados_socio ON empleados(socio_id) WHERE socio_id IS NOT NULL');
 
 // Horarios y fichajes pasan de la cuenta al empleado (hist. §199): el cajero
 // no tiene cuenta de Nexo. Cada cuenta que ya tenía horario o fichajes en un
