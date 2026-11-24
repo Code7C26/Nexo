@@ -23,6 +23,7 @@ import { badge, esAdmin, esc } from "../core/formato.js";
 import { negocio } from "../core/negocio.js";
 import { temaActual } from "../core/tema.js";
 import { alEntrarEnVista } from "../core/registro.js";
+import { icono } from "../core/iconos.js";
 
 const DIAS = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"];
 const DIAS_CORTOS = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"];
@@ -53,6 +54,9 @@ let sucursal = "";
 let diaElegido = (new Date().getDay() + 6) % 7;
 let editando = null;
 let editandoActividad = null;
+// El id de la actividad desde cuyos horarios se abrió un horario: al guardarlo
+// o cancelarlo se vuelve a ella, para seguir cargando de corrido.
+let volverAActividad = null;
 // La actividad elegida en la leyenda para ver solo sus clases, o null.
 let filtro = null;
 
@@ -459,7 +463,9 @@ function segunActividad() {
   document.getElementById("claseCupoCampo").hidden = esLibre;
 }
 
-function abrirClase(clase = null) {
+// clase: el horario que se edita. copiaDe: uno para copiar a otros días (un
+// horario nuevo con sus horas, profes y detalle ya puestos).
+function abrirClase(clase = null, { copiaDe = null } = {}) {
   const activas = datos.actividades.filter((a) => a.activo);
   if (!activas.length) {
     abrirActividad();
@@ -471,11 +477,14 @@ function abrirClase(clase = null) {
   editando = clase;
   const form = formClase;
   form.reset();
+  const base = clase ?? copiaDe;
   document.getElementById("claseFormTitulo").textContent = clase
     ? `${nombreClase(clase)}, el ${DIAS[clase.dia_semana].toLowerCase()} a las ${clase.desde}`
-    : "Nuevo horario";
+    : copiaDe
+      ? `Copiar ${nombreClase(copiaDe)} de las ${copiaDe.desde} a otros días`
+      : "Nuevo horario";
   // Al cargar, la actividad que se está mirando en la leyenda, si hay una.
-  pintarActividadesDeClase(clase?.actividades ?? (filtro ? [filtro] : activas.length === 1 ? [activas[0].id] : []));
+  pintarActividadesDeClase(base?.actividades ?? (filtro ? [filtro] : activas.length === 1 ? [activas[0].id] : []));
   // Al cargar, varios días de una vez; al editar, el día de ese horario.
   const tipo = clase ? "radio" : "checkbox";
   document.getElementById("claseDias").innerHTML = DIAS_CORTOS.map(
@@ -485,15 +494,15 @@ function abrirClase(clase = null) {
         ${esc(nombre)}
       </label>`
   ).join("");
-  pintarProfes(new Set(clase?.profes.map((p) => p.id) ?? []));
+  pintarProfes(new Set(base?.profes.map((p) => p.id) ?? []));
   document.getElementById("claseSucursalCampo").hidden = sucursales.length < 2;
   form.sucursal_id.innerHTML = `<option value="">Todas</option>` + sucursales.map((s) => `<option value="${s.id}">${esc(s.nombre)}</option>`).join("");
-  if (clase) {
-    form.desde.value = clase.desde;
-    form.hasta.value = clase.hasta;
-    form.detalle.value = clase.detalle ?? "";
-    form.cupo.value = clase.cupo ?? "";
-    form.sucursal_id.value = clase.sucursal_id ?? "";
+  if (base) {
+    form.desde.value = base.desde;
+    form.hasta.value = base.hasta;
+    form.detalle.value = base.detalle ?? "";
+    form.cupo.value = base.cupo ?? "";
+    form.sucursal_id.value = base.sucursal_id ?? "";
   } else {
     form.sucursal_id.value = sucursal;
   }
@@ -504,11 +513,22 @@ function abrirClase(clase = null) {
   document.querySelector("#claseActividades input")?.focus({ preventScroll: true });
 }
 
-document.getElementById("btnClaseNueva").addEventListener("click", () => abrirClase());
+document.getElementById("btnClaseNueva").addEventListener("click", () => {
+  volverAActividad = null;
+  abrirClase();
+});
 document.getElementById("claseActividades").addEventListener("change", segunActividad);
 document.getElementById("btnClaseCancelar").addEventListener("click", () => {
   formClase.hidden = true;
+  volverALaActividad();
 });
+
+// Si el horario se abrió desde los de una actividad, se vuelve a ellos.
+function volverALaActividad() {
+  const actividad = datos.actividades.find((a) => a.id === volverAActividad);
+  volverAActividad = null;
+  if (actividad) abrirActividad(actividad);
+}
 
 // Un profe nuevo es un empleado más: nace acá, sin PIN.
 async function sumarProfe() {
@@ -587,6 +607,7 @@ formClase.addEventListener("submit", async (e) => {
   form.hidden = true;
   diaElegido = dias[0];
   await cargar();
+  volverALaActividad();
 });
 
 document.getElementById("btnClaseSacar").addEventListener("click", async () => {
@@ -602,6 +623,7 @@ document.getElementById("btnClaseSacar").addEventListener("click", async () => {
   avisar("Horario sacado de la grilla.", "ok");
   formClase.hidden = true;
   await cargar();
+  volverALaActividad();
 });
 
 /* ---------- La clase de un día (hist. §226) ---------- */
@@ -814,7 +836,15 @@ for (const [id, pasos] of [
   document.getElementById(id).addEventListener("click", () => abrirDia(abierta.clase, sumarDias(abierta.fecha, pasos)));
 }
 
-document.getElementById("btnClaseDiaEditar").addEventListener("click", () => abrirClase(abierta.clase));
+document.getElementById("btnClaseDiaEditar").addEventListener("click", () => {
+  volverAActividad = null;
+  abrirClase(abierta.clase);
+});
+// Desde la clase que se tocó en el calendario, todos los de su actividad.
+document.getElementById("btnClaseDiaHorarios").addEventListener("click", () => {
+  const actividad = actividadDe(abierta.clase);
+  if (actividad) abrirActividad(actividad);
+});
 document.getElementById("btnClaseDiaCerrar").addEventListener("click", () => {
   panelDia.hidden = true;
   abierta = null;
@@ -970,10 +1000,79 @@ function abrirActividad(actividad = null) {
     form.horario.value = actividad.horario;
   }
   document.getElementById("btnActividadBaja").hidden = !actividad;
+  pintarHorariosActividad(actividad);
   form.hidden = false;
   form.scrollIntoView({ behavior: "smooth", block: "nearest" });
   form.nombre.focus({ preventScroll: true });
 }
+
+// Todos los horarios de la actividad (pedido del usuario, ideas.md): por día y
+// hora, cada uno con Editar, Copiar a otros días y Sacar. Una clase compartida
+// aparece en cada una de sus actividades.
+const horariosDe = (actividad) =>
+  datos.clases
+    .filter((c) => c.actividades.includes(actividad.id))
+    .sort((a, b) => a.dia_semana - b.dia_semana || a.desde.localeCompare(b.desde));
+
+function pintarHorariosActividad(actividad) {
+  const bloque = document.getElementById("actividadHorarios");
+  bloque.hidden = !actividad?.activo;
+  if (bloque.hidden) return;
+  document.getElementById("actividadHorariosTitulo").textContent = `Horarios de ${actividad.nombre}`;
+  const horarios = horariosDe(actividad);
+  document.getElementById("actividadHorariosLista").innerHTML = horarios.length
+    ? horarios
+        .map((c) => {
+          const otras = nombreClase(c) !== actividad.nombre ? `con ${nombreClase(c)}` : "";
+          const meta = [nombresProfes(c), c.detalle, otras].filter(Boolean).join(" · ");
+          const dia = DIAS[c.dia_semana].toLowerCase();
+          return `
+          <li class="actividad-horario">
+            <span class="actividad-horario-dia">${esc(DIAS_CORTOS[c.dia_semana])}</span>
+            <span class="actividad-horario-texto"><strong>${esc(c.desde)} a ${esc(c.hasta)}</strong>${meta ? ` <small>${esc(meta)}</small>` : ""}</span>
+            <span class="actividad-horario-acciones">
+              <button type="button" class="btn-icon" data-editar-horario="${c.id}" title="Editar" aria-label="Editar el horario del ${esc(dia)} a las ${esc(c.desde)}">${icono("pencil")}</button>
+              <button type="button" class="btn-icon" data-copiar-horario="${c.id}" title="Copiar a otros días" aria-label="Copiar el horario del ${esc(dia)} a otros días">${icono("copy")}</button>
+              <button type="button" class="btn-icon" data-sacar-horario="${c.id}" title="Sacar de la grilla" aria-label="Sacar el horario del ${esc(dia)} a las ${esc(c.desde)}">${icono("trash-2")}</button>
+            </span>
+          </li>`;
+        })
+        .join("")
+    : `<li class="campo-ayuda">Todavía no tiene horarios: tocá Sumar horarios (varios días de una vez).</li>`;
+}
+
+document.getElementById("actividadHorariosLista").addEventListener("click", async (e) => {
+  const boton = e.target.closest("[data-editar-horario], [data-copiar-horario], [data-sacar-horario]");
+  if (!boton) return;
+  const id = Number(boton.dataset.editarHorario ?? boton.dataset.copiarHorario ?? boton.dataset.sacarHorario);
+  const clase = datos.clases.find((c) => c.id === id);
+  const actividad = editandoActividad;
+  if (boton.dataset.sacarHorario) {
+    const ok = await confirmar({
+      titulo: "¿Sacar este horario de la grilla?",
+      cuerpo: `${nombreClase(clase)}, el ${DIAS[clase.dia_semana].toLowerCase()} de ${clase.desde} a ${clase.hasta}. Los otros días quedan.`,
+      aceptar: "Sacar",
+      destructivo: true
+    });
+    if (!ok) return;
+    await api(`/api/clases/${clase.id}`, { method: "PATCH", body: { activo: false }, error: "No se pudo sacar el horario." });
+    avisar("Horario sacado de la grilla.", "ok");
+    await cargar();
+    abrirActividad(datos.actividades.find((a) => a.id === actividad.id));
+    return;
+  }
+  volverAActividad = actividad.id;
+  if (boton.dataset.editarHorario) abrirClase(clase);
+  else abrirClase(null, { copiaDe: clase });
+});
+
+document.getElementById("btnActividadSumarHorarios").addEventListener("click", () => {
+  const actividad = editandoActividad;
+  volverAActividad = actividad.id;
+  abrirClase();
+  pintarActividadesDeClase([actividad.id]);
+  segunActividad();
+});
 
 document.getElementById("btnActividadNueva").addEventListener("click", () => abrirActividad());
 document.getElementById("btnActividadCancelar").addEventListener("click", () => {

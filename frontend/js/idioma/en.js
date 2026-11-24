@@ -6458,5 +6458,15 @@ export default {
   "Clases de ahora": "Current classes",
   "¿A qué clase va?": "Which class are they here for?",
   "No se pudo sacar de la clase.": "Couldn't remove them from the class.",
-  "No se pudo anotar en la clase.": "Couldn't check them in to the class."
+  "No se pudo anotar en la clase.": "Couldn't check them in to the class.",
+  "Todos los horarios": "All time slots",
+  "Sumar horarios": "Add time slots",
+  "Copiar {0} de las {1} a otros días": "Copy {0} at {1} to other days",
+  "Horarios de {0}": "{0} time slots",
+  "Editar el horario del {0} a las {1}": "Edit the {0} slot at {1}",
+  "Copiar a otros días": "Copy to other days",
+  "Copiar el horario del {0} a otros días": "Copy the {0} slot to other days",
+  "Sacar el horario del {0} a las {1}": "Remove the {0} slot at {1}",
+  "Todavía no tiene horarios: tocá Sumar horarios (varios días de una vez).": "It has no time slots yet: tap Add time slots (several days at once).",
+  "{0}, el {1} de {2} a {3}. Los otros días quedan.": "{0}, on {1} from {2} to {3}. The other days stay."
 };

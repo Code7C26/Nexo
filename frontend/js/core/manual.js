@@ -1149,7 +1149,7 @@ const SECCIONES_ES = [
       { pasos: [
         "Tocá **Nueva actividad**: el nombre (BJJ, Funcional), el color y si es de horario **Fijo** (clases a una hora) o **Libre** (abierta en una franja, como la sala de musculación).",
         "Tocá **Nuevo horario**: la actividad, los días (martes y jueves a las 19 se cargan de una vez), a qué hora empieza y termina, y los profes. El detalle (Principiantes, Kids) y el cupo son opcionales.",
-        "Para cambiar o sacar un horario, tocalo en la grilla."
+        "Para cambiar o sacar un horario, tocalo en la grilla, o tocá **Editar** en la actividad: ahí están todos sus horarios, con **Copiar a otros días** para repetir uno sin cargarlo de nuevo."
       ] },
       "Dos clases pueden ser a la misma hora: van una al lado de la otra. Un profe no puede estar en dos clases a la vez; Nexo te avisa.",
       "Una clase de varias actividades a la vez (el sparring de Boxeo, MMA y Kickboxing) se carga una sola vez, marcando todas: aparece en la grilla de cada una.",
