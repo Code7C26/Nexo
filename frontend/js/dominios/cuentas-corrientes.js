@@ -18,7 +18,7 @@ import { descargarCSV } from "../core/csv.js";
 import { invocar, registrar } from "../core/registro.js";
 import { icono } from "../core/iconos.js";
 import { formatear } from "../core/idioma.js";
-import { anotarRecordatorio, botonRecordar } from "../core/recordar.js";
+import { anotarRecordatorio, botonRecordar, preguntarSiLoMando } from "../core/recordar.js";
 
 /* ---------- Cuentas corrientes (a cobrar y a pagar) ---------- */
 
@@ -210,11 +210,12 @@ document.getElementById("ccCobrarCuanto").addEventListener("click", (e) => {
   renderCuentasCorrientes(ccUltimaRespuesta);
 });
 
-// Recordar abre WhatsApp (el enlace); acá se anota, y la fila dice "Le
-// recordaste hoy".
+// Recordar abre WhatsApp (el enlace); si se mandó, acá se anota, y la fila
+// dice "Le recordaste hoy".
 document.getElementById("ccCobrarBody").addEventListener("click", async (e) => {
   const enlace = e.target.closest("[data-recordar]");
   if (!enlace) return;
+  if (!(await preguntarSiLoMando(enlace))) return;
   const id = Number(enlace.dataset.recordar);
   const recordatorio = await anotarRecordatorio(id, enlace.dataset.tipo);
   const cliente = ccUltimaRespuesta.por_cobrar.find((c) => c.id === id);

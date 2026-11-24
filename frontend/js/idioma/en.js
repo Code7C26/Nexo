@@ -6625,5 +6625,6 @@ export default {
   "Hay {0} compus más": "There are {0} more computers",
   "Desvincular todas": "Unlink all",
   "Esta compu es una caja de «{0}»: cambiá a ese negocio para desvincularla.": "This computer is a till of «{0}»: switch to that business to unlink it.",
-  "Dejó de usar una compu como la caja \"{0}\"": "Stopped using a computer as the till \"{0}\""
+  "Dejó de usar una compu como la caja \"{0}\"": "Stopped using a computer as the till \"{0}\"",
+  "¿Lo mandaste?": "Did you send it?"
 };

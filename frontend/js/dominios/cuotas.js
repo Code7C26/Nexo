@@ -18,7 +18,7 @@ import { api, refrescar } from "../core/api.js";
 import { alEntrarEnVista, invocar, recargar, registrar } from "../core/registro.js";
 import { LOCALE } from "../core/idioma.js";
 import { botonesDeMedios, cargarMediosDeCobro, confirmarCobroConMedio } from "../core/cobro-medio.js";
-import { anotarRecordatorio, botonRecordar } from "../core/recordar.js";
+import { anotarRecordatorio, botonRecordar, preguntarSiLoMando } from "../core/recordar.js";
 
 let mes = hoyISO().slice(0, 7);
 let datos = { cuotas: [], totales: {} };
@@ -58,9 +58,13 @@ function estadoCuota(c) {
   return vencida(c) ? badge("status-vencido", "Vencida").html : badge("status-pendiente", "Vence hoy").html;
 }
 
-// Facturar va como en Ventas: la cuota es una venta por dentro.
+// Facturar va como en Ventas: la cuota es una venta por dentro. Un combo de
+// antes de hist. §208 lleva una venta por plan: no se ofrece (serían dos
+// facturas con el precio repartido).
 const botonFacturar = (c) =>
-  c.facturada || c.estado === "bonificada" ? "" : `<button type="button" class="btn btn-secundario btn-chico" data-facturar="${c.venta_id}">Facturar</button>`;
+  c.facturada || c.estado === "bonificada" || c.ventas.length > 1
+    ? ""
+    : `<button type="button" class="btn btn-secundario btn-chico" data-facturar="${c.venta_id}">Facturar</button>`;
 
 const botonRecordarCuota = (c) =>
   vencida(c)
@@ -78,7 +82,9 @@ function accionesCuota(c) {
   if (cobrando !== c.venta_id) {
     return `<div class="cuotas-cuentas">${botonFacturar(c)}${botonRecordarCuota(c)}<button type="button" class="btn btn-secundario btn-chico" data-cobrar="${c.venta_id}">Cobrar</button></div>`;
   }
-  return `<div class="cuotas-cuentas">${botonesDeMedios(medios, `data-venta="${c.venta_id}"`)}<button type="button" class="btn-link" data-otro="${c.venta_id}">Otro importe</button><button type="button" class="btn-link" data-cancelar>Cancelar</button></div>`;
+  // "Otro importe" cobra una venta: el de un combo de varias, desde la ficha.
+  const otro = c.ventas.length > 1 ? "" : `<button type="button" class="btn-link" data-otro="${c.venta_id}">Otro importe</button>`;
+  return `<div class="cuotas-cuentas">${botonesDeMedios(medios, `data-venta="${c.venta_id}"`)}${otro}<button type="button" class="btn-link" data-cancelar>Cancelar</button></div>`;
 }
 
 function pintar() {
@@ -148,7 +154,7 @@ async function cobrar(boton) {
   try {
     const resultado = await api(`/api/socios/${cuota.socio_id}/cobros`, {
       method: "POST",
-      body: { ...como, venta_id: cuota.venta_id },
+      body: { ...como, venta_ids: cuota.ventas },
       error: "No se pudo registrar el cobro."
     });
     avisar(`Cobrado ${money(resultado.cobrado)} con ${resultado.en}.`, "ok");
@@ -161,10 +167,10 @@ async function cobrar(boton) {
   pintar();
 }
 
-// Recordar abre WhatsApp (el enlace); acá se anota.
+// Recordar abre WhatsApp (el enlace); si se mandó, acá se anota.
 async function anotar(enlace) {
   const cuota = datos.cuotas.find((c) => c.venta_id === Number(enlace.dataset.recordar));
-  if (!cuota) return;
+  if (!cuota || !(await preguntarSiLoMando(enlace))) return;
   const recordatorio = await anotarRecordatorio(cuota.cliente_id, "cuota", cuota.venta_id);
   if (!recordatorio) return;
   cuota.recordatorio = recordatorio;

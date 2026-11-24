@@ -280,7 +280,8 @@ function diasSinVenir(s) {
 // cuota de un mes que no vino, sin pagar). El dueño decide en la ficha.
 function textoDejo(s) {
   const d = s.parece_que_dejo;
-  const cuotas = d.cuotas.map((c) => fechaAR(c.desde)).join(", ");
+  // Un combo de antes de hist. §208 son dos ventas del mismo período: un mes.
+  const cuotas = [...new Set(d.cuotas.map((c) => c.desde))].map(fechaAR).join(", ");
   return `Parece que dejó: ${d.vino ? `no viene desde el ${fechaAR(d.desde)}` : "nunca vino"} y debe la cuota del ${cuotas}`;
 }
 
@@ -607,15 +608,26 @@ formAlta.addEventListener("submit", async (e) => {
 
 /* ---------- Ficha del socio ---------- */
 
-// Las cuotas de la ficha juntas por su venta: los planes que empiezan el
-// mismo día se cobran juntos (hist. §208), y la ficha muestra un cobro.
+// Las cuotas de la ficha juntas por su cobro: los planes que empiezan el
+// mismo día se cobran juntos (hist. §208), y un combo de precio fijo de antes
+// de §208 (una venta por plan) también va en una fila (`cobro`, del servidor).
 function cuotasPorCobro(cuotas) {
-  const porVenta = new Map();
+  const porCobro = new Map();
   for (const c of cuotas) {
-    if (!porVenta.has(c.venta_id)) porVenta.set(c.venta_id, []);
-    porVenta.get(c.venta_id).push(c);
+    const clave = c.cobro ?? c.venta_id;
+    if (!porCobro.has(clave)) porCobro.set(clave, []);
+    porCobro.get(clave).push(c);
   }
-  return [...porVenta.values()];
+  // Adentro del cobro, en el orden en que se generaron (la ficha va al revés).
+  return [...porCobro.values()].map((grupo) => grupo.sort((a, b) => a.venta_id - b.venta_id || a.id - b.id));
+}
+
+// Un estado para la fila: el de sus cuotas si es el mismo; si no, lo que falta.
+function estadoDelCobro(cuotas, saldo) {
+  const [c] = cuotas;
+  if (cuotas.every((x) => x.estado === c.estado)) return { ...c, saldo };
+  if (saldo < 0.005) return { ...c, estado: "pagada", saldo: 0 };
+  return { ...c, estado: cuotas.some((x) => x.cobrado > 0) ? "parcial" : "pendiente", saldo };
 }
 
 function detalleCuota(c) {
@@ -759,14 +771,15 @@ function pintarFicha(s) {
             const detalle = [...new Set(cuotas.map(detalleCuota))].join(" · ");
             const importe = cuotas.reduce((acc, x) => acc + x.importe, 0);
             const saldo = cuotas.reduce((acc, x) => acc + x.saldo, 0);
+            const ventas = [...new Set(cuotas.map((x) => x.venta_id))];
             return `
     <tr>
       <td data-label="Período" class="m-titulo">${esc(fechaAR(c.desde))} al ${esc(fechaAR(hasta))}</td>
       <td data-label="Plan">${esc(cuotas.map((x) => x.plan).join(" + "))}<span class="celda-meta">${esc(detalle)}</span></td>
       <td data-label="Importe" class="align-right mono m-valor">${money(importe)}</td>
-      <td data-label="Estado" class="m-estado">${badgeCuota({ ...c, saldo })}</td>
+      <td data-label="Estado" class="m-estado">${badgeCuota(estadoDelCobro(cuotas, saldo))}</td>
       ${celdaMovil(cuotas.map((x) => x.plan).join(" + "))}
-      <td data-label="Venta" class="m-accion"><button type="button" class="btn-link" data-venta="${c.venta_id}">#${c.venta_id}</button></td>
+      <td data-label="Venta" class="m-accion">${ventas.map((v) => `<button type="button" class="btn-link" data-venta="${v}">#${v}</button>`).join(" ")}</td>
     </tr>`;
           })
           .join("");
@@ -1030,7 +1043,8 @@ function pintarDejo(s) {
   const d = s.parece_que_dejo;
   aviso.hidden = !d;
   if (!d) return;
-  const meses = d.cuotas.length === 1 ? `la cuota del ${fechaAR(d.cuotas[0].desde)}` : `${d.cuotas.length} cuotas`;
+  const periodos = new Set(d.cuotas.map((c) => c.desde)).size;
+  const meses = periodos === 1 ? `la cuota del ${fechaAR(d.cuotas[0].desde)}` : `${periodos} cuotas`;
   const cuando = d.vino ? `No viene desde el ${fechaAR(d.desde)}` : "Nunca vino";
   aviso.innerHTML = `
     <p><strong>Parece que dejó de venir.</strong> ${esc(cuando)} y debe ${esc(meses)} (${money(d.total)}), de meses que no vino.</p>

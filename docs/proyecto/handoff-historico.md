@@ -15968,3 +15968,42 @@ se cobra, y suma el precio del combo.
 
 **Verificado:** `npm test` 570 de 570, lint e i18n (13 textos nuevos
 traducidos). No se probó en el navegador: no había servidor local.
+
+## §232 — 24 de noviembre de 2026: las cuotas del combo viejo en una fila, "¿Lo mandaste?" y el Volver de la ficha del cliente
+
+Tres quejas del usuario al revisar lo publicado en §231.
+
+**Las cuotas del combo, repartidas.** La ficha ya mostraba los planes del
+combo con su precio, pero la tabla de Cuotas seguía con $43.636,36 (BJJ, venta
+#27576) y $36.363,64 (MMA, venta #27577): son cuotas de Morro de antes de
+§208, cuando cada plan iba en su venta. No se tocaron los datos: `conCobros`
+(server.js) le pone a cada cuota su `cobro` (la venta más chica del grupo),
+juntando las de una venta y, además, las del mismo socio, combo de precio fijo
+(`cuotas_socio.descuento_id`, sumado a SELECT_CUOTAS) y período, con un
+union-find sobre las ventas. Lo usan:
+- la ficha del socio (`cuotasPorCobro` agrupa por `cobro`; una fila con el
+  total, el estado del conjunto y los dos números de venta);
+- `cuotas_impagas` (cuenta cobros, no ventas) y "Parece que dejó" (cuenta
+  períodos);
+- `GET /api/socios/cuotas`: una fila por cobro con `ventas`, importe, cobrado
+  y saldo sumando cada venta una vez;
+- `POST /api/socios/:id/cobros` acepta `venta_ids` (Cuotas lo manda).
+En una fila de varias ventas no se ofrecen Facturar ni "Otro importe".
+
+**"Le recordaste hoy" sin haberlo mandado.** Tocar Recordar abre WhatsApp y
+antes lo anotaba en el acto. Ahora `preguntarSiLoMando` (core/recordar.js)
+cambia la línea de abajo del botón por "¿Lo mandaste? Sí / No" y solo el Sí lo
+anota (Cuotas y Cuentas corrientes).
+
+**El Volver de la ficha del cliente.** "Datos de contacto" desde la ficha de un
+socio abría la del cliente, y Volver iba siempre al CRM. `vistaVisible()`
+(router.js) dice qué pantalla se ve; `abrirFichaCliente` la anota al abrirse
+(salvo que se reabra desde ella misma) y Volver (y la flecha de arriba, que
+toca el Volver de la ficha) vuelve ahí, con el texto "Volver"; desde el CRM
+sigue "Volver a clientes".
+
+**Verificado:** test nuevo `combo-viejo` (parte la venta de un combo como las
+de antes de §208: la ficha, la fila de Cuotas y el cobro de las dos ventas).
+`npm test` 572 de 572, lint e i18n. En el navegador, con un dojo de prueba en
+una base temporal: la fila de $80.000, cobrarla desde Cuotas, Recordar con No
+y con Sí, y Volver desde la ficha del cliente a la del socio.
