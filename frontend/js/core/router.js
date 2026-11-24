@@ -34,6 +34,7 @@ const MODULO_DE_VISTA = {
   "socio-detalle": "socios",
   "planes-socio": "socios",
   clases: "socios",
+  grados: "grados",
   "venta-online": "canales",
   puntos: "puntos"
 };
@@ -81,6 +82,8 @@ const VISTAS_CONSTRUIDAS = {
   "planes-socio": { titulo: "Planes", dominio: "Socios" },
   // La grilla de clases (hist. §200): la ven todos, la arma el admin.
   clases: { titulo: "Clases", dominio: "Socios" },
+  // Los cinturones (hist. §230): los ven todos; los arma y gradúa el admin.
+  grados: { titulo: "Cinturones", dominio: "Socios" },
   compras: { titulo: "Compras", dominio: "Embudo de compra" },
   proveedores: { titulo: "Proveedores", dominio: "Embudo de compra" },
   "devoluciones-proveedor": { titulo: "Devoluciones a proveedor", dominio: "Embudo de compra" },

@@ -11,7 +11,7 @@
 
 - Al cerrar una etapa, se hacen tres cosas:
   - su relato completo se agrega al final de `docs/proyecto/handoff-historico.md` con el
-    siguiente número (hoy el último es §229);
+    siguiente número (hoy el último es §230);
   - acá se actualizan "Estado actual" y "Qué sigue";
   - si cambió alguna decisión vigente, se actualiza también esa lista.
 - Nunca apilar secciones "Última etapa" en este archivo: así fue como llegó a
@@ -308,12 +308,34 @@ Editar una actividad muestra **todos sus horarios** (día, hora, profes), cada
 uno con **Editar**, **Copiar a otros días** (un horario nuevo con todo puesto,
 para marcar los días) y **Sacar**, más **Sumar horarios**. Al guardar o
 cancelar un horario abierto desde ahí, se vuelve a la actividad. La clase del
-calendario suma **Todos los horarios**. Solo pantalla (`dominios/clases.js`).
+calendario suma **Todos los horarios**. Solo pantalla (`dominios/clases.js`). Publicado (PR #126, con la recepción por clase).
 
-**Lo que sigue (próxima sesión):** en el dojo, los **cinturones** (configurables
-por el profe, con avisos por cantidad de clases contando desde un número
-inicial por alumno: ese número inicial puede ir en "Tus socios"); después los
-medios de cobro (solo Efectivo al nacer + "¿Cómo te cobran?"). Si da, el punto
+**24 de noviembre, hist. §230: cinturones y grados** (lo que seguía en el dojo;
+investigado al final de `docs/investigaciones/investigacion-gymdesk.md`). Sin
+publicar.
+- **Vocabulario (usuario):** en la pantalla las rayas se llaman **grados**
+  ("Azul · 2 grados") y la sección y el módulo, **Cinturones**. En el código
+  siguen siendo rayas y la tabla `grados` es la lista de cinturones.
+- Módulo `grados` (Configuración → Funciones › Cinturones; va con Socios).
+  Cada actividad con su lista: un cinturón por fila con sus grados, lo que
+  pide cada paso (clases por grado, clases para llegar, meses con el anterior)
+  y plantillas (BJJ adultos con los meses de la IBJJF, BJJ chicos, judo o
+  karate). Reglas en `core/grados.js` (servidor y pantalla).
+- **Socios › Cinturones** (`#/grados`): listos para graduar (varios juntos con
+  la fecha del examen), por cinturón con cuánto falta, los que vienen sin el
+  suyo; **Cargar los que ya venían** con las clases desde su último ascenso.
+  La ficha del socio: graduar, historial y deshacer el último. El Resumen del
+  gimnasio suma "Para graduar".
+- Esquema aditivo: `grados` y `socio_grados`. Rutas `GET /api/grados`,
+  `PUT /api/actividades/:id/grados`, `POST /api/grados/pasos`,
+  `DELETE /api/socios/:id/grados/:pasoId`. Test nuevo `grados` (8 casos);
+  `npm test` 569 de 569, lint, i18n y `verificar-migracion` (24 de 24).
+  Probado en el navegador (compu y 390 px) con un dojo de prueba.
+
+**Lo que sigue (próxima sesión):** publicar §230 si el usuario lo pide; cargar
+los cinturones del dojo real (Morro: prender Cinturones, armar BJJ y cargar a
+los que ya venían, con lo que pase el profe). Después los medios de cobro (solo
+Efectivo al nacer + "¿Cómo te cobran?", también en `ideas.md`). Si da, el punto
 10 (el resumen del día por WhatsApp o mail). Y lo que el usuario vea al probar
 los puntos en el mostrador y lo de §224 en su iPhone.
 

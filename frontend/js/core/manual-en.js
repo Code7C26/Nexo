@@ -642,6 +642,28 @@ export const SECCIONES_EN = {
       { nota: "On a phone the schedule shows one day at a time: choose the day at the top." }
     ]
   },
+  cinturones: {
+    titulo: "Belts and stripes",
+    pantalla: "Belts",
+    preguntas: ["how do i set up the belts", "how do i promote a student", "who is ready to be promoted", "how many classes does a student have for the next stripe", "how do i add the belts of my current students", "how do i give a student a stripe"],
+    palabras: ["belt", "belts", "stripe", "stripes", "rank", "ranks", "promote", "promotion", "grading", "kyu", "dan", "bjj", "judo", "karate"],
+    bloques: [
+      "For martial arts: each student's belt and stripes, the classes they've done and who's ready to be promoted. First turn on **Belts** in Settings → Features (it goes with Members and fees).",
+      { pasos: [
+        "In **Belts**, choose the activity and start from a ready-made list (adult BJJ, kids BJJ, judo or karate) or from scratch. Each belt has its stripes and what it asks for: classes per stripe, classes to get there and months at the previous one. Reorder them by dragging the three lines.",
+        "Tap **Add your current students**: each one's belt, since when they've had it and how many classes they've done since their last promotion. Nexo keeps counting from there.",
+        "Classes are counted from each class's attendance (the check-in screen or the class in **Classes**). When someone reaches what their next step asks for, they show up in **Ready to promote** and on the Overview.",
+        "Check the ones you promote, enter the grading date and tap **Promote**. You can also promote one at a time from the member's page."
+      ] },
+      { lista: [
+        "Whatever you leave empty asks for nothing: you decide that step by eye and Nexo doesn't alert.",
+        "Classes are counted from the last step; months, from when they got the belt.",
+        "A class of several activities counts for each one.",
+        "If you recorded a promotion by mistake, open the member's **History** and tap **Undo** on the last one."
+      ] },
+      { nota: "Belts are set up and promotions recorded by the administrator; the front desk and the team can see them." }
+    ]
+  },
   "datos-del-negocio": {
     titulo: "Your business details",
     pantalla: "Settings › Business details",

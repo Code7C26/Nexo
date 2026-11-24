@@ -98,6 +98,7 @@ import "./dominios/horarios.js";
 import "./dominios/clases.js";
 import "./dominios/ofertas.js";
 import "./dominios/puntos.js";
+import "./dominios/grados.js";
 import "./dominios/menu.js";
 import "./dominios/venta-online.js";
 import "./dominios/lista-proveedor.js";

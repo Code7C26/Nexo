@@ -284,6 +284,12 @@ export const RUTAS_PERMISOS = {
   'POST /api/clases/:id/fechas/:fecha/asistencias': 'ambos',
   'DELETE /api/clases/:id/fechas/:fecha/asistencias/:socioId': 'ambos',
   'GET /api/asistencia': 'ambos',
+  // Grados y cinturones (hist. §230): los ven la recepción y el profe; la
+  // lista y los ascensos son del admin.
+  'GET /api/grados': 'ambos',
+  'PUT /api/actividades/:id/grados': 'admin',
+  'POST /api/grados/pasos': 'admin',
+  'DELETE /api/socios/:id/grados/:pasoId': 'admin',
   // La pantalla de entrada y los avisos que le deja a la recepción (hist. §144).
   // El QR de Mercado Pago en el mostrador (hist. §145): cancelar el que no se
   // pagó. Solo las ventas que esperan un QR, no cualquier venta.

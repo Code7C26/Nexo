@@ -1942,6 +1942,8 @@ input[type="radio"] { accent-color: var(--accent); width: 16px; height: 16px; }
 :root:not([data-modulos~="socios"]) [data-modulo="socios"],
 :root:not([data-modulos~="produccion"]) [data-modulo="produccion"],
 :root:not([data-modulos~="puntos"]) [data-modulo="puntos"],
+:root:not([data-modulos~="grados"]) [data-modulo="grados"],
+:root:not([data-modulos~="socios"]) [data-modulo="grados"],
 /* La pestaña Servicios de Productos (hist. §88): un servicio no tiene stock. */
 .solo-servicios [data-modulo="stock"] {
   display: none;
@@ -12490,6 +12492,175 @@ button.grilla-agenda-clase { cursor: pointer; }
 }
 .socio-clases-actividades .grilla-punto { display: none; }
 .socio-clases-actividades span { color: var(--ink-muted); font-size: var(--txt-sm); }
+
+/* Grados y cinturones (hist. §230, dominios/grados.js). El cinturón dibujado:
+   su color, la franja del medio de los de chicos ("gris y blanco") y la punta
+   negra con las rayas blancas que ya tiene (la del negro, roja). Los colores
+   son los de un cinturón de verdad, iguales en los dos temas. */
+.cint-blanco { --cint: #F4F4F1; }
+.cint-gris { --cint: #9CA3AF; }
+.cint-amarillo { --cint: #EAB308; }
+.cint-naranja { --cint: #EA7317; }
+.cint-verde { --cint: #16A34A; }
+.cint-azul { --cint: #2563EB; }
+.cint-violeta { --cint: #7C3AED; }
+.cint-marron { --cint: #7A4A24; }
+.cint-negro { --cint: #18181B; }
+.cint-rojo { --cint: #DC2626; }
+.cint2-blanco { --cint2: #F4F4F1; }
+.cint2-gris { --cint2: #9CA3AF; }
+.cint2-amarillo { --cint2: #EAB308; }
+.cint2-naranja { --cint2: #EA7317; }
+.cint2-verde { --cint2: #16A34A; }
+.cint2-azul { --cint2: #2563EB; }
+.cint2-violeta { --cint2: #7C3AED; }
+.cint2-marron { --cint2: #7A4A24; }
+.cint2-negro { --cint2: #18181B; }
+.cint2-rojo { --cint2: #DC2626; }
+.cinturon {
+  position: relative;
+  display: inline-flex;
+  flex: none;
+  justify-content: flex-end;
+  width: 56px;
+  height: 14px;
+  overflow: hidden;
+  vertical-align: middle;
+  background: var(--cint, var(--surface-sunk));
+  border-radius: 3px;
+  box-shadow: inset 0 0 0 1px rgb(0 0 0 / 0.18);
+}
+.cinturon[class*="cint2-"]::before {
+  content: "";
+  position: absolute;
+  inset: 35% 0;
+  background: var(--cint2);
+}
+.cinturon-punta {
+  position: relative;
+  display: flex;
+  justify-content: center;
+  gap: 2px;
+  width: 36%;
+  background: #18181B;
+}
+.cint-negro .cinturon-punta { background: #C62828; }
+.cinturon-punta i { width: 2px; background: #FFF; }
+.cinturon-chico { width: 38px; height: 10px; border-radius: 2px; }
+.cinturon-chico .cinturon-punta { gap: 1px; }
+.cinturon-chico .cinturon-punta i { width: 1.5px; }
+.cinturon-vacio { background: none; box-shadow: none; border: 1px dashed var(--line-strong); }
+.socio-grado-cabeza .cinturon { width: 76px; height: 20px; }
+
+.grados-cabecera { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--sp-3); margin: 0 0 var(--sp-4); }
+.grados-acciones { display: flex; flex-wrap: wrap; gap: var(--sp-2); margin-left: auto; }
+.grados-filas { display: grid; gap: var(--sp-2); margin: 0; padding: 0; list-style: none; }
+.grados-fila {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  width: 100%;
+  padding: var(--sp-2) var(--sp-3);
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  cursor: pointer;
+  transition: border-color var(--dur-1) ease, background-color var(--dur-1) ease;
+}
+.grados-fila:hover { border-color: var(--line-strong); }
+.grados-fila:focus-visible { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-bg); }
+.grados-fila-marcar:has(input:checked) { border-color: var(--accent); background: var(--accent-bg); }
+.grados-fila-marcar input { flex: none; width: 18px; height: 18px; margin: 0; accent-color: var(--accent); }
+.grados-fila-quien { display: flex; flex: 1 1 0; flex-direction: column; min-width: 0; }
+.grados-fila-quien small { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; color: var(--ink-muted); font-size: var(--txt-sm); }
+.grados-fila-quien small .ico { width: 14px; height: 14px; }
+.grados-fila-dato { flex: 0 1 19rem; color: var(--ink-muted); font-size: var(--txt-sm); text-align: right; }
+.grados-avance { display: block; height: 4px; margin-top: 6px; overflow: hidden; background: var(--surface-sunk); border-radius: 2px; }
+.grados-avance span { display: block; height: 100%; background: var(--accent); border-radius: 2px; }
+.es-listo .grados-avance span { background: #16A34A; }
+.grados-grupo + .grados-grupo { margin-top: var(--sp-5); }
+.grados-grupo-titulo { display: flex; align-items: center; gap: var(--sp-2); margin: 0 0 var(--sp-2); font-size: var(--txt-md); }
+.grados-grupo-titulo small { color: var(--ink-muted); font-weight: 500; }
+.form.grados-graduar { flex-direction: row; flex-wrap: wrap; align-items: flex-end; gap: var(--sp-3); margin-top: var(--sp-4); }
+.form.grados-graduar label { flex: 1 1 11rem; margin: 0; }
+.grados-nadie { margin: 0; color: var(--ink-muted); }
+.grados-otras { margin: var(--sp-4) 0 0; color: var(--ink-muted); font-size: var(--txt-sm); }
+.grados-vacio-cuerpo { display: grid; justify-items: center; gap: var(--sp-3); max-width: 34rem; margin: 0 auto; padding: var(--sp-6) var(--sp-2); text-align: center; }
+.grados-vacio-cuerpo h2, .grados-vacio-cuerpo p { margin: 0; }
+.grados-vacio-cuerpo > p:first-of-type { color: var(--ink-muted); }
+.grados-vacio-icono { display: grid; place-items: center; width: 56px; height: 56px; color: var(--accent); background: var(--accent-bg); border-radius: 50%; }
+.grados-vacio-icono .ico { width: 28px; height: 28px; }
+.grados-vacio-actividades { display: flex; flex-wrap: wrap; justify-content: center; gap: var(--sp-2); }
+.grados-vacio-actividades .grilla-punto { display: inline-block; width: 10px; height: 10px; background: var(--c); border-radius: 3px; }
+:root[data-rol="admin"] .grados-solo-empleado { display: none; }
+
+/* Armar los cinturones: una tarjeta por cinturón, que se ordena arrastrando. */
+.grados-titulo h2 { margin: var(--sp-3) 0 var(--sp-1); }
+.grados-titulo .opciones-nota { margin: 0; }
+.grados-plantillas { display: grid; gap: var(--sp-3); margin: var(--sp-4) 0 0; }
+.grados-plantillas[hidden] { display: none; }
+.grados-plantillas .config-tarjeta-titulo { margin: 0; }
+.grados-plantilla { width: 100%; font: inherit; color: inherit; text-align: left; cursor: pointer; }
+.grados-plantilla-dibujo { display: flex; flex: none; flex-direction: column; justify-content: center; gap: 3px; min-width: 40px; }
+.grados-lista { display: grid; gap: var(--sp-3); margin: var(--sp-4) 0 var(--sp-3); padding: 0; list-style: none; }
+.grado-fila { padding: var(--sp-3); background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-md); }
+.grado-fila.is-arrastrando { position: relative; z-index: 1; background: var(--surface-hover); box-shadow: 0 8px 24px rgb(0 0 0 / 0.35); }
+.grado-fila.is-arrastrando .tablero-arrastrar { cursor: grabbing; color: var(--ink); }
+.grado-fila-cabeza { display: flex; align-items: center; gap: var(--sp-2); }
+.grado-fila-cabeza .cinturon { width: 64px; height: 16px; }
+.form .grado-fila-nombre { flex: 1 1 auto; margin: 0; }
+.grado-fila-campos { display: grid; grid-template-columns: repeat(auto-fill, minmax(9.5rem, 1fr)); gap: var(--sp-3); margin-top: var(--sp-3); }
+.form .grado-fila-campos label { margin: 0; }
+.form .grado-fila-campos label[hidden] { display: none; }
+.grado-colores { grid-column: 1 / -1; min-width: 0; margin: 0; padding: 0; border: 0; }
+.grado-colores legend { margin-bottom: var(--sp-2); font-size: var(--txt-sm); font-weight: 600; }
+.form .grado-colores .color-elegir { width: 30px; height: 30px; background: var(--cint); box-shadow: inset 0 0 0 1px rgb(0 0 0 / 0.2); }
+.form .grado-colores .color-elegir.cint-negro,
+.cinturon.cint-negro { box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.3); }
+.form .grado-colores .color-elegir:has(input:checked) { box-shadow: 0 0 0 3px var(--surface), 0 0 0 5px var(--ink); }
+.form .grado-colores .color-elegir:has(input:focus-visible) { box-shadow: 0 0 0 3px var(--surface), 0 0 0 5px var(--accent); }
+.grados-pie { margin-top: var(--sp-4); padding-left: 0; padding-right: 0; }
+
+/* Los que ya venían: una fila por socio con su cinturón, desde y las clases. */
+.grados-buscar { display: block; margin: var(--sp-4) 0 var(--sp-3); }
+.grados-buscar input { width: 100%; }
+.grados-cargar { display: grid; gap: var(--sp-2); margin: 0; padding: 0; list-style: none; }
+.grados-cargar-fila { display: grid; gap: var(--sp-2); padding: var(--sp-3); background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-md); }
+.grados-cargar-fila[hidden] { display: none; }
+.grados-cargar-fila:has(option:checked:not([value=""])) { border-color: var(--accent); }
+.form .grados-cargar-fila label { margin: 0; }
+
+/* El bloque de la ficha del socio. */
+.socio-grados { display: grid; gap: var(--sp-3); }
+.socio-grado { display: grid; justify-items: start; gap: var(--sp-2); padding: var(--sp-3); border: 1px solid var(--line); border-radius: var(--r-md); }
+.socio-grado-cabeza { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-3); width: 100%; }
+.socio-grado-quien { display: flex; flex: 1 1 auto; flex-direction: column; min-width: 0; }
+.socio-grado-quien small { color: var(--ink-muted); font-size: var(--txt-sm); }
+.socio-grado-falta { margin: 0; color: var(--ink-muted); font-size: var(--txt-sm); }
+.socio-grado > .grados-avance { width: 100%; max-width: 26rem; margin: 0; }
+.socio-grado-form { display: grid; grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr)); gap: var(--sp-3); width: 100%; }
+.socio-grado-form[hidden] { display: none; }
+.form.socio-grado-form label { margin: 0; }
+.socio-grado-botones { display: flex; grid-column: 1 / -1; align-items: center; justify-content: flex-end; gap: var(--sp-3); }
+.socio-grado-historial { width: 100%; }
+.socio-grado-historial summary { font-size: var(--txt-sm); font-weight: 600; cursor: pointer; }
+.socio-grado-historial summary small { color: var(--ink-muted); font-weight: 500; }
+.socio-grado-historial ol { display: grid; gap: var(--sp-2); margin: var(--sp-2) 0 0; padding: 0; list-style: none; }
+.socio-grado-historial li { display: flex; align-items: center; gap: var(--sp-2); }
+.socio-grado-historial li > span { display: flex; flex: 1 1 auto; flex-direction: column; min-width: 0; }
+.socio-grado-historial li small { color: var(--ink-muted); font-size: var(--txt-xs); }
+
+@media (min-width: 900px) {
+  .grados-cargar-fila { grid-template-columns: minmax(12rem, 1.3fr) 1.2fr 1fr 1fr; align-items: end; }
+}
+@media (max-width: 640px) {
+  .grados-fila { flex-wrap: wrap; }
+  .grados-fila-dato { flex-basis: 100%; text-align: left; }
+  .grados-acciones { margin-left: 0; }
+}
 
 .asistencia-resumen:empty { display: none; }
 .asistencia-profes { display: flex; flex-wrap: wrap; gap: var(--sp-2) var(--sp-5); margin: var(--sp-3) 0 0; padding: 0; list-style: none; }

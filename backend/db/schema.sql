@@ -2112,6 +2112,53 @@ CREATE TABLE IF NOT EXISTS asistencias_clase (
   UNIQUE (clase_fecha_id, socio_id)
 );
 
+-- Grados y cinturones (hist. §230, docs/investigaciones/investigacion-gymdesk.md):
+-- el módulo `grados`. Cada actividad (BJJ, Judo) tiene su lista, en orden; un
+-- alumno puede ser azul en BJJ y amarillo en Judo. Cada fila es un cinturón
+-- con sus rayas, como lo dice el profe (Gymdesk pone cada raya como un grado
+-- más de la lista; acá son 5 filas en BJJ y no 25). Lo que pide cada paso lo
+-- miran las reglas de frontend/js/core/grados.js:
+-- - clases_raya: las clases para cada una de sus rayas;
+-- - clases: las clases para llegar a este cinturón desde la última raya del
+--   anterior; meses: el tiempo mínimo con el anterior (los de la IBJJF).
+-- NULL = no pide eso. color y color2 (la franja del medio de los de chicos,
+-- "gris y blanco") son los de COLORES_CINTURON, que valida server.js. Uno que
+-- algún alumno tuvo no se borra: activo = 0, y su historial lo sigue nombrando.
+CREATE TABLE IF NOT EXISTS grados (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  organizacion_id INTEGER NOT NULL REFERENCES organizaciones(id),
+  actividad_id INTEGER NOT NULL REFERENCES actividades(id),
+  nombre TEXT NOT NULL,
+  orden INTEGER NOT NULL,
+  color TEXT NOT NULL,
+  color2 TEXT,
+  rayas INTEGER NOT NULL DEFAULT 0 CHECK (rayas >= 0),
+  clases_raya INTEGER CHECK (clases_raya IS NULL OR clases_raya > 0),
+  clases INTEGER CHECK (clases IS NULL OR clases > 0),
+  meses INTEGER CHECK (meses IS NULL OR meses > 0),
+  activo INTEGER NOT NULL DEFAULT 1 CHECK (activo IN (0, 1))
+);
+
+-- El historial de cada alumno: cada paso (un cinturón, o una raya de su
+-- cinturón) con la fecha en que se lo dieron, quién lo anotó y una nota. El
+-- grado de hoy es el último de esa actividad; las clases "en el grado" son
+-- las de asistencias_clase después de esa fecha, más clases_antes: las que
+-- ya llevaba cuando se lo cargó en Nexo (un alumno que ya venía). Es su propio
+-- registro de quién y cuándo (CLAUDE.md §22); deshacer el último se audita.
+-- Hija de socios.
+CREATE TABLE IF NOT EXISTS socio_grados (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  socio_id INTEGER NOT NULL REFERENCES socios(id),
+  grado_id INTEGER NOT NULL REFERENCES grados(id),
+  raya INTEGER NOT NULL DEFAULT 0 CHECK (raya >= 0),
+  fecha TEXT NOT NULL,
+  clases_antes INTEGER NOT NULL DEFAULT 0 CHECK (clases_antes >= 0),
+  nota TEXT,
+  usuario_id INTEGER NOT NULL REFERENCES usuarios(id),
+  creada TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_socio_grados ON socio_grados(socio_id, fecha);
+
 -- Trabajos, u órdenes de trabajo (CLAUDE.md §29, hist. §78): lo que un negocio
 -- de servicios tiene que hacer para un cliente, con fecha, responsable y
 -- estado. El módulo `trabajos` lo puede prender cualquier negocio. No es un

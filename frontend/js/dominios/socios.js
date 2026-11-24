@@ -776,6 +776,9 @@ function pintarFicha(s) {
           )
           .join("");
 
+  // Su cinturón en cada actividad (hist. §230, dominios/grados.js).
+  invocar("pintar:gradosDelSocio", s);
+
   // Las clases a las que vino, por actividad (hist. §226): la base de los
   // grados. Sin ninguna, el panel no aparece.
   const clases = s.clases ?? { total: 0, por_actividad: [], ultimas: [] };

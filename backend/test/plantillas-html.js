@@ -154,7 +154,11 @@ const FUNCIONES_SEGURAS = new Set([
   'celdaMovil', // core/formato.js: escapa cada parte de la segunda línea del celular (hist. §96)
   'enLinea', // dominios/ayuda.js: esc() y después solo cambia **x** por <strong> (hist. §118)
   'htmlDeBloques', // dominios/ayuda.js: cada texto del manual pasa por enLinea
-  'enlaceSeccion' // dominios/ayuda.js: escapa el id y el título
+  'enlaceSeccion', // dominios/ayuda.js: escapa el id y el título
+  'dibujoCinturon', // dominios/grados.js: escapa los colores; las rayas son un número (hist. §230)
+  'barrita', // dominios/grados.js: recibe un número
+  'opcionesDePasos', // dominios/grados.js: escapa el valor y el nombre de cada paso
+  'numeroCampo' // dominios/grados.js: escapa el valor y el placeholder
 ]);
 const esFuncionSegura = (nombre) => FUNCIONES_SEGURAS.has(nombre) || /^Math\.\w+$/.test(nombre);
 const COMPARACION_DESPUES = /^\s*(\?(?![.?])|===|!==|==|!=|>=|<=|>|<|&&)/;

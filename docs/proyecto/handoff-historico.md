@@ -15857,3 +15857,82 @@ actividad, y que al tocar una clase del calendario se pudieran ver las otras.
 `ingreso-por-clase`), lint e i18n. En el navegador con un dojo de prueba:
 copiar el lunes de BJJ a martes y jueves deja los tres en la lista, y desde
 la clase del calendario se abre la lista; compu y 390 px, sin errores.
+
+## §230 — 24 de noviembre de 2026: cinturones y grados
+
+Lo que seguía en el dojo del profe (handoff, "Lo que sigue"): los cinturones,
+configurables por el profe, con aviso por cantidad de clases y contando desde
+un número inicial por alumno. Antes de diseñar se miró Gymdesk (rangos y
+programas; anotado al final de `docs/investigaciones/investigacion-gymdesk.md`).
+
+**Vocabulario (corrección del usuario a mitad de la etapa):** "acá a las rayas
+les decimos grados". En la pantalla, las rayas de un cinturón son **grados**
+("Azul · 2 grados") y la sección y el módulo se llaman **Cinturones**. En el
+código siguen siendo rayas (`grados.rayas`, `socio_grados.raya`) y la tabla
+`grados` es la lista de cinturones; los comentarios lo aclaran. En inglés, los
+grados son "stripes".
+
+**Qué hace.** Un módulo nuevo, `grados` ("Cinturones" en Configuración →
+Funciones; ningún tipo lo trae prendido, y se apaga solo si se apaga Socios).
+- **Cada actividad tiene su lista de cinturones** (BJJ, Judo: un alumno puede
+  ser azul en uno y amarillo en otro). Cada fila es un cinturón con sus grados,
+  como lo dice el profe (en Gymdesk cada raya es un rango más de la lista: en
+  BJJ serían 25 filas en vez de 5). Lo que pide cada paso: **clases por grado**,
+  **clases para llegar** al cinturón y **meses con el anterior** (los mínimos
+  de la IBJJF vienen en la plantilla de BJJ). Vacío = lo decide el profe a ojo
+  y no avisa. Color y franja del medio (los de chicos, "gris y blanco").
+- **El paso que sigue** (`core/grados.js`, el mismo para el servidor y la
+  pantalla): el próximo grado del cinturón o, con todos, el próximo cinturón.
+  Las clases se cuentan desde el último paso (las de la asistencia por clase
+  después de esa fecha, más las que ya llevaba al cargarlo); los meses, desde
+  que tiene el cinturón. La clase del mismo día del ascenso cuenta para el
+  grado anterior.
+- **La página `#/grados`** (menú Socios › Cinturones, los dos roles): por
+  actividad, **Listos para graduar** (se marcan y se gradúan juntos con la
+  fecha del examen y una nota; solo admin), los alumnos **por cinturón** con
+  cuánto les falta y una barrita, y **Vienen sin cinturón** (vinieron a clases
+  y no lo tienen cargado).
+- **Armar** (`#/grados/armar/<id>`, admin): plantillas (BJJ adultos, BJJ
+  chicos, judo o karate) o de cero, una tarjeta por cinturón que se ordena
+  arrastrando (`core/arrastrar.js`). Sacar uno que algún alumno tuvo lo da de
+  baja (sigue en su historial); uno que nadie tuvo se borra.
+- **Los que ya venían** (`#/grados/cargar/<id>`, admin): una fila por socio
+  sin cinturón en esa actividad (primero los que vienen a sus clases), con
+  cinturón y grado, desde cuándo y las clases desde el último ascenso.
+- **La ficha del socio:** su cinturón en cada actividad, cuánto le falta,
+  **Graduar** (propone el paso que sigue; se puede elegir otro) o **Ponerle su
+  cinturón**, y el historial con **Deshacer** en el último.
+- **El Resumen del gimnasio** suma "Para graduar".
+
+**Esquema (aditivo, solo `schema.sql`):** tablas `grados` (la lista de cada
+actividad) y `socio_grados` (el historial: grado, raya, fecha, clases_antes,
+nota, quién). No toca ninguna tabla que había.
+
+**Rutas:** `GET /api/grados` (los dos roles), `PUT /api/actividades/:id/grados`,
+`POST /api/grados/pasos` (uno o varios, todo o nada) y
+`DELETE /api/socios/:id/grados/:pasoId` (solo el último), del admin. La ficha
+del socio suma `grados` y `/api/reportes/socios` suma `para_graduar` (null sin
+el módulo). Los ascensos se auditan sobre el cliente (operacion_tipo socio) y
+la lista sobre la organización (operacion_tipo actividad).
+
+**Archivos:** `frontend/js/core/grados.js` y `frontend/js/dominios/grados.js`
+(nuevos), `socios.js` (invoca `pintar:gradosDelSocio`), `tablero.js`,
+`router.js`, `app.js`, `index.html`, `styles.css` (el cinturón dibujado),
+`img/iconos.svg` (`award`), `sw.js`, `idioma/en.js`, el manual (sección
+`cinturones`, castellano e inglés), `backend/server.js`, `perfiles.js`,
+`permisos.js`, `db/schema.sql`; tests `plantillas-html.js` (las cuatro
+funciones de `grados.js` que escapan adentro) y `registro.test.js` (la lista
+de módulos).
+
+**Verificado:** test nuevo `grados` (8 casos: reglas puras, armar desde la
+plantilla, los que ya venían con sus clases, el Resumen y el módulo, graduar
+varios juntos y todo o nada, los meses, la ficha y deshacer, los que vienen
+sin cinturón y sacar uno de la lista). `npm test` 569 de 569; lint, i18n y
+`verificar-migracion` (24 de 24) en verde. En el navegador
+con un dojo de prueba (base temporal): la página, armar, cargar, graduar desde
+la ficha; compu y 390 px, sin errores en la consola.
+
+**Falta:** cargar los cinturones en la cuenta real del dojo (los pasa el
+profe), y lo que vea el usuario al probarlo. Ideas para después: avisar en la
+clase (el panel de asistencia) quién está listo, y el cinturón mínimo por
+horario (anotado en la investigación).
