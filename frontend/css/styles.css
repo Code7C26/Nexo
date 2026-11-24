@@ -12619,6 +12619,14 @@ button.grilla-agenda-clase { cursor: pointer; }
 .grado-fila-campos { display: grid; grid-template-columns: repeat(auto-fill, minmax(9.5rem, 1fr)); gap: var(--sp-3); margin-top: var(--sp-3); }
 .form .grado-fila-campos label { margin: 0; }
 .form .grado-fila-campos label[hidden] { display: none; }
+.grado-tiempo { display: flex; gap: var(--sp-2); }
+.grado-tiempo input { flex: 1 1 4rem; min-width: 0; }
+.grado-tiempo select { flex: 0 1 auto; width: auto; }
+.grado-fila-reparto { grid-column: 1 / -1; margin: 0; }
+.form .grado-fila-campos .grado-distinto { display: flex; align-items: center; gap: var(--sp-2); align-self: end; }
+.grado-cada { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(auto-fill, minmax(6.5rem, 1fr)); gap: var(--sp-2); }
+.grado-cada[hidden] { display: none; }
+.form .grado-cada label { margin: 0; }
 .grado-colores { grid-column: 1 / -1; min-width: 0; margin: 0; padding: 0; border: 0; }
 .grado-colores legend { margin-bottom: var(--sp-2); font-size: var(--txt-sm); font-weight: 600; }
 .form .grado-colores .color-elegir { width: 30px; height: 30px; background: var(--cint); box-shadow: inset 0 0 0 1px rgb(0 0 0 / 0.2); }

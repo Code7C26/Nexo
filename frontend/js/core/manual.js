@@ -1174,7 +1174,7 @@ const SECCIONES_ES = [
     bloques: [
       "Para artes marciales: el cinturón y los grados de cada alumno, las clases que lleva y quién está listo para graduarse. Primero prendé **Cinturones** en Configuración → Funciones (va con Socios y cuotas).",
       { pasos: [
-        "En **Cinturones**, elegí la actividad y empezá con una lista armada (BJJ adultos, BJJ chicos, judo o karate) o de cero. Cada cinturón tiene sus grados y lo que pide: clases por grado, clases para llegar y meses con el anterior. Ordenalos arrastrando desde las tres rayas.",
+        "En **Cinturones**, elegí la actividad y empezá con una lista armada (BJJ adultos, BJJ chicos, judo o karate) o de cero. Cada cinturón tiene sus grados y cómo se sube: **por clases** (las clases en ese cinturón, que Nexo reparte entre sus grados y el paso al siguiente) o **por tiempo** (cada cuánto un grado, como el negro de BJJ, cada 3 años). Ordenalos arrastrando desde las tres rayas.",
         "Tocá **Cargar los que ya venían**: el cinturón de cada uno, desde cuándo lo tiene y cuántas clases lleva desde su último ascenso. Nexo sigue contando desde ahí.",
         "Las clases se cuentan solas con la lista de cada clase (la pantalla de entrada o la clase en **Clases**). Cuando alguien llega a lo que pide su próximo paso, aparece en **Listos para graduar** y en el Resumen.",
         "Marcá a los que gradúes, poné la fecha del examen y tocá **Graduar**. También se gradúa de a uno desde la ficha del socio."

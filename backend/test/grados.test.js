@@ -1,14 +1,14 @@
 // Grados y cinturones (hist. §230): la lista de cada actividad (un cinturón
 // con sus rayas por fila; en la pantalla, sus grados), el historial de cada alumno, el grado de los que
 // ya venían con las clases que llevaban, quién llegó a lo que pide el paso que
-// sigue (clases en el grado y meses con el cinturón) y graduar a varios
+// sigue (las clases del cinturón repartidas, o el tiempo; hist. §234) y graduar a varios
 // juntos. La lista y los ascensos son del admin; un negocio no ve ni toca los
 // de otro.
 import test, { before, after } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { crearEmpleado, levantarServidor, registrarEmpresa } from './servidor-de-prueba.js';
-import { PLANTILLAS_GRADOS, desdeElCinturon, estaListo, mesesEntre, proximoPaso, revisarGrados } from '../../frontend/js/core/grados.js';
+import { PLANTILLAS_GRADOS, clasesDelPaso, desdeElCinturon, estaListo, mesesEntre, proximoPaso, revisarGrados } from '../../frontend/js/core/grados.js';
 
 const ZONA = 'America/Argentina/Buenos_Aires';
 const dia = (n) => new Date(Date.now() + n * 86400000).toLocaleDateString('sv-SE', { timeZone: ZONA });
@@ -58,17 +58,29 @@ const vino = async (socioId, fecha) => {
 const alumno = async (socioId, actividadId = bjj) =>
   (await recepcion.get('/api/grados')).json.alumnos.find((a) => a.socio_id === socioId && a.actividad_id === actividadId);
 
-test('las reglas puras: la próxima raya o el próximo cinturón, los meses y lo que pide', () => {
+test('las reglas puras: la próxima raya o el próximo cinturón, y lo que pide su cinturón', () => {
   const lista = [
-    { id: 1, orden: 0, rayas: 4, clases_raya: 30, clases: null, meses: null, activo: true },
-    { id: 2, orden: 1, rayas: 4, clases_raya: 40, clases: 50, meses: 24, activo: true },
-    { id: 3, orden: 2, rayas: 0, clases_raya: null, clases: null, meses: null, activo: false },
-    { id: 4, orden: 3, rayas: 0, clases_raya: null, clases: 80, meses: null, activo: true }
+    { id: 1, orden: 0, rayas: 4, por: 'clases', clases_cinturon: 150, meses_paso: null, activo: true },
+    { id: 2, orden: 1, rayas: 4, por: 'clases', clases_cinturon: 202, meses_paso: null, activo: true },
+    { id: 3, orden: 2, rayas: 0, por: 'clases', clases_cinturon: 80, meses_paso: null, activo: false },
+    { id: 4, orden: 3, rayas: 6, por: 'tiempo', clases_cinturon: null, meses_paso: 36, activo: true }
   ];
+  // Las clases del cinturón se reparten entre sus 4 grados y el salto al
+  // siguiente: 150 son 30 por paso.
   assert.deepEqual(proximoPaso(lista, { grado_id: 1, raya: 2 }), { grado_id: 1, raya: 3, clases: 30, meses: null });
-  assert.deepEqual(proximoPaso(lista, { grado_id: 1, raya: 4 }), { grado_id: 2, raya: 0, clases: 50, meses: 24 });
-  assert.equal(proximoPaso(lista, { grado_id: 2, raya: 4 }).grado_id, 4, 'el dado de baja se saltea');
-  assert.equal(proximoPaso(lista, { grado_id: 4, raya: 0 }), null, 'el último');
+  assert.deepEqual(proximoPaso(lista, { grado_id: 1, raya: 4 }), { grado_id: 2, raya: 0, clases: 30, meses: null }, 'el salto lo pide el cinturón de hoy');
+  // 202 no da justo: unos piden una más, y entre todos suman 202.
+  const del2 = [0, 1, 2, 3].map((raya) => proximoPaso(lista, { grado_id: 2, raya }).clases);
+  assert.deepEqual(del2, [40, 41, 40, 41]);
+  assert.equal([1, 2, 3, 4, 5].reduce((suma, n) => suma + clasesDelPaso(202, 5, n), 0), 202);
+  assert.deepEqual(proximoPaso(lista, { grado_id: 2, raya: 4 }), { grado_id: 4, raya: 0, clases: 40, meses: null }, 'el dado de baja se saltea');
+  // El negro, por tiempo: un grado cada 36 meses, y no salta a ninguno.
+  assert.deepEqual(proximoPaso(lista, { grado_id: 4, raya: 0 }), { grado_id: 4, raya: 1, clases: null, meses: 36 });
+  assert.equal(proximoPaso(lista, { grado_id: 4, raya: 6 }), null, 'el último');
+  // Un tiempo distinto en cada grado (hist. §235), como lo guarda la base.
+  const negroPorGrado = [{ id: 9, orden: 0, rayas: 6, por: 'tiempo', meses_paso: null, meses_pasos: '36 36 36 36 60 60', activo: true }];
+  assert.deepEqual([0, 3, 4, 5].map((raya) => proximoPaso(negroPorGrado, { grado_id: 9, raya }).meses), [36, 36, 60, 60]);
+  assert.match(revisarGrados([{ nombre: 'Negro', color: 'negro', rayas: 6, por: 'tiempo', meses_pasos: [36, 60] }]).error, /6 pasos/);
   assert.equal(mesesEntre('2026-03-03', '2026-04-02'), 0);
   assert.equal(mesesEntre('2026-03-03', '2026-04-03'), 1);
   assert.equal(mesesEntre('2024-01-31', '2026-02-28'), 24);
@@ -84,22 +96,37 @@ test('las reglas puras: la próxima raya o el próximo cinturón, los meses y lo
   assert.match(revisarGrados([{ nombre: 'Azul', color: 'celeste' }]).error, /color/);
   assert.match(revisarGrados([{ nombre: 'Azul', color: 'azul' }, { nombre: 'azul', color: 'negro' }]).error, /dos veces/);
   assert.match(revisarGrados([{ nombre: 'Azul', color: 'azul', rayas: 11 }]).error, /grados/);
-  assert.match(revisarGrados([{ nombre: 'Azul', color: 'azul', clases: 0 }]).error, /clases/);
-  const { grados: limpios } = revisarGrados([{ nombre: ' Blanco ', color: 'blanco', rayas: 0, clases_raya: 30 }]);
-  assert.deepEqual(limpios[0], { id: null, nombre: 'Blanco', color: 'blanco', color2: null, rayas: 0, clases_raya: null, clases: null, meses: null, orden: 0 });
+  assert.match(revisarGrados([{ nombre: 'Azul', color: 'azul', rayas: 2, clases_cinturon: 0 }]).error, /clases/);
+  assert.match(revisarGrados([{ nombre: 'Azul', color: 'azul', rayas: 2, por: 'edad' }]).error, /por clases o por tiempo/);
+  assert.match(
+    revisarGrados([{ nombre: 'Blanco', color: 'blanco', rayas: 4, clases_cinturon: 3 }, { nombre: 'Azul', color: 'azul' }]).error,
+    /5 pasos.*al menos 5 clases/
+  );
+  // El último sin grados no pide nada; lo que no es de su forma no se guarda.
+  const { grados: limpios } = revisarGrados([{ nombre: ' Blanco ', color: 'blanco', rayas: 0, clases_cinturon: 30 }]);
+  assert.deepEqual(limpios[0], { id: null, nombre: 'Blanco', color: 'blanco', color2: null, rayas: 0, por: 'clases', clases_cinturon: null, meses_paso: null, meses_pasos: null, orden: 0 });
+  const { grados: negro } = revisarGrados([{ nombre: 'Negro', color: 'negro', rayas: 6, por: 'tiempo', meses_paso: 36, clases_cinturon: 100 }]);
+  assert.deepEqual([negro[0].por, negro[0].clases_cinturon, negro[0].meses_paso], ['tiempo', null, 36]);
 });
 
 test('armar los grados de una actividad: el admin, desde una plantilla, y la recepción los ve', async () => {
   assert.equal((await recepcion.put(`/api/actividades/${bjj}/grados`, { grados: [] })).status, 403);
   assert.equal((await otro.put(`/api/actividades/${bjj}/grados`, { grados: [] })).status, 404, 'la actividad de otro negocio');
   assert.equal((await admin.put(`/api/actividades/${bjj}/grados`, { grados: [{ nombre: 'Azul' }] })).status, 400);
-  // La plantilla de BJJ, con las clases que pide el profe.
-  const lista = PLANTILLAS_GRADOS.bjj.grados.map((g) => ({ ...g, clases_raya: 30, clases: g.nombre === 'Azul' ? 40 : g.clases }));
+  // La plantilla de BJJ, con las clases que pide el profe en cada cinturón: el
+  // blanco, 200 (40 por paso); los otros, 150 (30 por paso). El negro va por
+  // tiempo.
+  const lista = PLANTILLAS_GRADOS.bjj.grados.map((g) => ({ ...g, clases_cinturon: g.nombre === 'Blanco' ? 200 : 150 }));
   const r = await admin.put(`/api/actividades/${bjj}/grados`, { grados: lista });
   assert.equal(r.status, 200, r.texto);
   assert.deepEqual(r.json.grados.map((g) => [g.nombre, g.rayas]), [['Blanco', 4], ['Azul', 4], ['Violeta', 4], ['Marrón', 4], ['Negro', 6]]);
   grados = Object.fromEntries(r.json.grados.map((g) => [g.nombre, g]));
-  assert.equal(grados.Violeta.meses, 24, 'los meses de la IBJJF');
+  assert.deepEqual([grados.Azul.por, grados.Azul.clases_cinturon], ['clases', 150]);
+  assert.deepEqual(
+    [grados.Negro.por, grados.Negro.clases_cinturon, grados.Negro.meses_paso, grados.Negro.meses_pasos],
+    ['tiempo', null, null, [36, 36, 36, 36, 60, 60]],
+    'cada 3 años hasta el 4.º, cada 5 desde el 5.º'
+  );
   const pagina = (await recepcion.get('/api/grados')).json;
   assert.deepEqual(pagina.actividades.find((a) => a.id === judo).grados, [], 'Judo todavía no tiene');
   assert.equal(pagina.actividades.find((a) => a.id === bjj).grados.length, 5);
@@ -127,7 +154,8 @@ test('los que ya venían: su cinturón con las clases que llevaban, y cuándo ll
   await vino(lucia, dia(-1));
   l = await alumno(lucia);
   assert.deepEqual([l.clases, l.listo], [30, true]);
-  // Pedro tiene las 4 rayas de blanco: lo que sigue es el azul, que pide 40.
+  // Pedro tiene las 4 rayas de blanco: lo que sigue es el azul, y el último
+  // tramo del blanco pide 40.
   const p = await alumno(pedro);
   assert.deepEqual([p.siguiente.nombre, p.siguiente.clases, p.listo], ['Azul', 40, false]);
 });
@@ -192,14 +220,16 @@ test('graduar: varios juntos, todo o nada, y la fecha va desde el último paso',
   assert.ok(filas.some((f) => /Lucía Gómez: Azul · 3 grados en BJJ .*antes, Azul · 2 grados.*Muy buena guardia/.test(f.detalle ?? '')));
 });
 
-test('los meses con el cinturón: el violeta pide 24 con el azul, contados desde que lo tiene', async () => {
-  const r = await admin.post('/api/grados/pasos', { pasos: [{ socio_id: marta, grado_id: grados.Azul.id, fecha: dia(-800) }] });
+test('por tiempo: el negro da un grado cada 3 años, contados desde el último paso', async () => {
+  const r = await admin.post('/api/grados/pasos', { pasos: [{ socio_id: marta, grado_id: grados.Negro.id, fecha: dia(-1110) }] });
   assert.equal(r.status, 201, r.texto);
-  await admin.post('/api/grados/pasos', { pasos: [{ socio_id: marta, grado_id: grados.Azul.id, raya: 4, fecha: dia(-60), clases_antes: 10 }] });
-  const m = await alumno(marta);
-  assert.equal(m.desde_cinturon, dia(-800));
-  assert.ok(m.meses >= 24);
-  assert.deepEqual([m.siguiente.nombre, m.siguiente.meses, m.listo], ['Violeta', 24, true], 'el violeta no pide clases: alcanzan los meses');
+  let m = await alumno(marta);
+  assert.ok(m.meses >= 36);
+  assert.deepEqual([m.siguiente.nombre, m.siguiente.clases, m.siguiente.meses, m.listo], ['Negro · 1 grado', null, 36, true], 'no pide clases: alcanza el tiempo');
+  await admin.post('/api/grados/pasos', { pasos: [{ socio_id: marta, grado_id: grados.Negro.id, raya: 1, fecha: dia(-400) }] });
+  m = await alumno(marta);
+  assert.equal(m.desde_cinturon, dia(-1110), 'los grados no cambian desde cuándo tiene el cinturón');
+  assert.deepEqual([m.siguiente.nombre, m.meses < 36, m.listo], ['Negro · 2 grados', true, false], 'el tiempo corre desde el último grado');
 });
 
 test('la ficha del socio: su cinturón, el historial y deshacer solo el último', async () => {
@@ -228,14 +258,14 @@ test('los que vienen sin grado, y sacar un grado de la lista', async () => {
     [['Tomás Paz', bjj, 1]]
   );
   assert.ok(pagina.socios.some((s) => s.id === tomas), 'los socios para cargarles el grado');
-  // Negro no lo tiene nadie y se borra; Blanco lo tuvo Pedro y queda en su historial.
-  const sinBlancoNiNegro = pagina.actividades.find((a) => a.id === bjj).grados.filter((g) => !['Blanco', 'Negro'].includes(g.nombre));
-  const r = await admin.put(`/api/actividades/${bjj}/grados`, { grados: sinBlancoNiNegro });
+  // Violeta no lo tiene nadie y se borra; Blanco lo tuvo Pedro y queda en su historial.
+  const sinBlancoNiVioleta = pagina.actividades.find((a) => a.id === bjj).grados.filter((g) => !['Blanco', 'Violeta'].includes(g.nombre));
+  const r = await admin.put(`/api/actividades/${bjj}/grados`, { grados: sinBlancoNiVioleta });
   assert.equal(r.status, 200, r.texto);
-  assert.deepEqual(r.json.grados.map((g) => g.nombre), ['Azul', 'Violeta', 'Marrón']);
+  assert.deepEqual(r.json.grados.map((g) => g.nombre), ['Azul', 'Marrón', 'Negro']);
   const historialPedro = (await admin.get(`/api/socios/${pedro}`)).json.grados.find((g) => g.actividad.id === bjj).historial;
   assert.deepEqual(historialPedro.map((h) => h.nombre), ['Azul', 'Blanco · 4 grados']);
   // El dado de baja vuelve si se lo pone de nuevo; el borrado ya no es de la actividad.
   assert.equal((await admin.put(`/api/actividades/${bjj}/grados`, { grados: [{ id: grados.Blanco.id, nombre: 'Blanco', color: 'blanco' }] })).status, 200);
-  assert.equal((await admin.put(`/api/actividades/${bjj}/grados`, { grados: [{ id: grados.Negro.id, nombre: 'Negro', color: 'negro' }] })).status, 400);
+  assert.equal((await admin.put(`/api/actividades/${bjj}/grados`, { grados: [{ id: grados.Violeta.id, nombre: 'Violeta', color: 'violeta' }] })).status, 400);
 });

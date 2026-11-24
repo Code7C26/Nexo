@@ -2366,7 +2366,14 @@ for (const [tabla, columna] of [
   // anotó la clase.
   ['empleados', 'socio_id INTEGER REFERENCES socios(id)'],
   ['clase_fecha_profes', 'confirmado INTEGER NOT NULL DEFAULT 0 CHECK (confirmado IN (0, 1))'],
-  ['asistencias_clase', 'por_pantalla INTEGER NOT NULL DEFAULT 0 CHECK (por_pantalla IN (0, 1))']
+  ['asistencias_clase', 'por_pantalla INTEGER NOT NULL DEFAULT 0 CHECK (por_pantalla IN (0, 1))'],
+  // Cómo sube cada cinturón (hist. §234): por las clases en el cinturón o por
+  // tiempo. Lo de antes va por clases; sus números se pasan abajo, una vez.
+  ['grados', "por TEXT NOT NULL DEFAULT 'clases' CHECK (por IN ('clases', 'tiempo'))"],
+  ['grados', 'clases_cinturon INTEGER CHECK (clases_cinturon IS NULL OR clases_cinturon > 0)'],
+  ['grados', 'meses_paso INTEGER CHECK (meses_paso IS NULL OR meses_paso > 0)'],
+  // Un tiempo distinto para cada paso (hist. §235): NULL, el mismo para todos.
+  ['grados', 'meses_pasos TEXT']
 ]) {
   if (!db.prepare(`PRAGMA table_info(${tabla})`).all().some((col) => col.name === columna.split(' ')[0])) {
     db.exec(`ALTER TABLE ${tabla} ADD COLUMN ${columna}`);
@@ -2666,6 +2673,35 @@ if (db.prepare('PRAGMA user_version').get().user_version < 3) {
     throw err;
   }
   db.exec('PRAGMA user_version = 3');
+}
+
+// Los cinturones de antes pedían clases por raya y clases para llegar al
+// siguiente (hist. §230); ahora piden las clases de todo el cinturón (hist.
+// §234). Una vez: las de cada cinturón son sus rayas por las de cada una, más
+// las que pedía el siguiente para llegar. Los meses mínimos de antes no tienen
+// dónde ir (ahora se sube por clases o por tiempo) y quedan sin usar.
+if (db.prepare('PRAGMA user_version').get().user_version < 4) {
+  db.exec('BEGIN');
+  try {
+    const todos = db
+      .prepare('SELECT id, actividad_id, orden, rayas, clases_raya, clases, activo FROM grados ORDER BY actividad_id, orden, id')
+      .all();
+    for (const g of todos) {
+      const siguiente = todos.find((s) => s.actividad_id === g.actividad_id && s.activo && s.orden > g.orden);
+      const partes = [g.rayas > 0 && g.clases_raya ? g.rayas * g.clases_raya : null, siguiente?.clases ?? null].filter((n) => n != null);
+      if (partes.length) {
+        db.prepare('UPDATE grados SET clases_cinturon = ? WHERE id = ? AND clases_cinturon IS NULL').run(
+          partes.reduce((a, b) => a + b, 0),
+          g.id
+        );
+      }
+    }
+    db.exec('COMMIT');
+  } catch (err) {
+    db.exec('ROLLBACK');
+    throw err;
+  }
+  db.exec('PRAGMA user_version = 4');
 }
 
 // A cada cobro de antes se le deduce su medio (hist. §171): el efectivo, el de

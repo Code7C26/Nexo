@@ -2117,10 +2117,15 @@ CREATE TABLE IF NOT EXISTS asistencias_clase (
 -- alumno puede ser azul en BJJ y amarillo en Judo. Cada fila es un cinturón
 -- con sus rayas, como lo dice el profe (Gymdesk pone cada raya como un grado
 -- más de la lista; acá son 5 filas en BJJ y no 25). Lo que pide cada paso lo
--- miran las reglas de frontend/js/core/grados.js:
--- - clases_raya: las clases para cada una de sus rayas;
--- - clases: las clases para llegar a este cinturón desde la última raya del
---   anterior; meses: el tiempo mínimo con el anterior (los de la IBJJF).
+-- miran las reglas de frontend/js/core/grados.js, y lo dice el cinturón en el
+-- que está el alumno (hist. §234):
+-- - por = 'clases': clases_cinturon, las clases en este cinturón hasta el
+--   siguiente, repartidas parejo entre sus rayas y el salto al siguiente;
+-- - por = 'tiempo': meses_paso, cada cuántos meses un paso (el negro de BJJ,
+--   un grado cada 3 años).
+-- clases_raya, clases y meses son de la forma de antes (clases por raya, y
+-- clases y meses mínimos para llegar a cada cinturón): ya no se usan, y se
+-- pasaron una vez a clases_cinturon (db/index.js, user_version 4).
 -- NULL = no pide eso. color y color2 (la franja del medio de los de chicos,
 -- "gris y blanco") son los de COLORES_CINTURON, que valida server.js. Uno que
 -- algún alumno tuvo no se borra: activo = 0, y su historial lo sigue nombrando.
@@ -2136,7 +2141,13 @@ CREATE TABLE IF NOT EXISTS grados (
   clases_raya INTEGER CHECK (clases_raya IS NULL OR clases_raya > 0),
   clases INTEGER CHECK (clases IS NULL OR clases > 0),
   meses INTEGER CHECK (meses IS NULL OR meses > 0),
-  activo INTEGER NOT NULL DEFAULT 1 CHECK (activo IN (0, 1))
+  activo INTEGER NOT NULL DEFAULT 1 CHECK (activo IN (0, 1)),
+  por TEXT NOT NULL DEFAULT 'clases' CHECK (por IN ('clases', 'tiempo')),
+  clases_cinturon INTEGER CHECK (clases_cinturon IS NULL OR clases_cinturon > 0),
+  meses_paso INTEGER CHECK (meses_paso IS NULL OR meses_paso > 0),
+  -- El tiempo de cada paso, si es distinto en cada uno ("36 36 36 36 60 60";
+  -- hist. §235). NULL = meses_paso para todos.
+  meses_pasos TEXT
 );
 
 -- El historial de cada alumno: cada paso (un cinturón, o una raya de su

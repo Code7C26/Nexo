@@ -102,6 +102,7 @@ import {
   MAX_CLASES_GRADO,
   desdeElCinturon,
   estaListo,
+  mesesDeCadaPaso,
   mesesEntre,
   nombreDelPaso,
   proximoPaso,
@@ -25326,7 +25327,7 @@ const LARGO_NOTA_GRADO = 200;
 const MAX_PASOS_JUNTOS = 300;
 
 const SQL_GRADOS_DE = db.prepare(
-  `SELECT id, actividad_id, nombre, orden, color, color2, rayas, clases_raya, clases, meses, activo
+  `SELECT id, actividad_id, nombre, orden, color, color2, rayas, por, clases_cinturon, meses_paso, meses_pasos, activo
      FROM grados WHERE organizacion_id = ? ORDER BY actividad_id, orden, id`
 );
 const SQL_PASOS_DE = db.prepare(
@@ -25391,15 +25392,16 @@ const pasoConSuGrado = (grados, paso) => {
   return { nombre: nombreDelPaso(grado, paso.raya), color: grado.color, color2: grado.color2, rayas: grado.rayas };
 };
 
-// Dónde está un alumno en una actividad: su paso de hoy, las clases que lleva
-// en él, los meses con el cinturón, el paso que sigue y si ya llegó. Sin el
+// Dónde está un alumno en una actividad: su paso de hoy, las clases y los
+// meses que lleva en él (hist. §234), el paso que sigue y si ya llegó. Sin el
 // ingreso (hist. §233) nadie anota quién viene: las clases no se cuentan
-// (null) y el paso pide solo los meses; los grados los decide el profe.
+// (null), y lo que sube por clases lo decide el profe; lo que sube por tiempo
+// avisa igual.
 function situacionEnGrado(socioId, actividadId, grados, historial, hoy, contarClases = true) {
   const ultimo = historial.at(-1);
   const clases = contarClases ? ultimo.clases_antes + SQL_CLASES_EN_GRADO.get(socioId, actividadId, ultimo.fecha).n : null;
   const desde = desdeElCinturon(historial);
-  const meses = mesesEntre(desde, hoy);
+  const meses = mesesEntre(ultimo.fecha, hoy);
   const proximo = proximoPaso(grados, ultimo);
   const paso = proximo && !contarClases ? { ...proximo, clases: null } : proximo;
   return {
@@ -25423,9 +25425,10 @@ const gradoParaMostrar = (g) => ({
   color: g.color,
   color2: g.color2,
   rayas: g.rayas,
-  clases_raya: g.clases_raya,
-  clases: g.clases,
-  meses: g.meses
+  por: g.por,
+  clases_cinturon: g.clases_cinturon,
+  meses_paso: g.meses_paso,
+  meses_pasos: mesesDeCadaPaso(g.meses_pasos)
 });
 
 // La página: las actividades con sus grados, cada alumno que tiene uno (de los
@@ -25542,15 +25545,16 @@ app.put('/api/actividades/:id/grados', soloAdmin, (req, res) => {
   const usado = db.prepare('SELECT 1 FROM socio_grados WHERE grado_id = ? LIMIT 1');
   withTransaction(() => {
     for (const g of grados) {
-      const valores = [g.nombre, g.orden, g.color, g.color2, g.rayas, g.clases_raya, g.clases, g.meses];
+      const cada = g.meses_pasos ? g.meses_pasos.map((m) => m ?? '').join(' ') : null;
+      const valores = [g.nombre, g.orden, g.color, g.color2, g.rayas, g.por, g.clases_cinturon, g.meses_paso, cada];
       if (g.id != null) {
         db.prepare(
-          'UPDATE grados SET nombre = ?, orden = ?, color = ?, color2 = ?, rayas = ?, clases_raya = ?, clases = ?, meses = ?, activo = 1 WHERE id = ?'
+          'UPDATE grados SET nombre = ?, orden = ?, color = ?, color2 = ?, rayas = ?, por = ?, clases_cinturon = ?, meses_paso = ?, meses_pasos = ?, activo = 1 WHERE id = ?'
         ).run(...valores, g.id);
       } else {
         db.prepare(
-          `INSERT INTO grados (nombre, orden, color, color2, rayas, clases_raya, clases, meses, actividad_id, organizacion_id)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+          `INSERT INTO grados (nombre, orden, color, color2, rayas, por, clases_cinturon, meses_paso, meses_pasos, actividad_id, organizacion_id)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
         ).run(...valores, actividad.id, organizacionId);
       }
     }

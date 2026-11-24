@@ -54,29 +54,30 @@ test('sin el ingreso no se avisa quién parece que dejó', async () => {
   assert.equal((await admin.patch(`/api/socios/${alta.json.id}`, { estado: 'baja', bonificar_sin_venir: true })).status, 400);
 });
 
-test('sin el ingreso los cinturones cuentan solo los meses', async () => {
+test('sin el ingreso los cinturones avisan solo lo que sube por tiempo', async () => {
   await funciones('socios', 'ingreso', 'grados');
   const bjj = (await admin.post('/api/actividades', { nombre: 'BJJ', color: 'violeta' })).json.id;
   const clases = (await admin.post('/api/clases', { actividad_id: bjj, dias: [0, 1, 2, 3, 4, 5, 6], desde: '19:00', hasta: '20:30' })).json;
   const claseDel = Object.fromEntries(clases.map((c) => [c.dia_semana, c.id]));
   const r = await admin.put(`/api/actividades/${bjj}/grados`, {
     grados: [
-      { nombre: 'Blanco', color: 'blanco', rayas: 4, clases_raya: 30 },
-      { nombre: 'Azul', color: 'azul', rayas: 0, clases: 40, meses: 6 }
+      { nombre: 'Blanco', color: 'blanco', rayas: 4, clases_cinturon: 150 },
+      { nombre: 'Azul', color: 'azul', rayas: 4, por: 'tiempo', meses_paso: 6 },
+      { nombre: 'Violeta', color: 'violeta', rayas: 0 }
     ]
   });
   assert.equal(r.status, 200, r.texto);
-  const [blanco] = r.json.grados;
+  const [blanco, azul] = r.json.grados;
   const plan = (await admin.post('/api/planes-socio', { nombre: 'BJJ', opciones: [{ meses: 1, precio: 30000 }] })).json;
   const alta = async (nombre) => (await admin.post('/api/socios', { cliente: { nombre }, planes: [{ opcion_id: plan.opciones[0].id }] })).json.id;
   const ana = await alta('Ana Rayas');
   const beto = await alta('Beto Cuatro');
-  // Ana: blanco con un grado y 29 clases; Beto: blanco con los 4 grados desde
-  // hace 8 meses y 10 clases (el azul pide 40 clases y 6 meses).
+  // Ana: blanco con un grado y 29 clases (el blanco pide 150, 30 por paso);
+  // Beto: azul desde hace 8 meses y 10 clases (el azul, un grado cada 6 meses).
   const pasos = await admin.post('/api/grados/pasos', {
     pasos: [
       { socio_id: ana, grado_id: blanco.id, raya: 1, fecha: dia(-5), clases_antes: 29 },
-      { socio_id: beto, grado_id: blanco.id, raya: 4, fecha: dia(-240), clases_antes: 10 }
+      { socio_id: beto, grado_id: azul.id, raya: 0, fecha: dia(-240), clases_antes: 10 }
     ]
   });
   assert.equal(pasos.status, 201, pasos.texto);
@@ -87,14 +88,14 @@ test('sin el ingreso los cinturones cuentan solo los meses', async () => {
   let a = await alumno(ana);
   let b = await alumno(beto);
   assert.deepEqual([a.clases, a.siguiente.clases, a.listo], [30, 30, true], 'con el ingreso cuentan las clases');
-  assert.deepEqual([b.clases, b.siguiente.clases, b.listo], [10, 40, false], 'le faltan clases para el azul');
-  assert.equal((await admin.get('/api/reportes/socios')).json.para_graduar, 1);
+  assert.deepEqual([b.clases, b.siguiente.clases, b.siguiente.meses, b.listo], [10, null, 6, true], 'el azul sube por tiempo');
+  assert.equal((await admin.get('/api/reportes/socios')).json.para_graduar, 2);
 
   await funciones('socios', 'grados');
   a = await alumno(ana);
   b = await alumno(beto);
   assert.deepEqual([a.clases, a.siguiente.clases, a.listo], [null, null, false], 'el grado lo decide el profe');
-  assert.deepEqual([b.clases, b.siguiente.clases, b.siguiente.meses, b.listo], [null, null, 6, true], 'el azul, por los meses');
+  assert.deepEqual([b.clases, b.siguiente.clases, b.siguiente.meses, b.listo], [null, null, 6, true], 'el azul, por tiempo, avisa igual');
   const ficha = (await admin.get(`/api/socios/${beto}`)).json;
   assert.equal(ficha.grados.find((x) => x.actividad.id === bjj).situacion.clases, null);
 });
@@ -120,7 +121,7 @@ test('a los negocios con socios se les prende una vez al arrancar, y apagado que
     base = new DatabaseSync(dbPath);
     assert.equal(modulos(base, 'Gimnasio Viejo'), 'pos socios ingreso grados');
     assert.equal(modulos(base, 'Kiosco Viejo'), 'pos stock');
-    assert.equal(base.prepare('PRAGMA user_version').get().user_version, 3);
+    assert.ok(base.prepare('PRAGMA user_version').get().user_version >= 3);
     // El admin lo apaga: el próximo arranque no lo vuelve a prender.
     base.prepare("UPDATE organizaciones SET modulos = 'pos socios grados' WHERE nombre = 'Gimnasio Viejo'").run();
     base.close();

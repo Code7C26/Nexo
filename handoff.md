@@ -11,7 +11,7 @@
 
 - Al cerrar una etapa, se hacen tres cosas:
   - su relato completo se agrega al final de `docs/proyecto/handoff-historico.md` con el
-    siguiente número (hoy el último es §233);
+    siguiente número (hoy el último es §235);
   - acá se actualizan "Estado actual" y "Qué sigue";
   - si cambió alguna decisión vigente, se actualiza también esa lista.
 - Nunca apilar secciones "Última etapa" en este archivo: así fue como llegó a
@@ -375,10 +375,22 @@ negocio con socios, `user_version` 3). Apagado: sin Ingreso ni pantalla de
 entrada, sin "No vienen" ni "Parece que dejó", y los cinturones cuentan solo
 los meses (`anotaIngresos` en `server.js`). Test nuevo `ingreso-apagado`;
 `npm test` 576. **No se probó en el navegador** (el Chrome de las
-herramientas estaba tomado). **Sin publicar.**
+herramientas estaba tomado). Publicado (PR #130).
 - **Decisión del usuario:** nada de "Empezar de cero". Cuando dé acceso a
   Morro, Claude borra lo de prueba que él pida (cuotas, ingresos…), **nunca
   planes, combos ni horarios**.
+
+**24 de noviembre, hist. §234: los cinturones suben por clases del cinturón o
+por tiempo** (pedido del usuario). Cada cinturón elige **Por clases** (las
+clases en ese cinturón hasta el siguiente; Nexo las reparte parejo entre sus
+grados y el salto al siguiente: 150 con 4 grados = 30 por paso) o **Por
+tiempo** (un grado cada X meses o años; la plantilla de BJJ trae el negro cada
+3 años). Lo pide el cinturón en el que está el alumno, y clases y meses se
+cuentan desde el último paso. Sin ingreso, avisa solo lo que va por tiempo.
+Esquema aditivo `grados.por`, `clases_cinturon`, `meses_paso`; `user_version`
+4 pasa lo de antes a `clases_cinturon`. `npm test` 575 de 576 (falla el
+`EPERM` de Windows al borrar la carpeta temporal en `ingreso-apagado`, ajeno),
+lint e i18n en verde. Después (hist. §235): por tiempo, **Distinto en cada grado** pone un tiempo por paso (`grados.meses_pasos`, aditiva; el negro de la plantilla, 3 años hasta el 4.º y 5 desde el 5.º). **No probado en el navegador ni publicado.**
 
 **Lo que sigue (próxima sesión):** en Morro, apagar el ingreso y borrar lo de
 prueba que pase el usuario. Después, el usuario revisa los cinturones y dice qué
