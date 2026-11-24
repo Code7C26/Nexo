@@ -277,6 +277,13 @@ export const RUTAS_PERMISOS = {
   'PATCH /api/actividades/:id': 'admin',
   'POST /api/clases': 'admin',
   'PATCH /api/clases/:id': 'admin',
+  // La asistencia por clase (hist. §226): la lista la toman la recepción y el
+  // profe, y anotan quién la dio (el suplente).
+  'GET /api/clases/:id/fechas/:fecha': 'ambos',
+  'PUT /api/clases/:id/fechas/:fecha': 'ambos',
+  'POST /api/clases/:id/fechas/:fecha/asistencias': 'ambos',
+  'DELETE /api/clases/:id/fechas/:fecha/asistencias/:socioId': 'ambos',
+  'GET /api/asistencia': 'ambos',
   // La pantalla de entrada y los avisos que le deja a la recepción (hist. §144).
   // El QR de Mercado Pago en el mostrador (hist. §145): cancelar el que no se
   // pagó. Solo las ventas que esperan un QR, no cualquier venta.

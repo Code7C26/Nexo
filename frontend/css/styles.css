@@ -12252,6 +12252,123 @@ button.grilla-agenda-clase { cursor: pointer; }
   .grilla-abierto { flex-direction: row; flex-wrap: wrap; border-bottom: 0; }
 }
 
+/* ---------- La clase de un día y las clases dadas (hist. §226) ---------- */
+
+/* Lo anotado esta semana en el bloque de la grilla y en la agenda. */
+.grilla-clase .grilla-clase-anotada,
+.grilla-agenda-que .grilla-clase-anotada { color: var(--ink); font-weight: 600; }
+.grilla-clase.es-suspendida { opacity: 0.55; background: repeating-linear-gradient(135deg, color-mix(in srgb, var(--c) 10%, var(--surface)) 0 6px, var(--surface) 6px 12px); }
+
+#claseDia { margin-top: var(--sp-4); }
+.clase-dia-cabeza { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: var(--sp-2); }
+.clase-dia-cabeza .campo-ayuda { margin: 2px 0 0; }
+.clase-dia-fechas { display: flex; align-items: center; gap: var(--sp-2); }
+.clase-dia-fecha { flex: 1 1 auto; text-align: center; font-weight: 600; }
+.clase-dia-fecha::first-letter { text-transform: uppercase; }
+.chip-elegir small { color: var(--ink-muted); font-weight: 600; }
+.clase-dia-guardar { display: flex; justify-content: flex-end; }
+
+.clase-dia-lista { display: flex; flex-direction: column; gap: var(--sp-3); padding-top: var(--sp-3); border-top: 1px solid var(--line); }
+.clase-dia-lista[hidden] { display: none; }
+.clase-dia-asistentes,
+.clase-dia-encontrados { display: grid; gap: var(--sp-1); margin: 0; padding: 0; list-style: none; }
+.clase-dia-asistentes li {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-3);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+}
+.clase-dia-quien { flex: 1 1 auto; min-width: 0; }
+.clase-dia-quien small,
+.clase-dia-encontrado small { color: var(--ink-muted); }
+.clase-dia-sugeridos:empty { display: none; }
+.clase-dia-sugeridos .campo-ayuda { margin: 0 0 var(--sp-1); }
+.clase-dia-chips { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
+.chip-sumar {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 36px;
+  padding: 4px 12px 4px 8px;
+  font: inherit;
+  font-size: var(--txt-sm);
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px dashed var(--line);
+  border-radius: 999px;
+  cursor: pointer;
+}
+.chip-sumar:hover { border-style: solid; border-color: var(--accent); }
+.chip-sumar .ico { color: var(--accent); }
+.clase-dia-encontrado {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-2);
+  width: 100%;
+  min-height: 44px;
+  padding: var(--sp-2) var(--sp-3);
+  font: inherit;
+  text-align: left;
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  cursor: pointer;
+}
+.clase-dia-encontrado:hover { border-color: var(--accent); }
+.clase-dia-anotar { display: inline-flex; align-items: center; gap: 4px; flex: none; color: var(--accent); font-weight: 600; }
+
+.socio-clases-actividades { display: flex; flex-wrap: wrap; gap: var(--sp-2); margin: 0 0 var(--sp-2); padding: 0; list-style: none; }
+.socio-clases-actividades li {
+  display: flex;
+  flex-direction: column;
+  min-width: 10rem;
+  padding: var(--sp-2) var(--sp-3);
+  background: color-mix(in srgb, var(--c) 10%, var(--surface));
+  border-left: 4px solid var(--c);
+  border-radius: var(--r-md);
+}
+.socio-clases-actividades .grilla-punto { display: none; }
+.socio-clases-actividades span { color: var(--ink-muted); font-size: var(--txt-sm); }
+
+.asistencia-resumen:empty { display: none; }
+.asistencia-profes { display: flex; flex-wrap: wrap; gap: var(--sp-2) var(--sp-5); margin: var(--sp-3) 0 0; padding: 0; list-style: none; }
+.asistencia-profes li { display: flex; flex-direction: column; font-size: var(--txt-sm); }
+.asistencia-profes span { color: var(--ink-muted); }
+.asistencia-lista { display: grid; gap: var(--sp-2); margin: var(--sp-3) 0 0; padding: 0; list-style: none; }
+.asistencia-clase {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  width: 100%;
+  padding: var(--sp-2) var(--sp-3);
+  font: inherit;
+  text-align: left;
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--c);
+  border-radius: var(--r-md);
+  cursor: pointer;
+}
+.asistencia-clase:hover { background: color-mix(in srgb, var(--c) 8%, var(--surface)); }
+.asistencia-cuando { display: flex; flex-direction: column; flex: none; min-width: 9.5rem; font-size: var(--txt-xs); color: var(--ink-muted); font-variant-numeric: tabular-nums; }
+.asistencia-cuando strong { color: var(--ink); font-size: var(--txt-sm); }
+.asistencia-cuando strong::first-letter { text-transform: uppercase; }
+.asistencia-que { display: flex; flex-direction: column; flex: 1 1 auto; min-width: 0; }
+.asistencia-que span { color: var(--ink-muted); font-size: var(--txt-sm); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.asistencia-cuantos { flex: none; font-weight: 600; font-size: var(--txt-sm); }
+.asistencia-cuantos.es-suspendida { color: var(--ink-muted); font-weight: 400; }
+
+@media (max-width: 560px) {
+  .asistencia-clase { flex-wrap: wrap; gap: var(--sp-1) var(--sp-3); }
+  .asistencia-cuando { flex-basis: 100%; min-width: 0; flex-direction: row; gap: var(--sp-2); align-items: baseline; }
+  .asistencia-cuantos { margin-left: auto; }
+}
+
 /* ---------- Cuotas del mes (hist. §208) ---------- */
 
 .cuotas-mes {

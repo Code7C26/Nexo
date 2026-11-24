@@ -407,3 +407,12 @@ Cada una se planifica con el equipo al arrancarla (CLAUDE.md §27).
   noviembre): que mande los mensajes solo, vaya calificando a los contactos y
   conteste consultas. Detalle en `handoff.md`, "Para más adelante" (el ARM);
   depende del punto 5 y del costo por mensaje de Meta.
+- [ ] **(U) La empresa y sus apps** (usuario, 23 de noviembre; se ve al
+  escalar). La consigna pide un nombre para la empresa y otro para la app.
+  La idea: una empresa con Nexo como app general y apps especializadas que se
+  venden por su cuenta (la de artes marciales, como Gymdesk). Investigado en
+  `docs/investigaciones/investigacion-app-general-y-especializadas.md`: la
+  empresa con su nombre y cada producto con el suyo (Block y Square, Axoft y
+  Tango, Daxko y Zen Planner), y la app especializada como marca y armado
+  propios (alta, módulos prendidos, precio) sobre el mismo código (CLAUDE.md
+  §29). Falta decidir con Joaquín los nombres y los precios.

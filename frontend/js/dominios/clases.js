@@ -7,12 +7,17 @@
  * actividades de horario libre (Musculación, abierta de 7 a 23) van arriba de
  * cada día, no en la línea de horas. La imagen para compartir es la misma
  * grilla dibujada en un PNG, para Instagram o el estado de WhatsApp.
- * Pantalla sobre /api/grilla, /api/actividades, /api/clases y /api/empleados.
+ * Tocar una clase de horario fijo abre esa clase en un día (hist. §226): quién
+ * la dio de verdad (el suplente), si se dio y la lista de los que vinieron,
+ * con los que entraron ese día y los que suelen venir a mano. "Clases dadas"
+ * junta lo anotado, por profe.
+ * Pantalla sobre /api/grilla, /api/actividades, /api/clases, /api/empleados,
+ * /api/clases/:id/fechas/:fecha, /api/asistencia y /api/socios.
  */
 
 import { api } from "../core/api.js";
 import { avisar, confirmar } from "../core/ui.js";
-import { esAdmin, esc } from "../core/formato.js";
+import { badge, esAdmin, esc } from "../core/formato.js";
 import { negocio } from "../core/negocio.js";
 import { temaActual } from "../core/tema.js";
 import { alEntrarEnVista } from "../core/registro.js";
@@ -39,7 +44,7 @@ const formClase = document.getElementById("formClase");
 const formActividad = document.getElementById("formActividadGrilla");
 const selectSucursal = document.getElementById("grillaSucursal");
 
-let datos = { actividades: [], clases: [], profes: [], colores: [] };
+let datos = { actividades: [], clases: [], profes: [], colores: [], semana: { hoy: "", lunes: "", anotadas: [] } };
 let sucursales = [];
 let sucursal = "";
 // 0 = lunes, como el servidor.
@@ -60,6 +65,27 @@ const nombreClase = (clase) =>
     .join(" + ");
 const nombresProfes = (clase) => clase.profes.map((p) => p.nombre).join(", ");
 const hoy = () => (new Date().getDay() + 6) % 7;
+
+// Fechas AAAA-MM-DD, sin la hora: el día del negocio lo da el servidor.
+const sumarDias = (fecha, n) => {
+  const d = new Date(`${fecha}T12:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + n);
+  return d.toISOString().slice(0, 10);
+};
+const fechaLarga = (fecha) =>
+  new Date(`${fecha}T12:00:00Z`).toLocaleDateString("es-AR", { timeZone: "UTC", weekday: "long", day: "numeric", month: "long" });
+// La fecha de esta semana de un horario, y lo que se anotó de él.
+const fechaEstaSemana = (clase) => sumarDias(datos.semana.lunes, clase.dia_semana);
+const anotadaEstaSemana = (clase) => datos.semana.anotadas.find((a) => a.clase_id === clase.id && a.fecha === fechaEstaSemana(clase));
+const esFija = (clase) => actividadDe(clase)?.horario === "fijo";
+
+// Lo anotado de esta semana, en una línea: "12 vinieron · suplente".
+function textoAnotada(clase) {
+  const a = anotadaEstaSemana(clase);
+  if (!a) return "";
+  if (a.estado === "suspendida") return "No se dio";
+  return [a.asistentes ? `${a.asistentes} ${a.asistentes === 1 ? "vino" : "vinieron"}` : "", a.con_suplente ? "suplente" : ""].filter(Boolean).join(" · ");
+}
 
 // Las de la sucursal elegida, más las que no son de ninguna.
 // Las de la actividad elegida en la leyenda, si hay una.
@@ -210,31 +236,35 @@ function vacio() {
     </div>`;
 }
 
-// Un horario en la línea del día. El admin lo toca para editarlo.
+// Un horario en la línea del día. Se toca para abrir la clase de esta semana
+// (quién la dio y quién vino).
 function bloque({ clase, columna, columnas }, y) {
   const actividad = actividadDe(clase);
   const nombre = nombreClase(clase);
   const top = y(minutos(clase.desde));
   const alto = Math.max(y(minutos(clase.hasta)) - top - 3, 22);
   const extra = [clase.detalle, clase.cupo ? `cupo ${clase.cupo}` : "", sucursal ? "" : clase.sucursal].filter(Boolean).join(" · ");
-  const titulo = [nombre, `${clase.desde} a ${clase.hasta}`, nombresProfes(clase), extra].filter(Boolean).join(" · ");
-  const etiqueta = esAdmin() ? "button" : "div";
+  const anotada = textoAnotada(clase);
+  const titulo = [nombre, `${clase.desde} a ${clase.hasta}`, nombresProfes(clase), extra, anotada].filter(Boolean).join(" · ");
   // Solo las líneas que entran enteras (de a unos 16 px): primero qué es y a
-  // qué hora, después quién la da y el detalle. El resto está en el title.
+  // qué hora, después lo anotado esta semana, quién la da y el detalle. El
+  // resto está en el title.
   const lineas = [
     `<strong>${esc(nombre)}</strong>`,
     `<span class="grilla-clase-hora">${esc(clase.desde)}–${esc(clase.hasta)}</span>`,
+    anotada ? `<span class="grilla-clase-anotada">${esc(anotada)}</span>` : "",
     clase.profes.length ? `<span>${esc(nombresProfes(clase))}</span>` : "",
     extra ? `<span class="grilla-clase-extra">${esc(extra)}</span>` : ""
   ].filter(Boolean);
   const corta = alto < 52;
   const entran = corta ? 2 : Math.max(2, Math.floor((alto - 8) / 16));
   const contenido = lineas.slice(0, entran).join("");
+  const suspendida = anotadaEstaSemana(clase)?.estado === "suspendida";
   return `
-    <${etiqueta} ${etiqueta === "button" ? 'type="button" ' : ""}class="grilla-clase color-${esc(actividad.color)}${corta ? " es-corta" : ""}" data-clase="${clase.id}"
+    <button type="button" class="grilla-clase color-${esc(actividad.color)}${corta ? " es-corta" : ""}${suspendida ? " es-suspendida" : ""}" data-clase="${clase.id}"
       style="top:${top}px;height:${alto}px;left:calc(${(columna / columnas) * 100}% + 2px);width:calc(${100 / columnas}% - 4px)" title="${esc(titulo)}">
       ${contenido}
-    </${etiqueta}>`;
+    </button>`;
 }
 
 function libre(clase) {
@@ -248,23 +278,24 @@ function libre(clase) {
 // en la línea de horas no entra: quién la da, el detalle y el cupo.
 function pintarAgenda(fijas) {
   const delDia = fijas.filter((c) => c.dia_semana === diaElegido).sort((a, b) => a.desde.localeCompare(b.desde));
-  const etiqueta = esAdmin() ? "button" : "div";
   document.getElementById("grillaAgenda").innerHTML = delDia.length
     ? delDia
         .map((c) => {
           const a = actividadDe(c);
           const nombre = nombreClase(c);
           const extra = [c.detalle, c.cupo ? `cupo ${c.cupo}` : "", sucursal ? "" : c.sucursal].filter(Boolean).join(" · ");
+          const anotada = textoAnotada(c);
           return `
             <li>
-              <${etiqueta} ${etiqueta === "button" ? 'type="button" ' : ""}class="grilla-agenda-clase color-${esc(a.color)}" data-clase="${c.id}">
+              <button type="button" class="grilla-agenda-clase color-${esc(a.color)}" data-clase="${c.id}">
                 <span class="grilla-agenda-hora"><strong>${esc(c.desde)}</strong>${esc(c.hasta)}</span>
                 <span class="grilla-agenda-que">
                   <strong>${esc(nombre)}</strong>
                   ${c.profes.length ? `<span>${esc(nombresProfes(c))}</span>` : ""}
                   ${extra ? `<span>${esc(extra)}</span>` : ""}
+                  ${anotada ? `<span class="grilla-clase-anotada">${esc(anotada)}</span>` : ""}
                 </span>
-              </${etiqueta}>
+              </button>
             </li>`;
         })
         .join("")
@@ -345,6 +376,8 @@ async function cargar() {
   selectSucursal.value = sucursal;
   pintarGrilla();
   if (esAdmin()) pintarActividades();
+  pintarFiltrosHistorial();
+  await cargarHistorial();
 }
 
 selectSucursal.addEventListener("change", () => {
@@ -366,9 +399,15 @@ grilla.addEventListener("click", (e) => {
   editarTocado(e);
 });
 
+// Una clase de horario fijo se abre en su día (la lista); una franja libre,
+// para editarla (solo el admin la tiene como botón).
 function editarTocado(e) {
-  const clase = e.target.closest("button[data-clase]");
-  if (clase) abrirClase(datos.clases.find((c) => c.id === Number(clase.dataset.clase)));
+  const boton = e.target.closest("button[data-clase]");
+  if (!boton) return;
+  const clase = datos.clases.find((c) => c.id === Number(boton.dataset.clase));
+  if (!clase) return;
+  if (esFija(clase)) abrirDia(clase, fechaEstaSemana(clase));
+  else abrirClase(clase);
 }
 
 document.getElementById("grillaAgenda").addEventListener("click", editarTocado);
@@ -426,6 +465,7 @@ function abrirClase(clase = null) {
     return;
   }
   formActividad.hidden = true;
+  panelDia.hidden = true;
   editando = clase;
   const form = formClase;
   form.reset();
@@ -562,6 +602,317 @@ document.getElementById("btnClaseSacar").addEventListener("click", async () => {
   await cargar();
 });
 
+/* ---------- La clase de un día (hist. §226) ---------- */
+
+const panelDia = document.getElementById("claseDia");
+// La clase abierta: el horario, la fecha y lo que dijo el servidor.
+let abierta = null;
+// Los socios, para buscar a quién anotar y mostrar si debe. Se piden al abrir
+// la primera clase.
+let socios = null;
+const MAX_ENCONTRADOS = 8;
+
+const normalizar = (s) =>
+  String(s ?? "")
+    .normalize("NFD")
+    .replace(/\p{M}/gu, "")
+    .toLowerCase()
+    .trim();
+const socioDe = (id) => socios?.find((s) => s.id === id);
+const marcaSituacion = (id) => {
+  const s = socioDe(id);
+  if (s?.situacion === "debe") return badge("status-vencido", "Debe").html;
+  if (s?.situacion === "baja") return badge("", "De baja").html;
+  return "";
+};
+const limiteAtras = () => sumarDias(datos.semana.hoy, -364);
+const limiteAdelante = () => sumarDias(datos.semana.hoy, 14);
+
+async function abrirDia(clase, fecha) {
+  formClase.hidden = true;
+  formActividad.hidden = true;
+  const [detalle] = await Promise.all([
+    api(`/api/clases/${clase.id}/fechas/${fecha}`, { error: "No se pudo abrir la clase." }),
+    socios ? null : api("/api/socios", { error: "No se pudieron cargar los socios." }).then((lista) => (socios = lista))
+  ]);
+  abierta = { clase, fecha, detalle };
+  document.getElementById("claseDiaBuscar").value = "";
+  pintarDia();
+  panelDia.hidden = false;
+  panelDia.scrollIntoView({ behavior: "smooth", block: "nearest" });
+}
+
+function pintarDia() {
+  const { clase, fecha, detalle } = abierta;
+  const esHoy = fecha === datos.semana.hoy;
+  document.getElementById("claseDiaTitulo").textContent = nombreClase(clase) || detalle.actividad;
+  document.getElementById("claseDiaHorario").textContent = `Los ${DIAS[clase.dia_semana].toLowerCase()} de ${clase.desde} a ${clase.hasta}${clase.detalle ? ` · ${clase.detalle}` : ""}`;
+  document.getElementById("claseDiaFecha").textContent = `${fechaLarga(fecha)}${esHoy ? " · hoy" : ""}`;
+  document.getElementById("btnClaseDiaAntes").disabled = sumarDias(fecha, -7) < limiteAtras();
+  document.getElementById("btnClaseDiaDespues").disabled = sumarDias(fecha, 7) > limiteAdelante();
+
+  // Los profes del negocio, más los de ese día que ya no están (uno dado de baja).
+  const elegidos = new Set(detalle.profes.map((p) => p.id));
+  const deGrilla = new Set(detalle.profes_grilla.map((p) => p.id));
+  const todos = [...datos.profes, ...detalle.profes.filter((p) => !datos.profes.some((x) => x.id === p.id))];
+  document.getElementById("claseDiaProfes").innerHTML = todos.length
+    ? todos
+        .map(
+          (p) => `
+          <label class="chip-elegir">
+            <input type="checkbox" value="${p.id}" ${elegidos.has(p.id) ? "checked" : ""} />
+            ${esc(p.nombre)}${elegidos.has(p.id) && !deGrilla.has(p.id) ? " <small>suplente</small>" : ""}
+          </label>`
+        )
+        .join("")
+    : `<p class="campo-ayuda">Todavía no hay profes: sumalos en Empleados o al cargar el horario.</p>`;
+  document.getElementById("claseDiaSuspendida").checked = detalle.estado === "suspendida";
+  document.getElementById("claseDiaNota").value = detalle.nota ?? "";
+
+  // La lista: de hoy para atrás, y si la clase se dio.
+  const futura = fecha > datos.semana.hoy;
+  const suspendida = detalle.estado === "suspendida";
+  document.getElementById("claseDiaLista").hidden = futura || suspendida;
+  const aviso = document.getElementById("claseDiaFutura");
+  aviso.hidden = !futura && !suspendida;
+  aviso.textContent = suspendida
+    ? "Esta clase no se dio: para tomar la lista, destildá «No se dio» y guardá."
+    : "La lista se toma el día de la clase. Para adelante se puede anotar quién la va a dar o que no se da.";
+  if (futura || suspendida) return;
+
+  const n = detalle.asistentes.length;
+  document.getElementById("claseDiaVinieron").textContent = n ? `Vinieron ${n}` : "Todavía no se anotó a nadie";
+  document.getElementById("claseDiaAsistentes").innerHTML = detalle.asistentes
+    .map(
+      (a) => `
+      <li>
+        <span class="clase-dia-quien"><strong>${esc(a.nombre)}</strong> <small>N° ${esc(a.numero)}</small> ${marcaSituacion(a.socio_id)}</span>
+        <button type="button" class="btn-icon" data-sacar="${a.socio_id}" aria-label="Sacar a ${esc(a.nombre)} de la lista" title="Sacar de la lista"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#x"></use></svg></button>
+      </li>`
+    )
+    .join("");
+  const chips = (lista) =>
+    lista
+      .map((s) => `<button type="button" class="chip-sumar" data-anotar="${s.socio_id}"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#plus"></use></svg>${esc(s.nombre)}</button>`)
+      .join("");
+  const { entraron, suelen_venir: suelen } = detalle;
+  const chipsEntraron = chips(entraron);
+  const chipsSuelen = chips(suelen);
+  const botonTodos = entraron.length > 1 ? `<button type="button" class="btn btn-secundario btn-chico" data-anotar-todos>Anotar a los ${esc(entraron.length)}</button>` : "";
+  document.getElementById("claseDiaEntraron").innerHTML = entraron.length
+    ? `<p class="campo-ayuda">${esHoy ? "Entraron hoy" : "Entraron ese día"}</p><div class="clase-dia-chips">${chipsEntraron}${botonTodos}</div>`
+    : "";
+  document.getElementById("claseDiaSuelen").innerHTML = suelen.length
+    ? `<p class="campo-ayuda">Suelen venir a esta clase</p><div class="clase-dia-chips">${chipsSuelen}</div>`
+    : "";
+  pintarEncontrados();
+}
+
+// Lo que se busca, entre los socios que todavía no están en la lista.
+function pintarEncontrados() {
+  const lista = document.getElementById("claseDiaEncontrados");
+  const texto = normalizar(document.getElementById("claseDiaBuscar").value);
+  if (!texto || !abierta) {
+    lista.innerHTML = "";
+    return;
+  }
+  const vinieron = new Set(abierta.detalle.asistentes.map((a) => a.socio_id));
+  const digitos = texto.replace(/\D/g, "");
+  const encontrados = (socios ?? [])
+    .filter((s) => !vinieron.has(s.id))
+    .filter(
+      (s) =>
+        normalizar(s.nombre).includes(texto) ||
+        (digitos && (String(s.numero) === digitos || String(s.documento ?? "").replace(/\D/g, "").includes(digitos)))
+    )
+    .slice(0, MAX_ENCONTRADOS);
+  lista.innerHTML = encontrados.length
+    ? encontrados
+        .map(
+          (s) => `
+          <li>
+            <button type="button" class="clase-dia-encontrado" data-anotar="${s.id}">
+              <span><strong>${esc(s.nombre)}</strong> <small>N° ${esc(s.numero)}</small> ${marcaSituacion(s.id)}</span>
+              <span class="clase-dia-anotar"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#plus"></use></svg> Anotar</span>
+            </button>
+          </li>`
+        )
+        .join("")
+    : `<li class="campo-ayuda">No hay ningún socio con «${esc(document.getElementById("claseDiaBuscar").value.trim())}».</li>`;
+}
+
+async function anotar(ids) {
+  const { clase, fecha } = abierta;
+  abierta.detalle = await api(`/api/clases/${clase.id}/fechas/${fecha}/asistencias`, {
+    method: "POST",
+    body: { socios: ids },
+    error: "No se pudo anotar."
+  });
+  pintarDia();
+  recargarSemana();
+}
+
+panelDia.addEventListener("click", async (e) => {
+  const anotarUno = e.target.closest("[data-anotar]");
+  const todos = e.target.closest("[data-anotar-todos]");
+  const sacar = e.target.closest("[data-sacar]");
+  if (anotarUno) {
+    await anotar([Number(anotarUno.dataset.anotar)]);
+    const buscar = document.getElementById("claseDiaBuscar");
+    if (buscar.value) {
+      buscar.value = "";
+      pintarEncontrados();
+      buscar.focus();
+    }
+  } else if (todos) {
+    await anotar(abierta.detalle.entraron.map((s) => s.socio_id));
+  } else if (sacar) {
+    const { clase, fecha } = abierta;
+    abierta.detalle = await api(`/api/clases/${clase.id}/fechas/${fecha}/asistencias/${sacar.dataset.sacar}`, {
+      method: "DELETE",
+      error: "No se pudo sacar de la lista."
+    });
+    pintarDia();
+    recargarSemana();
+  }
+});
+
+document.getElementById("claseDiaBuscar").addEventListener("input", pintarEncontrados);
+// Con Enter se anota al primero que aparece (el lector de carnets tipea el número y Enter).
+document.getElementById("claseDiaBuscar").addEventListener("keydown", (e) => {
+  if (e.key !== "Enter") return;
+  e.preventDefault();
+  document.querySelector("#claseDiaEncontrados [data-anotar]")?.click();
+});
+
+document.getElementById("btnClaseDiaGuardar").addEventListener("click", async () => {
+  const { clase, fecha } = abierta;
+  const boton = document.getElementById("btnClaseDiaGuardar");
+  boton.disabled = true;
+  try {
+    abierta.detalle = await api(`/api/clases/${clase.id}/fechas/${fecha}`, {
+      method: "PUT",
+      body: {
+        profes: [...document.querySelectorAll("#claseDiaProfes input:checked")].map((i) => Number(i.value)),
+        estado: document.getElementById("claseDiaSuspendida").checked ? "suspendida" : "dada",
+        nota: document.getElementById("claseDiaNota").value
+      },
+      error: "No se pudo guardar."
+    });
+  } finally {
+    boton.disabled = false;
+  }
+  const suplentes = abierta.detalle.profes.filter((p) => p.suplente);
+  avisar(
+    abierta.detalle.estado === "suspendida"
+      ? "Anotado: esa clase no se dio."
+      : suplentes.length
+        ? `Anotado: la dio ${suplentes.map((p) => p.nombre).join(" y ")} de suplente.`
+        : "Guardado.",
+    "ok"
+  );
+  pintarDia();
+  recargarSemana();
+});
+
+for (const [id, pasos] of [
+  ["btnClaseDiaAntes", -7],
+  ["btnClaseDiaDespues", 7]
+]) {
+  document.getElementById(id).addEventListener("click", () => abrirDia(abierta.clase, sumarDias(abierta.fecha, pasos)));
+}
+
+document.getElementById("btnClaseDiaEditar").addEventListener("click", () => abrirClase(abierta.clase));
+document.getElementById("btnClaseDiaCerrar").addEventListener("click", () => {
+  panelDia.hidden = true;
+  abierta = null;
+});
+
+// Lo anotado cambia la grilla (cuántos vinieron) y las clases dadas, sin
+// cerrar lo que está abierto.
+async function recargarSemana() {
+  const nuevos = await api("/api/grilla", { error: "No se pudo actualizar la grilla." });
+  datos = nuevos;
+  pintarGrilla();
+  cargarHistorial();
+}
+
+/* ---------- Clases dadas (hist. §226) ---------- */
+
+const selectProfe = document.getElementById("asistenciaProfe");
+const selectPeriodo = document.getElementById("asistenciaPeriodo");
+let historial = null;
+
+function pintarFiltrosHistorial() {
+  const elegido = selectProfe.value;
+  selectProfe.innerHTML = `<option value="">Todos los profes</option>` + datos.profes.map((p) => `<option value="${p.id}">${esc(p.nombre)}</option>`).join("");
+  if (datos.profes.some((p) => String(p.id) === elegido)) selectProfe.value = elegido;
+  selectProfe.hidden = !datos.profes.length;
+}
+
+async function cargarHistorial() {
+  if (!datos.semana.hoy) return;
+  const params = new URLSearchParams({ desde: sumarDias(datos.semana.hoy, -(Number(selectPeriodo.value) - 1)), hasta: datos.semana.hoy });
+  if (selectProfe.value) params.set("profe", selectProfe.value);
+  historial = await api(`/api/asistencia?${params}`, { error: "No se pudieron cargar las clases dadas." });
+  pintarHistorial();
+}
+
+function pintarHistorial() {
+  const { clases, total, por_profe: porProfe } = historial;
+  const plural = (n, uno, varios) => `${n} ${n === 1 ? uno : varios}`;
+  document.getElementById("asistenciaResumen").innerHTML = clases.length
+    ? `
+      <div class="ledger-strip">
+        <div class="ledger-item"><span class="ledger-label">Clases dadas</span><span class="ledger-value mono">${esc(total.dadas)}</span></div>
+        <div class="ledger-divider" aria-hidden="true"></div>
+        <div class="ledger-item"><span class="ledger-label">Alumnos en clase</span><span class="ledger-value mono">${esc(total.asistencias)}</span></div>
+        <div class="ledger-divider" aria-hidden="true"></div>
+        <div class="ledger-item"><span class="ledger-label">No se dieron</span><span class="ledger-value mono">${esc(total.suspendidas)}</span></div>
+      </div>
+      ${
+        porProfe.length
+          ? `<ul class="asistencia-profes">${porProfe
+              .map(
+                (p) => `<li><strong>${esc(p.nombre)}</strong><span>${esc(plural(p.clases, "clase", "clases"))}${p.suplente ? ` (${esc(p.suplente)} de suplente)` : ""} · ${esc(plural(p.alumnos, "alumno", "alumnos"))}</span></li>`
+              )
+              .join("")}</ul>`
+          : ""
+      }`
+    : "";
+  document.getElementById("asistenciaLista").innerHTML = clases.length
+    ? clases
+        .map((c) => {
+          const profes = c.profes.map((p) => `${p.nombre}${p.suplente ? " (suplente)" : ""}`).join(", ");
+          const que = c.estado === "suspendida" ? "No se dio" : plural(c.asistentes, "vino", "vinieron");
+          return `
+            <li>
+              <button type="button" class="asistencia-clase color-${esc(c.color)}" data-historial="${c.clase_id}" data-fecha="${esc(c.fecha)}">
+                <span class="asistencia-cuando"><strong>${esc(fechaLarga(c.fecha))}</strong>${esc(c.desde)}</span>
+                <span class="asistencia-que"><strong>${esc(c.actividad)}</strong><span>${esc(profes || "Sin profe anotado")}${c.nota ? ` · ${esc(c.nota)}` : ""}</span></span>
+                <span class="asistencia-cuantos${c.estado === "suspendida" ? " es-suspendida" : ""}">${esc(que)}</span>
+              </button>
+            </li>`;
+        })
+        .join("")
+    : `<li class="nota-plana">${selectProfe.value ? "Ese profe no tiene clases anotadas en este período." : "Todavía no hay clases anotadas en este período."}</li>`;
+}
+
+document.getElementById("asistenciaLista").addEventListener("click", (e) => {
+  const boton = e.target.closest("[data-historial]");
+  if (!boton) return;
+  const { fecha } = boton.dataset;
+  const clase = datos.clases.find((c) => c.id === Number(boton.dataset.historial));
+  if (!clase) {
+    avisar("Ese horario ya no está en la grilla.", "atencion");
+    return;
+  }
+  abrirDia(clase, fecha);
+});
+
+selectProfe.addEventListener("change", cargarHistorial);
+selectPeriodo.addEventListener("change", cargarHistorial);
+
 /* ---------- Las actividades (admin) ---------- */
 
 function pintarActividades() {
@@ -606,6 +957,7 @@ document.getElementById("actividadesLista").addEventListener("click", async (e) 
 
 function abrirActividad(actividad = null) {
   formClase.hidden = true;
+  panelDia.hidden = true;
   editandoActividad = actividad;
   const form = formActividad;
   form.reset();
@@ -911,5 +1263,9 @@ alEntrarEnVista("clases", async () => {
   panelImagen.hidden = true;
   formClase.hidden = true;
   formActividad.hidden = true;
+  panelDia.hidden = true;
+  abierta = null;
+  // Los socios pueden haber cambiado desde la última vez (un alta, un cobro).
+  socios = null;
   await cargar();
 });

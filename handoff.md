@@ -11,7 +11,7 @@
 
 - Al cerrar una etapa, se hacen tres cosas:
   - su relato completo se agrega al final de `docs/proyecto/handoff-historico.md` con el
-    siguiente número (hoy el último es §225);
+    siguiente número (hoy el último es §226);
   - acá se actualizan "Estado actual" y "Qué sigue";
   - si cambió alguna decisión vigente, se actualiza también esa lista.
 - Nunca apilar secciones "Última etapa" en este archivo: así fue como llegó a
@@ -219,13 +219,41 @@ Mi cuenta solo muestra los datos, cada uno con **Cambiar**, y cada cambio es
 una pantalla aparte con "Volver a Mi cuenta": el nombre (nuevo:
 `PUT /api/auth/nombre`, auditado), el mail, la contraseña (la nueva dos veces)
 y la baja. `npm test` 540 de 540. Publicado (PR #121).
-- Después (sin publicar): en Mercado Pago, "¿Te conviene ofrecer cuotas?"
+- Después (publicado, PR #122): en Mercado Pago, "¿Te conviene ofrecer cuotas?"
   tenía las casillas con el estilo del navegador (no estaban dentro de un
   `.form`). Ahora van como las de un formulario, con "pesos" y "%" adentro
   (`.campo-sufijo`), y las de la tabla, angostas (`.mp-tarifas-tabla`).
 
-**Lo que sigue:** el punto 10 si da (el resumen del día por WhatsApp o mail),
-y lo que el usuario vea al probar los puntos en el mostrador y lo de §224 en
+**23 de noviembre, hist. §226: asistencia por clase y suplentes** (primer
+pedido del dojo del profe; investigado al final de
+`docs/investigaciones/investigacion-gymdesk.md`). Publicado (PR #123).
+- En Clases, tocar una clase de horario fijo abre **la clase de ese día**:
+  quién la dio (marcar otro profe = suplente; la grilla no cambia), "No se
+  dio", una nota y la lista. Para anotar: los que **entraron ese día**, los que
+  **suelen venir** a esa clase (8 semanas) y un buscador (nombre, N° o DNI;
+  Enter anota al primero). Flechas de semana en semana: lista de hoy para
+  atrás, quién la da o "No se dio" hasta 14 días adelante.
+- La grilla muestra lo de esta semana en cada bloque ("4 vinieron ·
+  suplente"; la suspendida, rayada). **Clases dadas** (abajo): por profe,
+  cuántas dio y cuántas de suplente, y la lista de clases.
+- La ficha del socio suma **Clases**, por actividad (una compartida cuenta
+  para cada una): es el contador para los grados.
+- Esquema aditivo: `clase_fechas`, `clase_fecha_profes`, `asistencias_clase`.
+  Rutas: `/api/clases/:id/fechas/:fecha` (GET, PUT, asistencias POST y
+  DELETE) y `GET /api/asistencia`, de los dos roles. Test nuevo:
+  `asistencia`. `npm test` 548 de 548; lint, i18n y `verificar-migracion`
+  (24 de 24) en verde. Probado en el navegador (compu y 390 px) con un dojo
+  de prueba.
+- **Lo que sigue en el dojo:** "Lo que ya tenías" a mano para el gimnasio
+  (socios con su plan, desde cuándo, hasta cuándo pagó y lo que debe, de
+  corrido); después los cinturones (configurables, con avisos por cantidad
+  de clases, contando desde un número inicial por alumno); después los medios
+  de cobro (solo Efectivo al nacer + "¿Cómo te cobran?").
+
+**Lo que sigue (próxima sesión):** "Lo que ya tenías" a mano para el dojo
+(investigar antes cómo lo resuelve la competencia y anotarlo en
+`docs/investigaciones/`), el punto 10 si da (el resumen del día por WhatsApp o
+mail), y lo que el usuario vea al probar los puntos en el mostrador y lo de §224 en
 su iPhone.
 
 **19 de noviembre, hist. §205 (publicado, PR #106):** en Planes se elimina un plan que nunca hizo
@@ -2463,6 +2491,28 @@ Además: el CUIT de Nexo es el monotributo de Santino, no una sociedad (punto
 0 del mismo documento). **Primer piloto:** el gimnasio de artes marciales
 donde entrena el usuario (19 de noviembre); él habla con el dueño y lo que
 ese gimnasio no pueda trabajar sin tener, entra.
+
+**Decidido con el usuario el 23 de noviembre (de `ideas.md`):**
+- **Medios de cobro:** un negocio nuevo nace solo con la caja y el medio
+  Efectivo (sin Banco ni Mercado Pago). El primer punto de Primeros pasos es
+  una página en pasos, "¿Cómo te cobran?", que crea los medios y las cuentas
+  adonde entra la plata; hasta completarla, el mostrador cobra solo en
+  efectivo. Los negocios que ya existen no cambian.
+- **El dojo del profe (primer piloto):** primero, que el dueño tenga todo en
+  un solo sistema. **Tiene todo anotado a mano**, así que la planilla no le
+  sirve: hace falta cargar a mano lo de antes (socios con su plan y desde
+  cuándo, cuotas, deudas, productos), cómodo y de corrido.
+- **Orden:** 1) asistencia por clase con el profe que la dio de verdad
+  (suplentes); 2) cinturones y grados por cantidad de clases, configurable por
+  el profe, con avisos personalizables de "ya merece el grado"; 3) la página
+  propia de cada alumno, después y charlándolo antes.
+- **Nexo como empresa:** la consigna pide un nombre para la empresa y otro
+  para la aplicación. El usuario piensa en una empresa con una app general
+  (Nexo) y apps especializadas que se venden por su cuenta (la de artes
+  marciales, como Gymdesk). Investigado en
+  `docs/investigaciones/investigacion-app-general-y-especializadas.md`. **Se
+  ve al escalar** (decisión del usuario): anotado en `plan-para-vender.md`,
+  punto 13, y se decide con Joaquín.
 
 **Hecho y publicado (22 de noviembre, hist. §217, PR #114): menú de la cuenta y la lista de
 Configuración.** Pulido, pedido del usuario.

@@ -2054,6 +2054,46 @@ CREATE TABLE IF NOT EXISTS clase_profes (
   PRIMARY KEY (clase_id, empleado_id)
 );
 
+-- La asistencia por clase (hist. §226, pedido del usuario del 23 de
+-- noviembre; investigado en docs/investigaciones/investigacion-gymdesk.md).
+-- clase_fechas: un horario de la grilla en una fecha ("BJJ del martes 24 a
+-- las 19"). Nace cuando alguien toma la lista o dice quién la dio; una fecha
+-- sin fila es una clase de la que no se anotó nada. estado: 'dada' o
+-- 'suspendida' (no se dio: feriado, el profe faltó sin reemplazo). fecha es el
+-- día del negocio (AAAA-MM-DD) y cae siempre en el dia_semana de su clase.
+CREATE TABLE IF NOT EXISTS clase_fechas (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  clase_id INTEGER NOT NULL REFERENCES clases(id),
+  organizacion_id INTEGER NOT NULL REFERENCES organizaciones(id),
+  fecha TEXT NOT NULL,
+  estado TEXT NOT NULL DEFAULT 'dada' CHECK (estado IN ('dada', 'suspendida')),
+  nota TEXT,
+  UNIQUE (clase_id, fecha)
+);
+
+-- Quién la dio de verdad: al nacer, los profes de la grilla; uno que no está
+-- en clase_profes es un suplente. Se reemplazan enteros al cambiarlos, con su
+-- auditoría. Hija de clase_fechas.
+CREATE TABLE IF NOT EXISTS clase_fecha_profes (
+  clase_fecha_id INTEGER NOT NULL REFERENCES clase_fechas(id),
+  empleado_id INTEGER NOT NULL REFERENCES empleados(id),
+  PRIMARY KEY (clase_fecha_id, empleado_id)
+);
+
+-- Quién vino a la clase de ese día, quién lo anotó y cuándo: es su propio
+-- registro de quién y cuándo (CLAUDE.md §22), como ingresos_socio, sin una
+-- fila de auditoría por alumno. Sacar a alguien de la lista sí se audita. Es
+-- lo que cuenta las clases de cada alumno por actividad (la base de los
+-- grados). Hija de clase_fechas.
+CREATE TABLE IF NOT EXISTS asistencias_clase (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  clase_fecha_id INTEGER NOT NULL REFERENCES clase_fechas(id),
+  socio_id INTEGER NOT NULL REFERENCES socios(id),
+  usuario_id INTEGER NOT NULL REFERENCES usuarios(id),
+  creada TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE (clase_fecha_id, socio_id)
+);
+
 -- Trabajos, u órdenes de trabajo (CLAUDE.md §29, hist. §78): lo que un negocio
 -- de servicios tiene que hacer para un cliente, con fecha, responsable y
 -- estado. El módulo `trabajos` lo puede prender cualquier negocio. No es un

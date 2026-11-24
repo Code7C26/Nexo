@@ -2116,6 +2116,73 @@
               <button type="submit" class="btn btn-primary" id="formClaseSubmit">Guardar</button>
             </div>
           </form>
+
+          <!-- La clase de un día (hist. §226): quién la dio y quién vino. -->
+          <section class="form config-tarjeta clase-dia" id="claseDia" aria-labelledby="claseDiaTitulo" hidden>
+            <div class="config-tarjeta-cuerpo">
+              <div class="clase-dia-cabeza">
+                <div>
+                  <p class="config-tarjeta-titulo" id="claseDiaTitulo">—</p>
+                  <p class="campo-ayuda" id="claseDiaHorario"></p>
+                </div>
+                <button type="button" class="btn btn-secundario btn-chico col-admin" id="btnClaseDiaEditar"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#pencil"></use></svg> Editar horario</button>
+              </div>
+              <div class="clase-dia-fechas" role="group" aria-label="Fecha de la clase">
+                <button type="button" class="btn btn-secundario btn-chico" id="btnClaseDiaAntes" aria-label="La semana anterior"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#chevron-left"></use></svg></button>
+                <span class="clase-dia-fecha" id="claseDiaFecha">—</span>
+                <button type="button" class="btn btn-secundario btn-chico" id="btnClaseDiaDespues" aria-label="La semana siguiente"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#chevron-right"></use></svg></button>
+              </div>
+
+              <fieldset class="opciones">
+                <legend>Quién la da</legend>
+                <div class="chips-elegir" id="claseDiaProfes"></div>
+                <p class="campo-ayuda">Si la da otro profe, marcalo: queda anotado como suplente, y la grilla no cambia.</p>
+              </fieldset>
+              <label class="form-check">
+                <input type="checkbox" id="claseDiaSuspendida" />
+                <span>No se dio (feriado, el profe faltó)</span>
+              </label>
+              <label>Nota (opcional)
+                <input type="text" id="claseDiaNota" maxlength="200" autocomplete="off" placeholder="Juan estaba enfermo y la dio Ana" />
+              </label>
+              <div class="clase-dia-guardar">
+                <button type="button" class="btn btn-secundario btn-chico" id="btnClaseDiaGuardar">Guardar quién la dio</button>
+              </div>
+
+              <div class="clase-dia-lista" id="claseDiaLista">
+                <p class="config-tarjeta-titulo" id="claseDiaVinieron">Vinieron</p>
+                <ul class="clase-dia-asistentes" id="claseDiaAsistentes"></ul>
+                <div class="clase-dia-sugeridos" id="claseDiaEntraron"></div>
+                <div class="clase-dia-sugeridos" id="claseDiaSuelen"></div>
+                <label>Anotar a alguien más
+                  <input type="search" id="claseDiaBuscar" autocomplete="off" placeholder="Nombre, número de socio o DNI" />
+                </label>
+                <ul class="clase-dia-encontrados" id="claseDiaEncontrados"></ul>
+              </div>
+              <p class="nota-plana" id="claseDiaFutura" hidden>La lista se toma el día de la clase. Para adelante se puede anotar quién la va a dar o que no se da.</p>
+            </div>
+            <div class="config-tarjeta-pie">
+              <button type="button" class="btn btn-secundario" id="btnClaseDiaCerrar">Cerrar</button>
+            </div>
+          </section>
+        </section>
+
+        <!-- Lo que se dio (hist. §226): las clases anotadas y quién las dio. -->
+        <section class="panel" aria-labelledby="asistenciaTitulo">
+          <div class="panel-head">
+            <h2 id="asistenciaTitulo">Clases dadas</h2>
+            <div class="panel-acciones">
+              <select id="asistenciaProfe" class="select-inline" aria-label="Profe"></select>
+              <select id="asistenciaPeriodo" class="select-inline" aria-label="Período">
+                <option value="7">Últimos 7 días</option>
+                <option value="30" selected>Últimos 30 días</option>
+                <option value="90">Últimos 3 meses</option>
+              </select>
+            </div>
+          </div>
+          <p class="nota-plana">Las clases en las que se tomó la lista o se anotó quién las dio. Tocá una clase de la grilla para anotarla.</p>
+          <div class="asistencia-resumen" id="asistenciaResumen"></div>
+          <ul class="asistencia-lista" id="asistenciaLista"></ul>
         </section>
 
         <section class="panel col-admin" aria-labelledby="actividadesTitulo">
@@ -2263,6 +2330,15 @@
             <tbody id="fichaSocioCuotas"></tbody>
           </table>
           </div>
+        </section>
+
+        <!-- Las clases a las que vino (hist. §226), por actividad. -->
+        <section class="panel" id="fichaSocioClasesPanel" hidden>
+          <div class="panel-head">
+            <h2 id="fichaSocioClasesTitulo">Clases</h2>
+          </div>
+          <ul class="socio-clases-actividades" id="fichaSocioClasesActividades"></ul>
+          <p class="campo-ayuda" id="fichaSocioClasesUltimas"></p>
         </section>
 
         <section class="panel">
