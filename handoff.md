@@ -334,7 +334,7 @@ balanza, ajeno al cambio, y pasó al relanzarlo).
   Probado en el navegador (compu y 390 px) con un dojo de prueba.
 
 **24 de noviembre, hist. §231: dejar de usar esta compu como caja, y los
-combos sin el precio repartido** (dos quejas del usuario, sin publicar).
+combos sin el precio repartido** (dos quejas del usuario; publicado, PR #128).
 - La compu vinculada a una caja abría siempre "¿Quién atiende?" y el dueño, con
   su cuenta adentro, no encontraba cómo sacarla (solo había "Desvincular" en el
   punto de venta, y cortaba todas las compus de la caja). Ahora
