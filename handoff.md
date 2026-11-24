@@ -11,7 +11,7 @@
 
 - Al cerrar una etapa, se hacen tres cosas:
   - su relato completo se agrega al final de `docs/proyecto/handoff-historico.md` con el
-    siguiente número (hoy el último es §226);
+    siguiente número (hoy el último es §227);
   - acá se actualizan "Estado actual" y "Qué sigue";
   - si cambió alguna decisión vigente, se actualiza también esa lista.
 - Nunca apilar secciones "Última etapa" en este archivo: así fue como llegó a
@@ -250,11 +250,35 @@ pedido del dojo del profe; investigado al final de
   de clases, contando desde un número inicial por alumno); después los medios
   de cobro (solo Efectivo al nacer + "¿Cómo te cobran?").
 
-**Lo que sigue (próxima sesión):** "Lo que ya tenías" a mano para el dojo
-(investigar antes cómo lo resuelve la competencia y anotarlo en
-`docs/investigaciones/`), el punto 10 si da (el resumen del día por WhatsApp o
-mail), y lo que el usuario vea al probar los puntos en el mostrador y lo de §224 en
-su iPhone.
+**23 de noviembre, hist. §227: "Lo que ya tenías" › Tus socios** (segundo
+pedido del dojo; el profe tiene todo anotado a mano). Investigado al final de
+`docs/investigaciones/investigacion-cuotas-gimnasio.md`.
+- Configuración › Lo que ya tenías suma **Tus socios** (con el módulo socios):
+  nombre, DNI y teléfono opcionales, plan (las tarjetas del alta), **socio
+  desde**, **próxima cuota** y **además debe**. Enter agrega y vuelve al
+  nombre; el plan y la próxima cuota quedan para el siguiente. Abajo, los
+  cargados con su situación.
+- Próxima cuota más adelante = al día hasta el día anterior, **sin inventar
+  una venta** (columna nueva `inscripciones_socio.pagado_antes_hasta`, aditiva
+  y nula; el ciclo arranca en esa fecha). Ya pasada = Nexo arma las cuotas que
+  debe desde ahí, al precio de hoy (hasta un año). "Además debe" = saldo
+  anterior en su cuenta corriente (`crearSaldoAnteriorCliente`, la misma de
+  "Lo que te deben").
+- Es el `POST /api/socios` de siempre con `proxima_cuota` y `deuda_anterior`
+  (solo admin). Lo pagado antes cuenta en la situación, al reactivar y para
+  alinear un plan que se suma después (un cobro por socio, §208).
+- Arreglado de paso: el "(opcional)" de las etiquetas bajaba a otra línea y
+  desalineaba los campos (7 etiquetas de `index.html`).
+- Test nuevo `socios-anteriores` (6 casos). `npm test` 554 de 554; lint, i18n
+  y `verificar-migracion` (24 de 24). Probado en el navegador (compu y 390
+  px) con un dojo de prueba.
+
+**Lo que sigue (próxima sesión):** en el dojo, los **cinturones** (configurables
+por el profe, con avisos por cantidad de clases contando desde un número
+inicial por alumno: ese número inicial puede ir en "Tus socios"); después los
+medios de cobro (solo Efectivo al nacer + "¿Cómo te cobran?"). Si da, el punto
+10 (el resumen del día por WhatsApp o mail). Y lo que el usuario vea al probar
+los puntos en el mostrador y lo de §224 en su iPhone.
 
 **19 de noviembre, hist. §205 (publicado, PR #106):** en Planes se elimina un plan que nunca hizo
 nadie (con su servicio del catálogo); el que algún socio hizo solo se pausa.

@@ -53,6 +53,14 @@ const PARTES = [
     hecho: (e) => (e.stock.cantidad ? plural(e.stock.cantidad, "producto cargado", "productos cargados") : null)
   },
   {
+    pagina: "socios-anteriores",
+    icono: "id-card",
+    titulo: "Tus socios",
+    detalle: "Los que ya venían, con su plan, desde cuándo vienen y cuándo les toca pagar. Lo que deben sale solo.",
+    modulo: "socios",
+    hecho: (e) => (e.socios.cantidad ? plural(e.socios.cantidad, "socio cargado", "socios cargados") : null)
+  },
+  {
     pagina: "te-deben",
     icono: "hand-coins",
     titulo: "Lo que te deben",

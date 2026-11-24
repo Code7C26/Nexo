@@ -6220,7 +6220,7 @@
                     <label>Desde cuándo
                       <input type="date" name="fecha" />
                     </label>
-                    <label>Vence <span class="campo-opcional">(opcional)</span>
+                    <label><span>Vence <span class="campo-opcional">(opcional)</span></span>
                       <input type="date" name="vencimiento" />
                     </label>
                   </div>
@@ -6234,6 +6234,55 @@
               <section class="panel" aria-labelledby="ciDebenListaTitulo">
                 <div class="panel-head"><h2 id="ciDebenListaTitulo">Lo que ya cargaste</h2></div>
                 <ul class="ci-saldos" id="ciDebenLista"></ul>
+              </section>
+            </section>
+
+            <!-- Tus socios (hist. §227): lo maneja dominios/socios-anteriores.js.
+                 Los socios que ya venían, uno atrás del otro, con su próxima cuota. -->
+            <section class="config-pagina col-admin" data-seccion="socios-anteriores" aria-labelledby="configSociosAntTitulo" hidden>
+              <a class="ci-volver" href="#/configuracion/lo-que-tenias"><svg class="ico" aria-hidden="true"><use href="/img/iconos.svg#chevron-left"></use></svg> Lo que ya tenías</a>
+              <header class="config-pagina-head">
+                <h2 id="configSociosAntTitulo" tabindex="-1">Tus socios</h2>
+                <p>Cada socio que ya venía, con su plan, desde cuándo viene y cuándo le toca pagar. Si ya le tocaba y no pagó, Nexo le arma las cuotas que debe; si pagó, queda al día hasta esa fecha. Cargalos de corrido: el plan y la fecha de pago quedan para el siguiente.</p>
+              </header>
+              <form class="form config-tarjeta" id="formSociosAnt" novalidate>
+                <div class="config-tarjeta-cuerpo">
+                  <div class="form-fila form-fila-3">
+                    <label>Nombre y apellido
+                      <input type="text" name="nombre" maxlength="120" autocomplete="off" />
+                    </label>
+                    <label><span>DNI <span class="campo-opcional">(opcional)</span></span>
+                      <input type="text" name="documento" maxlength="20" inputmode="numeric" autocomplete="off" />
+                    </label>
+                    <label><span>Teléfono <span class="campo-opcional">(opcional)</span></span>
+                      <input type="tel" name="telefono" maxlength="40" autocomplete="off" />
+                    </label>
+                  </div>
+                  <fieldset class="opciones">
+                    <legend>Qué plan hace</legend>
+                    <div class="planes-elegir" id="saPlanes"></div>
+                  </fieldset>
+                  <div class="form-fila form-fila-3">
+                    <label>Socio desde
+                      <input type="date" name="fecha_alta" />
+                    </label>
+                    <label>Próxima cuota
+                      <input type="date" name="proxima_cuota" />
+                    </label>
+                    <label><span>Además debe <span class="campo-opcional">(opcional)</span></span>
+                      <input type="number" name="deuda_anterior" min="0" step="any" inputmode="decimal" placeholder="$ 0" />
+                    </label>
+                  </div>
+                  <p class="form-note" id="saResumen" aria-live="polite"></p>
+                </div>
+                <div class="config-tarjeta-pie">
+                  <p>"Además debe" es lo que te debe aparte de las cuotas: una cuota de antes con otro precio, algo que compró.</p>
+                  <button type="submit" class="btn btn-primary">Agregar</button>
+                </div>
+              </form>
+              <section class="panel" aria-labelledby="saListaTitulo">
+                <div class="panel-head"><h2 id="saListaTitulo">Los que ya cargaste</h2></div>
+                <ul class="ci-saldos" id="saLista"></ul>
               </section>
             </section>
 
@@ -6257,7 +6306,7 @@
                     <label>Desde cuándo
                       <input type="date" name="fecha" />
                     </label>
-                    <label>Vence <span class="campo-opcional">(opcional)</span>
+                    <label><span>Vence <span class="campo-opcional">(opcional)</span></span>
                       <input type="date" name="vencimiento" />
                     </label>
                   </div>
@@ -6326,7 +6375,7 @@
                     <label id="ciVentaCuentaCampo">Cómo te pagaron
                       <select name="cuenta"></select>
                     </label>
-                    <label id="ciVentaVenceCampo" hidden>Vence <span class="campo-opcional">(opcional)</span>
+                    <label id="ciVentaVenceCampo" hidden><span>Vence <span class="campo-opcional">(opcional)</span></span>
                       <input type="date" name="vencimiento" />
                     </label>
                   </div>
@@ -6401,7 +6450,7 @@
                   <label>Teléfono o mail para responderte
                     <input type="text" id="planPedidoContacto" maxlength="120" autocomplete="tel" />
                   </label>
-                  <label>Algo que nos quieras contar <span class="campo-opcional">(opcional)</span>
+                  <label><span>Algo que nos quieras contar <span class="campo-opcional">(opcional)</span></span>
                     <textarea id="planPedidoMensaje" maxlength="1000" rows="3"></textarea>
                   </label>
                 </div>

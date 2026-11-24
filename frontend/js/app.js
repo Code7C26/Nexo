@@ -84,6 +84,7 @@ import "./dominios/produccion.js";
 import "./dominios/crm.js";
 import "./dominios/primeros-pasos.js";
 import "./dominios/carga-inicial.js";
+import "./dominios/socios-anteriores.js";
 import "./dominios/importar.js";
 import "./dominios/negocios.js";
 import "./dominios/cuenta-menu.js";

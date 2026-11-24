@@ -757,12 +757,13 @@ export const SECCIONES_EN = {
   "lo-que-tenias": {
     titulo: "Entering what you already had",
     pantalla: "Settings › What you already had",
-    preguntas: ["how do i enter the stock i already had", "how do i enter what customers owed me before", "how do i start if my business was already running", "how do i enter the money i have today", "how do i enter old debts with suppliers"],
-    palabras: ["initial", "before", "had", "start", "stock", "debt", "debts", "balance", "money", "cash", "migrate", "old"],
+    preguntas: ["how do i enter the stock i already had", "how do i enter what customers owed me before", "how do i start if my business was already running", "how do i enter the money i have today", "how do i enter old debts with suppliers", "how do i enter the members i already had"],
+    palabras: ["initial", "before", "had", "start", "stock", "debt", "debts", "balance", "money", "cash", "migrate", "old", "members", "students"],
     bloques: [
       "If your business was already running, enter what you have today and Nexo starts with your real numbers. It's in **Settings › What you already had**, in parts you enter separately and in any order:",
       { lista: [
         "**Your stock today**: how many of each product you have and what each one cost you. With that cost Nexo calculates the profit of each sale.",
+        "**Your members** (if you have members): each one with their plan, since when they come and when their next payment is due. If it was already due, Nexo creates the fees they owe; if they paid, they're up to date until that date. The plan and the payment date stay for the next one, so you enter them one after another.",
         "**What you're owed**: what each customer still owed you. It goes to their account and is collected like any sale.",
         "**What you owe**: what you owed your suppliers. It's paid like any purchase.",
         "**Your money today**: how much there is in the till, the bank and Mercado Pago.",

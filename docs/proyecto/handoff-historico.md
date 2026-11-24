@@ -15747,3 +15747,41 @@ Clubworx, Punchpass, iClassPro, Jackrabbit).
 navegador con un dojo de prueba en compu y a 390 px: anotar a los que
 entraron, buscar con Enter, poner una suplente, el bloque de la grilla, las
 clases dadas y la ficha; sin errores en la consola.
+
+## §227 — 23 de noviembre de 2026: "Lo que ya tenías" › Tus socios
+
+Pedido del usuario (de `ideas.md`, para el dojo del profe, que tiene todo
+anotado a mano): cargar de corrido los socios que ya venían, con su plan,
+desde cuándo, hasta cuándo pagaron y lo que deben. Investigado antes al final
+de `docs/investigaciones/investigacion-cuotas-gimnasio.md` (Clubworx,
+GymMaster, Gymdesk: fecha de inicio y "next payment date").
+
+- **Esquema aditivo:** `inscripciones_socio.pagado_antes_hasta` (TEXT, nula;
+  migración en la lista de `db/index.js`, sin backfill). Es lo pagado antes
+  de Nexo: no se crea una venta, porque no se sabe cuándo ni cuánto se cobró.
+- **`POST /api/socios`** acepta `proxima_cuota` y `deuda_anterior` (solo admin,
+  403 para el empleado). `inscribir` arranca el ciclo y el cobro en la
+  próxima cuota y guarda `pagado_antes_hasta` = el día anterior (si es después
+  del alta). Validación en `proximaCuotaPedida`: no antes del alta, hasta una
+  duración de hoy para adelante y hasta un año para atrás
+  (`MESES_DEUDA_ANTERIOR_SOCIO`). La deuda aparte usa
+  `crearSaldoAnteriorCliente`, sacada del `POST /api/carga-inicial/saldos`.
+- **Dónde cuenta lo pagado antes:** `conSituacion` (`cubierto_hasta`, así
+  queda al día y la entrada lo deja pasar), `reactivarInscripcion` (de baja y
+  de vuelta no se cobra de nuevo) y `alinearConElSocio` (un plan que se suma
+  después paga los días hasta la próxima cuota y va en el mismo cobro, §208).
+- **`GET /api/carga-inicial`** suma `socios` (los que tienen algo pagado antes
+  o un alta hacia atrás).
+- **Pantalla:** `dominios/socios-anteriores.js` y la sección
+  `socios-anteriores` de `index.html`; la parte "Tus socios" en el resumen de
+  Lo que ya tenías (con el módulo socios), el manual (es y en) y el precache.
+- **De paso:** el `<label>` de los formularios es una columna flex, y el
+  "(opcional)" quedaba en otra línea y desalineaba los campos; las 7 etiquetas
+  con `campo-opcional` envuelven el texto en un `<span>`.
+
+**Verificado:** test nuevo `socios-anteriores` (6 casos: pagó, debe, deuda
+aparte, fechas y empleado, plan sumado, baja y vuelta). `npm test` 554 de 554,
+lint, i18n y `verificar-migracion` 24 de 24. En el navegador con un dojo de
+prueba (base temporal), compu y 390 px: tres socios seguidos con Enter, el
+resumen de cada caso, el error de fecha, la lista y "4 socios cargados" en el
+resumen; sin errores en la consola ni desborde.

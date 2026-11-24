@@ -22391,6 +22391,10 @@ const APLICA_DESCUENTO = ['combo', 'cantidad', 'manual'];
 const FECHA_MINIMA_SOCIO = '2000-01-01';
 const DIAS_ALTA_ADELANTADA = 90;
 const MAX_PERIODOS_SOCIO = 400;
+// Un socio que ya venía se carga con su próxima cuota (hist. §227): si ya
+// pasó, Nexo arma las que debe desde ahí, hasta un año de cuotas. Lo de antes
+// va como deuda aparte.
+const MESES_DEUDA_ANTERIOR_SOCIO = 12;
 const LARGOS_SOCIO = { nombre: 120, documento: 20, telefono: 40, email: 120 };
 const fechaLegible = (iso) => iso.split('-').reverse().join('/');
 const nombreDuracion = (meses) => NOMBRES_DURACION[meses] ?? (meses % 12 === 0 ? `${meses / 12} años` : `${meses} meses`);
@@ -22728,7 +22732,7 @@ const SELECT_INSCRIPCION = `
   SELECT inscripciones_socio.id, inscripciones_socio.socio_id, inscripciones_socio.plan_id,
          inscripciones_socio.opcion_id, inscripciones_socio.fecha_alta, inscripciones_socio.ciclo_desde,
          inscripciones_socio.cobrar_desde, inscripciones_socio.estado, inscripciones_socio.fecha_baja,
-         planes_socio.producto_id, productos.nombre AS plan, planes_socio_opciones.meses,
+         inscripciones_socio.pagado_antes_hasta, planes_socio.producto_id, productos.nombre AS plan, planes_socio_opciones.meses,
          planes_socio_opciones.precio AS precio_lista
     FROM inscripciones_socio
     JOIN socios ON socios.id = inscripciones_socio.socio_id
@@ -22853,15 +22857,30 @@ function generarCuotasDelSocio(socioId, hoy) {
 function alinearConElSocio(inscripcionId, fecha, hoy) {
   if (fecha > hoy) return;
   const plan = db.prepare(`${SELECT_INSCRIPCION} WHERE inscripciones_socio.id = ?`).get(inscripcionId);
-  const ancla = db
-    .prepare(
-      `SELECT cuotas_socio.desde, cuotas_socio.hasta FROM cuotas_socio
-         JOIN inscripciones_socio ON inscripciones_socio.id = cuotas_socio.inscripcion_id
-        WHERE inscripciones_socio.socio_id = ? AND inscripciones_socio.id <> ? AND inscripciones_socio.estado = 'activa'
-          AND cuotas_socio.meses = ? AND cuotas_socio.desde < ? AND cuotas_socio.hasta >= ?
-        ORDER BY inscripciones_socio.id LIMIT 1`
-    )
-    .get(plan.socio_id, plan.id, plan.meses, fecha, fecha);
+  // El período de otro plan que contiene `fecha`: una cuota o, de un socio
+  // que ya venía, lo pagado antes de Nexo (hist. §227), que termina el día
+  // antes de su ciclo.
+  const ancla =
+    db
+      .prepare(
+        `SELECT cuotas_socio.desde, cuotas_socio.hasta FROM cuotas_socio
+           JOIN inscripciones_socio ON inscripciones_socio.id = cuotas_socio.inscripcion_id
+          WHERE inscripciones_socio.socio_id = ? AND inscripciones_socio.id <> ? AND inscripciones_socio.estado = 'activa'
+            AND cuotas_socio.meses = ? AND cuotas_socio.desde < ? AND cuotas_socio.hasta >= ?
+          ORDER BY inscripciones_socio.id LIMIT 1`
+      )
+      .get(plan.socio_id, plan.id, plan.meses, fecha, fecha) ??
+    db
+      .prepare(
+        `SELECT inscripciones_socio.ciclo_desde, inscripciones_socio.pagado_antes_hasta AS hasta FROM inscripciones_socio
+           JOIN planes_socio_opciones ON planes_socio_opciones.id = inscripciones_socio.opcion_id
+          WHERE inscripciones_socio.socio_id = ? AND inscripciones_socio.id <> ? AND inscripciones_socio.estado = 'activa'
+            AND planes_socio_opciones.meses = ? AND inscripciones_socio.pagado_antes_hasta >= ?
+          ORDER BY inscripciones_socio.id LIMIT 1`
+      )
+      .all(plan.socio_id, plan.id, plan.meses, fecha)
+      .map((f) => ({ desde: sumarMeses(f.ciclo_desde, -plan.meses), hasta: f.hasta }))
+      .find((f) => f.desde < fecha);
   if (!ancla) return;
   const proximo = sumarDias(ancla.hasta, 1);
   db.prepare('UPDATE inscripciones_socio SET ciclo_desde = ?, cobrar_desde = ? WHERE id = ?').run(proximo, maxISO(proximo, hoy), plan.id);
@@ -23005,7 +23024,10 @@ function conSituacion(socio, inscripciones, cuotas, descuentos, hoy) {
       ciclo_desde: i.ciclo_desde,
       estado: i.estado,
       fecha_baja: i.fecha_baja,
-      cubierto_hasta: cuotas.filter((c) => c.inscripcion_id === i.id).reduce((max, c) => (max && max > c.hasta ? max : c.hasta), null)
+      // Lo pagado antes de Nexo (hist. §227) cubre igual que una cuota.
+      cubierto_hasta: cuotas
+        .filter((c) => c.inscripcion_id === i.id)
+        .reduce((max, c) => (max && max > c.hasta ? max : c.hasta), i.pagado_antes_hasta ?? null)
     };
   });
   const activos = planes.filter((p) => p.estado === 'activa');
@@ -23144,30 +23166,53 @@ function fechaDeAlta(valor, hoy) {
 }
 
 // Anota un plan de un socio; sus cuotas las arma después generarCuotasDelSocio. Va
-// DENTRO de una transacción.
-function inscribir(socioId, opcion, desde, hoy) {
+// DENTRO de una transacción. Con `proxima` (un socio que ya venía, hist.
+// §227) el ciclo arranca en su próxima cuota y lo de antes queda pagado; si
+// esa cuota ya pasó, se cobra desde ahí.
+function inscribir(socioId, opcion, desde, hoy, proxima = null) {
+  const ciclo = proxima ?? desde;
   const { lastInsertRowid } = db
     .prepare(
-      `INSERT INTO inscripciones_socio (socio_id, plan_id, opcion_id, fecha_alta, ciclo_desde, cobrar_desde)
-       VALUES (?, ?, ?, ?, ?, ?)`
+      `INSERT INTO inscripciones_socio (socio_id, plan_id, opcion_id, fecha_alta, ciclo_desde, cobrar_desde, pagado_antes_hasta)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`
     )
-    .run(socioId, opcion.plan_id, opcion.id, desde, desde, maxISO(desde, hoy));
+    .run(socioId, opcion.plan_id, opcion.id, desde, ciclo, proxima ? proxima : maxISO(desde, hoy), proxima > desde ? sumarDias(proxima, -1) : null);
   return Number(lastInsertRowid);
+}
+
+// La próxima cuota de un socio que ya venía (hist. §227): entre su alta y una
+// duración de hoy para adelante, y a lo sumo un año de cuotas para atrás.
+// Sin valor, null (el alta de siempre). Devuelve { error } o { proxima }.
+function proximaCuotaPedida(valor, alta, opciones, hoy) {
+  if (valor == null || valor === '') return { proxima: null };
+  const fecha = validarFecha(valor);
+  if (!fecha || sumarDias(fecha, 0) !== fecha) return { error: 'La fecha de la próxima cuota no es válida.' };
+  if (fecha < alta) return { error: 'La próxima cuota no puede ser antes de que empezara.' };
+  const meses = Math.max(...opciones.map((o) => o.meses));
+  if (fecha > sumarMeses(hoy, meses)) return { error: 'La próxima cuota está demasiado adelante: revisá la fecha.' };
+  if (fecha < sumarMeses(hoy, -MESES_DEUDA_ANTERIOR_SOCIO)) {
+    return { error: 'Debe desde hace más de un año: poné la próxima cuota más cerca y cargá el resto en "Además debe".' };
+  }
+  return { proxima: fecha };
 }
 
 // Vuelve a activar un plan dado de baja: un ciclo nuevo hoy, o al terminar el
 // período que ya tenía pagado, sin cobrar los meses de baja. Devuelve desde
 // cuándo cobra. Va DENTRO de una transacción.
 function reactivarInscripcion(inscripcionId, hoy) {
-  const { ciclo_desde: cicloDesde } = db.prepare('SELECT ciclo_desde FROM inscripciones_socio WHERE id = ?').get(inscripcionId);
+  const { ciclo_desde: cicloDesde, pagado_antes_hasta: pagadoAntes } = db
+    .prepare('SELECT ciclo_desde, pagado_antes_hasta FROM inscripciones_socio WHERE id = ?')
+    .get(inscripcionId);
   // Una cuota bonificada (venta anulada) no deja el período pago: el que se
-  // fue sin avisar y vuelve paga desde ese día (hist. §204).
-  const { ultimo } = db
+  // fue sin avisar y vuelve paga desde ese día (hist. §204). Lo pagado antes
+  // de Nexo (hist. §227) sí.
+  const { ultimo: ultimaCuota } = db
     .prepare(
       `SELECT MAX(cuotas_socio.hasta) AS ultimo FROM cuotas_socio JOIN ventas ON ventas.id = cuotas_socio.venta_id
         WHERE cuotas_socio.inscripcion_id = ? AND ventas.estado = 'activa'`
     )
     .get(inscripcionId);
+  const ultimo = ultimaCuota && pagadoAntes ? maxISO(ultimaCuota, pagadoAntes) : (ultimaCuota ?? pagadoAntes);
   const ciclo = maxISO(hoy, ultimo ? sumarDias(ultimo, 1) : cicloDesde);
   db.prepare(
     "UPDATE inscripciones_socio SET estado = 'activa', fecha_baja = NULL, ciclo_desde = ?, cobrar_desde = ? WHERE id = ?"
@@ -23821,6 +23866,19 @@ app.post('/api/socios', (req, res) => {
   if (errorPlanes) return res.status(400).json({ error: errorPlanes });
   const { error: errorFecha, fecha: alta } = fechaDeAlta(fecha_alta, hoy);
   if (errorFecha) return res.status(400).json({ error: errorFecha });
+  // Un socio que ya venía (hist. §227): su próxima cuota (lo de antes queda
+  // pagado, o se cobra desde ahí si ya pasó) y lo que debe aparte. Es lo de
+  // antes de Nexo, del admin, como el resto de "Lo que ya tenías".
+  const { proxima_cuota: proximaCuota, deuda_anterior: deudaAnterior } = req.body ?? {};
+  const traeLoDeAntes = (proximaCuota != null && proximaCuota !== '') || (deudaAnterior != null && deudaAnterior !== '');
+  if (traeLoDeAntes && req.usuario.rol !== 'admin') return res.status(403).json({ error: 'Necesitás ser administrador para esto.' });
+  const { error: errorProxima, proxima } = proximaCuotaPedida(proximaCuota, alta, opciones, hoy);
+  if (errorProxima) return res.status(400).json({ error: errorProxima });
+  let deuda = null;
+  if (deudaAnterior != null && deudaAnterior !== '') {
+    if (!esNumeroValido(deudaAnterior) || deudaAnterior < 0) return res.status(400).json({ error: 'Lo que debe aparte tiene que ser un número.' });
+    deuda = deudaAnterior > 0 ? redondear2(deudaAnterior) : null;
+  }
   // De un socio que ya venía (alta hacia atrás), la última vez que vino antes
   // de cargarlo en Nexo (hist. §203): queda como su último ingreso, y así
   // "No vienen" lo muestra desde el primer día.
@@ -23892,7 +23950,7 @@ app.post('/api/socios', (req, res) => {
         .run(clienteId, numero, alta, manual.id, organizacionId).lastInsertRowid
     );
     // Todos los planes anotados antes de generar cuotas: un combo los mira a todos.
-    for (const opcion of opciones) inscribir(id, opcion, alta, hoy);
+    for (const opcion of opciones) inscribir(id, opcion, alta, hoy, proxima);
     auditar(req, {
       accion: 'crear',
       entidad: 'cliente',
@@ -23902,9 +23960,11 @@ app.post('/api/socios', (req, res) => {
       detalle:
         `Alta del socio N° ${numero}, ${nombre}: ${opciones.map((o) => planYDuracion(o.plan, o.meses)).join(', ')}, desde el ${fechaLegible(alta)}` +
         (manual.id ? `, con el descuento "${manual.nombre}"` : '') +
+        (proxima ? `; ya venía, con la próxima cuota el ${fechaLegible(proxima)}` : '') +
         (ultimaVez ? `; vino por última vez el ${fechaLegible(ultimaVez)}` : '')
     });
     generarCuotasDelSocio(id, hoy);
+    if (deuda) crearSaldoAnteriorCliente(req, clienteId, deuda, hoy, { condicion: 'contado', vencimiento: hoy });
     if (ultimaVez) {
       db.prepare('INSERT INTO ingresos_socio (socio_id, fecha, usuario_id, al_dia, deuda) VALUES (?, ?, ?, 1, 0)').run(
         id,
@@ -29306,6 +29366,16 @@ function estadoCargaInicial(organizacionId) {
       `SELECT COUNT(*) AS cantidad, COALESCE(SUM(saldo_inicial), 0) AS total
          FROM cuentas_tesoreria WHERE organizacion_id = ? AND saldo_inicial <> 0`
     ),
+    // Los socios que ya venían (hist. §227): los que empezaron antes de que
+    // se los cargara, con algo pagado antes de Nexo o un alta hacia atrás.
+    socios: uno(
+      `SELECT COUNT(DISTINCT socios.id) AS cantidad FROM socios
+         JOIN inscripciones_socio ON inscripciones_socio.socio_id = socios.id
+        WHERE socios.organizacion_id = ?
+          AND (inscripciones_socio.pagado_antes_hasta IS NOT NULL
+               OR (inscripciones_socio.ciclo_desde = inscripciones_socio.fecha_alta
+                   AND inscripciones_socio.cobrar_desde > inscripciones_socio.fecha_alta))`
+    ),
     ventas: uno(
       `SELECT COUNT(*) AS cantidad,
               COALESCE(SUM((SELECT SUM(cantidad * precio_unitario) FROM venta_items WHERE venta_id = ventas.id)), 0) AS total
@@ -29588,6 +29658,26 @@ function resolverProveedor(nombre, proveedorId, organizacionId) {
   return { id: db.prepare('INSERT INTO proveedores (nombre, organizacion_id) VALUES (?, ?)').run(texto, organizacionId).lastInsertRowid };
 }
 
+// Lo que un cliente debía de antes de Nexo: una venta sin renglones con su
+// saldo, en su cuenta corriente. También la usa el alta de un socio que ya
+// venía (hist. §227). Va DENTRO de una transacción.
+function crearSaldoAnteriorCliente(req, clienteId, monto, fecha, venc) {
+  const org = req.usuario.organizacion_id;
+  const ventaId = Number(
+    db
+      .prepare(
+        `INSERT INTO ventas (cliente_id, fecha, condicion_pago, fecha_vencimiento, organizacion_id, carga_inicial, saldo_inicial)
+         VALUES (?, ?, ?, ?, ?, 1, ?)`
+      )
+      .run(clienteId, fecha, venc.condicion, venc.vencimiento, org, monto).lastInsertRowid
+  );
+  db.prepare(
+    `INSERT INTO movimientos_cc_clientes (cliente_id, tipo, importe, venta_id, fecha) VALUES (?, 'venta', ?, ?, ${HOY_SQL})`
+  ).run(clienteId, monto, ventaId);
+  auditar(req, { accion: 'crear', entidad: 'venta', entidad_id: ventaId, detalle: `Saldo anterior de un cliente: $${monto} (venta #${ventaId})` });
+  return ventaId;
+}
+
 // Un saldo anterior: { tipo: 'cliente' | 'proveedor', entidad_id o nombre,
 // importe, fecha, vencimiento }.
 app.post('/api/carga-inicial/saldos', soloAdmin, (req, res) => {
@@ -29600,22 +29690,7 @@ app.post('/api/carga-inicial/saldos', soloAdmin, (req, res) => {
   const monto = redondear2(importe);
 
   const id = withTransaction(() => {
-    if (tipo === 'cliente') {
-      const cliente = resolverCliente(nombre, entidadId, org);
-      const ventaId = Number(
-        db
-          .prepare(
-            `INSERT INTO ventas (cliente_id, fecha, condicion_pago, fecha_vencimiento, organizacion_id, carga_inicial, saldo_inicial)
-             VALUES (?, ?, ?, ?, ?, 1, ?)`
-          )
-          .run(cliente.id, fecha, venc.condicion, venc.vencimiento, org, monto).lastInsertRowid
-      );
-      db.prepare(
-        `INSERT INTO movimientos_cc_clientes (cliente_id, tipo, importe, venta_id, fecha) VALUES (?, 'venta', ?, ?, ${HOY_SQL})`
-      ).run(cliente.id, monto, ventaId);
-      auditar(req, { accion: 'crear', entidad: 'venta', entidad_id: ventaId, detalle: `Saldo anterior de un cliente: $${monto} (venta #${ventaId})` });
-      return ventaId;
-    }
+    if (tipo === 'cliente') return crearSaldoAnteriorCliente(req, resolverCliente(nombre, entidadId, org).id, monto, fecha, venc);
     const proveedor = resolverProveedor(nombre, entidadId, org);
     const compraId = Number(
       db

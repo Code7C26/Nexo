@@ -2356,7 +2356,10 @@ for (const [tabla, columna] of [
   ['organizaciones', 'puntos_cada REAL'],
   ['organizaciones', 'puntos_vencen_meses INTEGER'],
   ['ventas', 'puntos_cada REAL'],
-  ['ventas', 'puntos_vencen TEXT']
+  ['ventas', 'puntos_vencen TEXT'],
+  // Hasta cuándo pagó un socio que ya venía, antes de Nexo (hist. §227): los
+  // planes de antes, NULL (lo cubierto sale solo de sus cuotas).
+  ['inscripciones_socio', 'pagado_antes_hasta TEXT']
 ]) {
   if (!db.prepare(`PRAGMA table_info(${tabla})`).all().some((col) => col.name === columna.split(' ')[0])) {
     db.exec(`ALTER TABLE ${tabla} ADD COLUMN ${columna}`);
