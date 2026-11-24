@@ -1274,8 +1274,38 @@ async function registrarIngreso(socio, { tono, estado, detalle }) {
   } else {
     pintarTarjeta(s, { tono: "debe", estado: "Entró debiendo", meta: `Debe ${money(s.deuda)}.`, hora: horaDe(ingreso.fecha) });
   }
+  pintarClasesIngreso(ingreso.clases ?? []);
   await refrescar([cargarIngresosHoy(), cargarSocios()]);
   pintarIngresosHoy();
+}
+
+// El ingreso por clase (hist. §228): las clases de ahora, para tocar a cuál
+// va. Cada toque lo anota o lo saca de esa clase de hoy; no se anota solo,
+// porque también se entra a una actividad libre.
+function pintarClasesIngreso(clases) {
+  if (!clases.length) return;
+  const bloque = document.createElement("div");
+  bloque.className = "ingreso-clases";
+  bloque.innerHTML = `
+    <p class="ingreso-clases-titulo">¿A qué clase va?</p>
+    <div class="segmentos" role="group" aria-label="Clases de ahora">${clases
+      .map(
+        (c) =>
+          `<button type="button" class="segmento" data-clase-ingreso="${c.id}" aria-pressed="${c.anotado ? "true" : "false"}">${esc(c.actividad)} <small>${esc(c.desde)}</small></button>`
+      )
+      .join("")}</div>`;
+  ingresoTarjeta.querySelector(".ingreso-tarjeta-acciones").before(bloque);
+}
+
+async function tocarClaseIngreso(boton, socio) {
+  const url = `/api/clases/${boton.dataset.claseIngreso}/fechas/${hoyISO()}/asistencias`;
+  const anotado = boton.getAttribute("aria-pressed") === "true";
+  await enviando(boton, () =>
+    anotado
+      ? api(`${url}/${socio.id}`, { method: "DELETE", error: "No se pudo sacar de la clase." })
+      : api(url, { method: "POST", body: { socio_id: socio.id }, error: "No se pudo anotar en la clase." })
+  );
+  boton.setAttribute("aria-pressed", String(!anotado));
 }
 
 // Elegido el socio, se lo vuelve a pedir: la lista puede tener horas y el
@@ -1293,7 +1323,9 @@ ingresoTarjeta.addEventListener("click", async (e) => {
   const boton = e.target.closest("button");
   if (!boton || !tarjetaSocio) return;
   const socio = tarjetaSocio;
-  if (boton.dataset.accion === "ficha") {
+  if (boton.dataset.claseIngreso) {
+    await tocarClaseIngreso(boton, socio).catch(() => {});
+  } else if (boton.dataset.accion === "ficha") {
     abrirFicha(socio.id);
   } else if (boton.dataset.accion === "pasar") {
     const detalle = socio.situacion === "por_empezar" ? `Su plan empieza el ${fechaAR(socio.empieza)}.` : undefined;

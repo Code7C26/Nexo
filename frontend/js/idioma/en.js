@@ -6454,5 +6454,9 @@ export default {
   "Indicá si da clases.": "Say whether they teach classes.",
   "Ya hay otro empleado que se llama {0}: cambiale el nombre a uno de los dos.": "There's already another employee called {0}: rename one of them.",
   "da clases: puede anotarse como el que da la clase": "teaches classes: can check in as the one teaching the class",
-  "ya no da clases": "no longer teaches classes"
+  "ya no da clases": "no longer teaches classes",
+  "Clases de ahora": "Current classes",
+  "¿A qué clase va?": "Which class are they here for?",
+  "No se pudo sacar de la clase.": "Couldn't remove them from the class.",
+  "No se pudo anotar en la clase.": "Couldn't check them in to the class."
 };

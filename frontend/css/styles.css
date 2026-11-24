@@ -7418,6 +7418,11 @@ html[data-ejemplo] #btnCompraFactura { display: none; }
   color: var(--ink-muted);
 }
 
+/* Las clases de ahora, para tocar a cuál va (hist. §228). */
+.ingreso-clases { display: flex; flex-direction: column; gap: var(--sp-2); }
+.ingreso-clases-titulo { margin: 0; font-size: var(--txt-sm); font-weight: 600; }
+.ingreso-clases .segmento small { color: inherit; opacity: 0.75; }
+
 .ingreso-tarjeta-acciones {
   display: flex;
   flex-wrap: wrap;
