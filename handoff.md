@@ -11,7 +11,7 @@
 
 - Al cerrar una etapa, se hacen tres cosas:
   - su relato completo se agrega al final de `docs/proyecto/handoff-historico.md` con el
-    siguiente número (hoy el último es §231);
+    siguiente número (hoy el último es §232);
   - acá se actualizan "Estado actual" y "Qué sigue";
   - si cambió alguna decisión vigente, se actualiza también esa lista.
 - Nunca apilar secciones "Última etapa" en este archivo: así fue como llegó a
@@ -334,7 +334,7 @@ balanza, ajeno al cambio, y pasó al relanzarlo).
   Probado en el navegador (compu y 390 px) con un dojo de prueba.
 
 **24 de noviembre, hist. §231: dejar de usar esta compu como caja, y los
-combos sin el precio repartido** (dos quejas del usuario, sin publicar).
+combos sin el precio repartido** (dos quejas del usuario; publicado, PR #128).
 - La compu vinculada a una caja abría siempre "¿Quién atiende?" y el dueño, con
   su cuenta adentro, no encontraba cómo sacarla (solo había "Desvincular" en el
   punto de venta, y cortaba todas las compus de la caja). Ahora
@@ -349,6 +349,23 @@ combos sin el precio repartido** (dos quejas del usuario, sin publicar).
   también). Las cuotas siguen cobrando el reparto (suman el precio justo).
 - Test nuevo en `caja-vinculada`; `npm test` 570, lint e i18n en verde. **No
   se probó en el navegador** (no había servidor local).
+
+**24 de noviembre, hist. §232: las cuotas del combo viejo en una fila, "¿Lo
+mandaste?" y el Volver de la ficha del cliente** (tres quejas del usuario).
+- Las cuotas de Morro de antes de §208 son una venta por plan, y la ficha y
+  Socios → Cuotas las mostraban repartidas ($43.636,36 + $36.363,64). Ahora
+  `conCobros` (server.js) junta en un cobro las de un mismo socio, combo de
+  precio fijo y período: una fila con $80.000, que se cobra de una vez
+  (`/cobros` acepta `venta_ids`). En esa fila no se ofrece Facturar ni "Otro
+  importe" (serían dos ventas repartidas). Los datos no se tocan.
+- "Recordar" anotaba "Le recordaste hoy" con solo tocarlo: ahora abre WhatsApp
+  y pregunta "¿Lo mandaste? Sí / No"; solo el Sí lo anota
+  (`preguntarSiLoMando` en `core/recordar.js`, Cuotas y Cuentas corrientes).
+- La ficha del cliente vuelve a la pantalla desde la que se abrió (la del
+  socio, un trabajo, Cuentas corrientes…), no siempre al CRM
+  (`vistaVisible` en el router).
+- Test nuevo `combo-viejo`; `npm test` 572, lint e i18n. Probado en el
+  navegador con un dojo de prueba (la fila, el cobro, el Recordar y el Volver).
 
 **Lo que sigue (próxima sesión):** el usuario revisa los cinturones y dice qué
 cambiar ("mañana seguimos y vemos qué cambiar"). Cargar los cinturones del dojo real (Morro: prender Cinturones, armar BJJ y cargar a

@@ -22991,7 +22991,8 @@ const SUBQUERY_RENGLON_CUOTA = `
 const SELECT_CUOTAS = `
   SELECT cuotas_socio.id, inscripciones_socio.socio_id, cuotas_socio.inscripcion_id, cuotas_socio.venta_id,
          cuotas_socio.desde, cuotas_socio.hasta, cuotas_socio.meses, cuotas_socio.precio_lista,
-         cuotas_socio.descuento_pct, descuentos_socio.nombre AS descuento, descuentos_socio.precio_combo AS descuento_precio_combo,
+         cuotas_socio.descuento_pct, cuotas_socio.descuento_id, descuentos_socio.nombre AS descuento,
+         descuentos_socio.precio_combo AS descuento_precio_combo,
          productos.nombre AS plan,
          ventas.estado AS estado_venta,
          ${SUBQUERY_RENGLON_CUOTA} AS importe,
@@ -23031,6 +23032,32 @@ function cobrosDeCuotas(impagas) {
     }
   }
   return [...porVenta.values()].map(({ planes, ...cobro }) => ({ ...cobro, plan: planes.join(' y ') }));
+}
+
+// El cobro de cada cuota (`cobro`, la venta más chica del grupo): las de una
+// venta van juntas (hist. §208). Antes de §208 un combo de precio fijo era una
+// venta por plan, y la ficha y Cuotas lo mostraban repartido ($43.636,36 +
+// $36.363,64): las cuotas del mismo socio, combo y período también se juntan,
+// y se ven con el precio del combo. Pide las cuotas ya decoradas.
+function conCobros(cuotas) {
+  const padre = new Map();
+  const raiz = (v) => {
+    while (padre.has(v) && padre.get(v) !== v) v = padre.get(v);
+    return v;
+  };
+  const combos = new Map();
+  for (const c of cuotas) {
+    if (c.descuento_precio_combo == null) continue;
+    const clave = `${c.socio_id}|${c.desde}|${c.descuento_id}`;
+    const otra = combos.get(clave);
+    if (otra == null) {
+      combos.set(clave, c.venta_id);
+      continue;
+    }
+    const [a, b] = [raiz(otra), raiz(c.venta_id)];
+    if (a !== b) padre.set(Math.max(a, b), Math.min(a, b));
+  }
+  return cuotas.map((c) => ({ ...c, cobro: raiz(c.venta_id) }));
 }
 
 function decorarCuota({ estado_venta, ...cuota }) {
@@ -23124,7 +23151,7 @@ function conSituacion(socio, inscripciones, cuotas, descuentos, hoy) {
     situacion,
     deuda,
     parece_que_dejo: pareceQueDejo,
-    cuotas_impagas: porCobrar.length,
+    cuotas_impagas: new Set(impagas.map((c) => c.cobro ?? c.venta_id)).size,
     debe_desde: impagas[0]?.desde ?? null,
     al_dia_hasta: situacion === 'al_dia' ? primera(vigentes.map((p) => p.cubierto_hasta)) : null,
     empieza: situacion === 'por_empezar' ? primera(activos.map((p) => p.ciclo_desde)) : null,
@@ -23149,10 +23176,12 @@ function sociosConSituacion(organizacionId, socioId = null) {
     db.prepare(`${SELECT_INSCRIPCION} ${filtro} ORDER BY inscripciones_socio.estado, productos.nombre, inscripciones_socio.id`).all(...parametros)
   );
   const cuotas = agrupar(
-    db
-      .prepare(`${SELECT_CUOTAS} ${filtro} ORDER BY cuotas_socio.desde, cuotas_socio.venta_id, cuotas_socio.id`)
-      .all(...parametros)
-      .map((c) => decorarCuota(cuotaDeSuRenglon(c)))
+    conCobros(
+      db
+        .prepare(`${SELECT_CUOTAS} ${filtro} ORDER BY cuotas_socio.desde, cuotas_socio.venta_id, cuotas_socio.id`)
+        .all(...parametros)
+        .map((c) => decorarCuota(cuotaDeSuRenglon(c)))
+    )
   );
   const descuentos = descuentosDeLaEmpresa(organizacionId);
   return socios.map((s) => conSituacion(s, inscripciones.get(s.id) ?? [], cuotas.get(s.id) ?? [], descuentos, hoy));
@@ -23590,6 +23619,7 @@ app.get('/api/socios/cuotas', (req, res) => {
     )
     .all(organizacionId, desde, sumarMeses(desde, 1))
     .map((c) => decorarCuota(cuotaDeSuRenglon(c)));
+  const conCobro = conCobros(filas);
   const socios = new Map(
     db
       .prepare(
@@ -23608,37 +23638,53 @@ app.get('/api/socios/cuotas', (req, res) => {
   );
   // Recordar una cuota vencida por WhatsApp (hist. §219).
   const recordadas = ultimosRecordatorios(organizacionId, 'venta_id');
-  const porVenta = new Map();
-  for (const c of filas) {
-    const cobro = porVenta.get(c.venta_id);
-    if (cobro) {
-      cobro.planes.push(c.plan);
-      cobro.hasta = maxISO(cobro.hasta, c.hasta);
+  // Un cobro por fila (conCobros): casi siempre una venta; un combo de precio
+  // fijo de antes de §208, las ventas de sus planes. `venta_id` es la del
+  // cobro y `ventas`, todas las que lleva.
+  const porCobro = new Map();
+  for (const c of conCobro) {
+    const anterior = porCobro.get(c.cobro);
+    if (anterior) {
+      anterior.planes.push(c.plan);
+      anterior.hasta = maxISO(anterior.hasta, c.hasta);
+      if (!anterior.ventas.includes(c.venta_id)) anterior.ventas.push(c.venta_id);
+      anterior.filas.push(c);
       continue;
     }
+    porCobro.set(c.cobro, { ...c, planes: [c.plan], ventas: [c.venta_id], filas: [c] });
+  }
+  const cuotas = [...porCobro.values()].map(({ filas: delCobro, ventas, planes, hasta, cobro }) => {
+    // Lo de cada venta una sola vez, aunque lleve varios planes.
+    const porVenta = ventas.map((id) => delCobro.find((c) => c.venta_id === id));
+    const bonificado = porVenta.every((c) => c.estado === 'bonificada');
+    const importe = redondear2(porVenta.reduce((acc, c) => acc + c.importe_venta, 0));
+    const cobrado = redondear2(porVenta.reduce((acc, c) => acc + c.cobrado_venta, 0));
+    const saldo = redondear2(
+      porVenta.reduce((acc, c) => acc + (c.estado === 'bonificada' ? 0 : Math.max(0, c.importe_venta - c.cobrado_venta)), 0)
+    );
+    const [c] = delCobro;
+    let estado = bonificado ? 'bonificada' : c.estado;
+    if (estado !== 'bonificada' && estado !== 'sin_cargo') estado = saldo < 0.005 ? 'pagada' : cobrado > 0 ? 'parcial' : 'pendiente';
     const socio = socios.get(c.socio_id);
-    const saldo = c.estado === 'bonificada' ? 0 : Math.max(0, redondear2(c.importe_venta - c.cobrado_venta));
-    let estado = c.estado;
-    if (estado !== 'bonificada' && estado !== 'sin_cargo') estado = saldo === 0 ? 'pagada' : c.cobrado_venta > 0 ? 'parcial' : 'pendiente';
-    porVenta.set(c.venta_id, {
-      venta_id: c.venta_id,
+    return {
+      venta_id: cobro,
+      ventas,
       socio_id: c.socio_id,
       numero: socio.numero,
       socio: socio.nombre,
       cliente_id: socio.cliente_id,
       telefono: socio.telefono,
-      recordatorio: recordadas.get(c.venta_id) ?? null,
-      planes: [c.plan],
+      recordatorio: recordadas.get(cobro) ?? null,
+      planes,
       desde: c.desde,
-      hasta: c.hasta,
-      importe: redondear2(c.importe_venta),
-      cobrado: redondear2(c.cobrado_venta),
+      hasta,
+      importe,
+      cobrado,
       saldo,
       estado,
-      facturada: facturadas.has(c.venta_id)
-    });
-  }
-  const cuotas = [...porVenta.values()];
+      facturada: ventas.every((id) => facturadas.has(id))
+    };
+  });
   const activas = cuotas.filter((c) => c.estado !== 'bonificada');
   const suma = (lista, campo) => redondear2(lista.reduce((acc, c) => acc + c[campo], 0));
   res.json({
@@ -24492,10 +24538,15 @@ app.post('/api/socios/:id/cobros', (req, res) => {
 
   ponerCuotasAlDia(organizacionId, socio.id);
   const [{ cuotas }] = sociosConSituacion(organizacionId, socio.id);
-  const ventaPedida = req.body?.venta_id == null ? null : Number(req.body.venta_id);
-  const impagas = cobrosDeCuotas(cuotas.filter((c) => c.saldo > 0)).filter((c) => ventaPedida === null || c.venta_id === ventaPedida);
+  // Una fila de Cuotas puede llevar varias ventas (conCobros): `venta_ids`.
+  const pedidas = Array.isArray(req.body?.venta_ids)
+    ? req.body.venta_ids.map(Number)
+    : req.body?.venta_id == null
+      ? null
+      : [Number(req.body.venta_id)];
+  const impagas = cobrosDeCuotas(cuotas.filter((c) => c.saldo > 0)).filter((c) => pedidas === null || pedidas.includes(c.venta_id));
   if (impagas.length === 0) {
-    return res.status(400).json({ error: ventaPedida === null ? `${socio.nombre} no debe ninguna cuota.` : 'Esa cuota no se debe.' });
+    return res.status(400).json({ error: pedidas === null ? `${socio.nombre} no debe ninguna cuota.` : 'Esa cuota no se debe.' });
   }
 
   const total = withTransaction(() => {

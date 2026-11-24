@@ -269,6 +269,10 @@ function rutaDesdeHash() {
 
 // Vuelve del hash a una vista válida (no de ficha, que no alcanza para
 // reconstruir cuál registro mostrar), o null si no hay nada aprovechable.
+// La vista que se ve ahora: la ficha que se abre desde otra la anota para
+// volver ahí (la del cliente, desde la de un socio).
+export const vistaVisible = () => [...document.querySelectorAll(".view")].find((sec) => !sec.hidden)?.dataset.view ?? null;
+
 export function vistaDesdeHash() {
   const { id } = rutaDesdeHash();
   return VISTAS_CONSTRUIDAS[id] && !VISTAS_CONSTRUIDAS[id].esFicha ? id : null;

@@ -1353,6 +1353,8 @@ tr.is-abierta .cc-chevron .ico { transform: rotate(90deg); color: var(--accent);
 .recordar { display: inline-flex; flex-direction: column; align-items: flex-start; gap: 2px; }
 .recordar .btn { white-space: nowrap; }
 .recordar-cuando { font-size: var(--txt-xs); color: var(--ink-muted); white-space: nowrap; }
+.recordar-pregunta { color: var(--ink); }
+.recordar-pregunta .btn-link { font-size: inherit; padding: 2px 4px; }
 
 /* Configuración → Mensajes de WhatsApp (hist. §219): una tarjeta por
    situación, los marcadores para sumar y cómo le llega, como una burbuja. */

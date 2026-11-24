@@ -42,7 +42,7 @@ import { crearConsumos } from "./core/al-vender.js";
 import { facturaDeFila, leerFactura, marcarCoincidencia, montarOrigen, pintarResumen } from "./dominios/factura-compra.js";
 import { CANALES_VENTA } from "./core/canales.js";
 import { mejorOferta } from "./core/ofertas.js";
-import { mostrarVista, subrutaDesdeHash, vistaDesdeHash } from "./core/router.js";
+import { mostrarVista, subrutaDesdeHash, vistaDesdeHash, vistaVisible } from "./core/router.js";
 import { alEntrarEnVista, invocar, recargar, registrar } from "./core/registro.js";
 import { cuentasTesoreria, fijarCuentasTesoreria, fijarProveedores, poblarSelectCuentas, proveedores } from "./core/maestros.js";
 import { catalogoMixto, fijarTiposDelCatalogo, moduloActivo, negocio, termino, terminoDeTipo } from "./core/negocio.js";
@@ -7400,7 +7400,15 @@ const filtrosClientes = crearFiltros(
 
 document.getElementById("clientesSearch").addEventListener("input", filtrarClientes);
 
+// Adónde vuelve la ficha del cliente: a la pantalla desde la que se abrió (la
+// ficha de un socio, de un trabajo, Cuentas corrientes…), o al CRM.
+let volverDeCliente = null;
+
 async function abrirFichaCliente(id) {
+  const desde = vistaVisible();
+  // Abierta de nuevo desde ella misma (al guardar un cambio), vuelve adonde iba.
+  if (desde !== "cliente-detalle") volverDeCliente = desde && desde !== "clientes" ? desde : null;
+  document.getElementById("btnVolverClientesTexto").textContent = volverDeCliente ? "Volver" : "Volver a clientes";
   clienteFichaId = id;
   const cliente = await api(`/api/clientes/${id}`);
 
@@ -7482,7 +7490,7 @@ document.getElementById("modalClienteClose").addEventListener("click", () => {
 modalCliente.addEventListener("click", (e) => {
   if (e.target === modalCliente) modalCliente.hidden = true;
 });
-document.getElementById("btnVolverClientes").addEventListener("click", () => mostrarVista("clientes"));
+document.getElementById("btnVolverClientes").addEventListener("click", () => mostrarVista(volverDeCliente ?? "clientes"));
 
 document.getElementById("formCliente").addEventListener("submit", async (e) => {
   e.preventDefault();
