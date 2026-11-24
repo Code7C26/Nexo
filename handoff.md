@@ -308,7 +308,7 @@ Editar una actividad muestra **todos sus horarios** (día, hora, profes), cada
 uno con **Editar**, **Copiar a otros días** (un horario nuevo con todo puesto,
 para marcar los días) y **Sacar**, más **Sumar horarios**. Al guardar o
 cancelar un horario abierto desde ahí, se vuelve a la actividad. La clase del
-calendario suma **Todos los horarios**. Solo pantalla (`dominios/clases.js`).
+calendario suma **Todos los horarios**. Solo pantalla (`dominios/clases.js`). Publicado (PR #126, con la recepción por clase).
 
 **Lo que sigue (próxima sesión):** en el dojo, los **cinturones** (configurables
 por el profe, con avisos por cantidad de clases contando desde un número
